@@ -12,20 +12,37 @@ static inline int make_posix_whence(Whence whence)
     int lseek_whence = -1;
     switch (whence) {
     case SeekCur:
-      lseek_whence = SEEK_CUR;
-      break;
+        lseek_whence = SEEK_CUR;
+        break;
     case SeekSet:
-      lseek_whence = SEEK_SET;
-      break;
+        lseek_whence = SEEK_SET;
+        break;
     case SeekEnd:
-      lseek_whence = SEEK_END;
-      break;
+        lseek_whence = SEEK_END;
+        break;
     }
     return lseek_whence;
 }
 
-FileImpl::FileImpl(const std::string& filename, int flags)
-    : _fd(posix::wrap(::open(filename.c_str(), flags)))
+static inline int make_posix_flags(OpenMode open_mode)
+{
+  int flags = -1;
+  switch (open_mode) {
+  case OpenReadOnly:
+      flags = O_RDONLY;
+      break;
+  case OpenWriteOnly:
+      flags = O_WRONLY;
+      break;
+  case OpenReadWrite:
+      flags = O_RDWR;
+      break;
+  }
+  return flags;
+}
+
+FileImpl::FileImpl(const std::string& filename, OpenMode open_mode)
+    : _fd(posix::wrap(::open(filename.c_str(), make_posix_flags(open_mode)))
 {
 }
 

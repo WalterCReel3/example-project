@@ -3,7 +3,7 @@
 namespace util
 {
 
-File::File(const std::string& filename, int flags)
+File::File(const std::string& filename, OpenMode flags)
     : _filename(filename)
     , _file_impl(filename, flags)
 {

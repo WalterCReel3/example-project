@@ -5,7 +5,7 @@
 int main(void)
 {
     try {
-        util::File file(std::string("data/testfile"), O_RDONLY);
+        util::File file(std::string("data/testfile"), util::OpenReadOnly);
     } catch (std::exception &e) {
         std::cerr << e.what() << std::endl;
         throw;

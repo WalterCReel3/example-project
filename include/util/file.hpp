@@ -14,7 +14,7 @@ namespace util
 class File
 {
 public:
-    File(const std::string& filename, int flags);
+    File(const std::string& filename, OpenMode open_mode);
 
 public:
     ssize_t read(void* buf, size_t count);
