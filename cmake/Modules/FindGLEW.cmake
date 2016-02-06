@@ -32,31 +32,18 @@ find_path(GLEW_INCLUDE_DIR GL/glew.h
 
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
 	find_library(GLEW_LIBRARY
-		NAMES
-			glew
-			glew32
-			glew32s
 		HINTS ENV GLEWDIR
-		PATH_SUFFIXES
-			lib64
-			lib
-			lib/Release/x64
-			lib/x64
-			x86_64-w64-mingw32/lib
+		NAMES GLEW glew glew32 glew32s
+		PATH_SUFFIXES lib64 lib
+			lib/Release/x64 x86_64-linux-gnu
 	)
 # On 32bit build find the 32bit libs
 else(CMAKE_SIZEOF_VOID_P EQUAL 4)
 	find_library(GLEW_LIBRARY
-		NAMES
-			glew
-			glew32
-			glew32s
+		NAMES GLEW glew glew32 glew32s
 		HINTS ENV GLEWDIR
-		PATH_SUFFIXES
-			lib
-			lib/x86
-			lib/Release/Win32
-			x86-w32-mingw32/lib
+		PATH_SUFFIXES lib lib/x86
+			lib/Release/Win32 i386-linux-gnu
 	)
 endif(CMAKE_SIZEOF_VOID_P EQUAL 8)
 
