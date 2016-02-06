@@ -10,6 +10,9 @@ if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE "Debug")
 endif()
 
+#
+# Basic Directory Layout
+#
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/Modules")
 set(CMAKE_INSTALL_PREFIX "${CMAKE_SOURCE_DIR}/dist")
 
@@ -20,16 +23,28 @@ set(TEST_DIRECTORY ${CMAKE_SOURCE_DIR})
 set(PROJECT_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/include)
 set(EXECUTABLE_OUTPUT_PATH ${RUNTIME_OUTPUT_DIRECTORY})
 
-set(SDL2 "/DevLibs/SDL-2.0.4")
-set(GLEWDIR "/DevLibs/glew-1.13.0")
+include_directories("${PROJECT_INCLUDE_DIR}")
+
+#
+# Installed Third Party Packages
+#
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(SDL2 REQUIRED)
  
-include_directories("${PROJECT_INCLUDE_DIR}")
 include_directories("${SDL2_INCLUDE_DIR}")
 include_directories("${GLEW_INCLUDE_DIR}")
 
+#
+# Embedded Third Party Packages
+#
+include(ExternalProject)
+include(ExternalRapidJson)
+
+# Pull in installed headers
+include_directories("${CMAKE_BINARY_DIR}/include")
+
+# Allow for tests
 enable_testing()
 
 #
