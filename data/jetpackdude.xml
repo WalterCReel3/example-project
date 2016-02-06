@@ -1,0 +1,11 @@
+<?xml version="1.0" ?>
+<TextureAtlas imagePath="JetPackDude.png">
+	<SubTexture height="34" name="reddude.000" width="24" x="0" y="0"/>
+	<SubTexture height="34" name="reddude.001" width="24" x="24" y="0"/>
+	<SubTexture height="34" name="reddude.002" width="24" x="48" y="0"/>
+	<SubTexture height="34" name="reddude.003" width="24" x="72" y="0"/>
+	<SubTexture height="34" name="reddude.004" width="24" x="96" y="0"/>
+	<SubTexture height="34" name="reddude.005" width="24" x="120" y="0"/>
+	<SubTexture height="34" name="reddude.006" width="24" x="144" y="0"/>
+	<SubTexture height="34" name="reddude.007" width="24" x="168" y="0"/>
+</TextureAtlas>

@@ -1,0 +1,7 @@
+<TextureAtlas path="images/something.png">
+    <SubTexture name="What1"/>
+    <SubTexture name="What2"/>
+    <SubTexture name="What3"/>
+    <SubTexture name="What4"/>
+    <SubTexture name="What5"/>
+</TextureAtlas>
