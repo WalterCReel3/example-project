@@ -51,3 +51,10 @@ enable_testing()
 # COMPONENTS
 #
 add_subdirectory(project1)
+add_subdirectory(posix)
+add_subdirectory(util)
+
+#
+# Tests
+#
+add_subdirectory(tests)
