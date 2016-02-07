@@ -24,5 +24,7 @@ int main(void)
     if (json_document.HasMember("value") && json_document["value"].IsNumber()) {
         std::cout << json_document["value"].GetInt() << std::endl;
     }
+
+    return 0;
 }
 

@@ -71,7 +71,7 @@ ssize_t FileImpl::read(void* buf, size_t count)
     if (res == FALSE) {
         throw std::runtime_error("Could not read from file");
     }
-    return ret;
+    return static_cast<ssize_t>(ret);
 }
 
 off_t FileImpl::seek(off_t offset, Whence whence)

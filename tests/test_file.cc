@@ -1,4 +1,3 @@
-#include <fcntl.h>
 #include <util/file.hpp>
 #include <iostream>
 
@@ -10,6 +9,8 @@ int main(void)
         std::cerr << e.what() << std::endl;
         throw;
     }
+
+    return 0;
 }
 
 // vim: set sts=2 sw=2 expandtab:
