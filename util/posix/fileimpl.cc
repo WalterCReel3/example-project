@@ -42,7 +42,7 @@ static inline int make_posix_flags(OpenMode open_mode)
 }
 
 FileImpl::FileImpl(const std::string& filename, OpenMode open_mode)
-    : _fd(posix::wrap(::open(filename.c_str(), make_posix_flags(open_mode)))
+    : _fd(posix::wrap(::open(filename.c_str(), make_posix_flags(open_mode))))
 {
 }
 

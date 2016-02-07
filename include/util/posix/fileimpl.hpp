@@ -11,7 +11,7 @@ namespace util {
 class FileImpl
 {
 public:
-    FileImpl(const std::string& filename, int flags);
+    FileImpl(const std::string& filename, OpenMode open_mode);
     ~FileImpl();
 
 public:
