@@ -31,6 +31,8 @@ include_directories("${PROJECT_INCLUDE_DIR}")
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(SDL2 REQUIRED)
+find_package(SDL2_ttf REQUIRED)
+find_package(SDL2_image REQUIRED)
  
 include_directories("${SDL2_INCLUDE_DIR}")
 include_directories("${GLEW_INCLUDE_DIR}")
@@ -53,6 +55,9 @@ enable_testing()
 add_subdirectory(project1)
 add_subdirectory(posix)
 add_subdirectory(util)
+add_subdirectory(gfx)
+add_subdirectory(loaders)
+add_subdirectory(skratch)
 
 #
 # Tests
