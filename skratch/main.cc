@@ -1,6 +1,6 @@
 #include <iostream>
 #include <fstream>
-#include <unistd.h>
+// #include <unistd.h>
 #include "application.hpp"
 
 using namespace std;
@@ -12,9 +12,6 @@ int main(int, char**)
 {
     logging.open("runlog.txt");
     try {
-        char buf[4096];
-        ::getcwd(buf, sizeof(buf));
-        logging << buf << endl;
         Application app;
         g_application = &app;
         app.game_loop();

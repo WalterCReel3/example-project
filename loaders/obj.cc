@@ -16,9 +16,9 @@ void parse_vertex(const std::vector<std::string> & tokens,
     if (tokens.size() < 4) {
         throw std::runtime_error("Loader error invalid line");
     }
-    double x = ::strtod(tokens[1].c_str(), NULL);
-    double y = ::strtod(tokens[2].c_str(), NULL);
-    double z = ::strtod(tokens[3].c_str(), NULL);
+    float x = ::strtod(tokens[1].c_str(), NULL);
+    float y = ::strtod(tokens[2].c_str(), NULL);
+    float z = ::strtod(tokens[3].c_str(), NULL);
     // FIXME - Faking out a color here.
     model.add_vertex(math::Vector3(x, y, z),
                      math::Vector3(1.0-x, 1.0-y, 1.0-z));

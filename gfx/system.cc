@@ -2,9 +2,9 @@
 #include <stdexcept>
 #include <algorithm>
 #include <GL/glew.h>
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
-#include <SDL2/SDL_image.h>
+#include <SDL.h>
+#include <SDL_ttf.h>
+#include <SDL_image.h>
 #include <util/deleter.hpp>
 #include <util/logging.hpp>
 #include <gfx/system.hpp>

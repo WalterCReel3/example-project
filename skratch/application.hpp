@@ -4,12 +4,12 @@
 #include <string>
 #include <algorithm>
 #include <vector>
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
-#include <SDL2/SDL_ttf.h>
+#include <SDL_ttf.h>
 #include <gfx/obj.hpp>
 #include <gfx/utils.hpp>
 #include <gfx/system.hpp>
+#include <SDL.h>
+#include <SDL_opengl.h>
 #include <util/nocopy.hpp>
 #include "input.hpp"
 

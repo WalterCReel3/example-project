@@ -7,8 +7,8 @@
 #include <GL/gl.h>
 #include <GL/glu.h>
 #endif
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+#include <SDL.h>
+#include <SDL_opengl.h>
 #include <gfx/utils.hpp>
 #include <gfx/context.hpp>
 

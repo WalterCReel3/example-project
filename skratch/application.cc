@@ -1,3 +1,6 @@
+#include <loaders/obj.hpp>
+#include <SDL.h>
+#include <SDL_image.h>
 #include <climits>
 #include <cstdio>
 #include <cmath>
@@ -6,10 +9,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
 #include <math/vector.hpp>
-#include <loaders/obj.hpp>
 #include "application.hpp"
 #include "globals.hpp"
 
