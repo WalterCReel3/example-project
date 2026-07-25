@@ -25,14 +25,16 @@ ARG NINJA_VERSION=1.12.1
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# buster is EOL; its apt sources have moved to archive.debian.org. The base image
-# already handles this, but curl/unzip may not be present.
-RUN apt-get -y update \
-    && apt-get -y install --no-install-recommends ca-certificates curl unzip \
-    && rm -rf /var/lib/apt/lists/*
-
-# Official upstream binaries: no compiling, and independent of buster's ancient
-# system CMake, which is left in place untouched.
+# Deliberately NO apt-get here. The base is Debian 10 buster, which is EOL and
+# whose repositories have moved to archive.debian.org; running apt against it is
+# the single most likely step to fail and it buys nothing, because the upstream
+# image already installs everything needed:
+#
+#   wget, unzip, tar  — from union-miyoomini-toolchain's own Dockerfile
+#   working TLS       — its setup-toolchain.sh already wgets over https
+#
+# Official upstream binaries, no compiling, and buster's ancient system CMake
+# (3.13) is left in place untouched rather than replaced.
 RUN set -eux; \
     arch="$(uname -m)"; \
     case "$arch" in \
@@ -40,12 +42,12 @@ RUN set -eux; \
         aarch64) cm_arch=aarch64; nj=ninja-linux-aarch64.zip ;; \
         *) echo "unsupported host arch: $arch" >&2; exit 1 ;; \
     esac; \
-    curl -fsSL -o /tmp/cmake.tar.gz \
+    wget -q -O /tmp/cmake.tar.gz \
         "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-${cm_arch}.tar.gz"; \
     mkdir -p /opt/cmake; \
     tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1; \
     rm /tmp/cmake.tar.gz; \
-    curl -fsSL -o /tmp/ninja.zip \
+    wget -q -O /tmp/ninja.zip \
         "https://github.com/ninja-build/ninja/releases/download/v${NINJA_VERSION}/${nj}"; \
     unzip -q /tmp/ninja.zip -d /usr/local/bin; \
     chmod +x /usr/local/bin/ninja; \

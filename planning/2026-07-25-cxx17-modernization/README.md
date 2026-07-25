@@ -67,6 +67,8 @@ ctest --preset desktop-software -R test_string
 - [ ] Remove the `std::unary_function` base from `token_generator`
 - [ ] Fix `line_iterator`'s copy constructor (D1) and post-increment (D2)
 - [ ] Fix `escaped_find`'s uninitialised member (D3)
+- [ ] Fix `gfx::Context` discarding its window flags (D9) — gives a
+      windowed `skratch`, which makes everything else easier to debug
 - [ ] Decide on `line_iterator`'s blank-line behaviour (D4) — behaviour change
 - [ ] Remove `using namespace std;` from inside `namespace util` (D5)
 - [ ] Replace `__RESERVED__` include guards with `#pragma once` (D6)

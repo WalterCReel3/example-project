@@ -13,8 +13,7 @@
 
 TEST_CASE("opening an existing file succeeds")
 {
-    CHECK_NOTHROW(
-        util::File(std::string("data/testfile"), util::OpenReadOnly));
+    CHECK_NOTHROW(util::File(std::string("data/testfile"), util::OpenReadOnly));
 }
 
 TEST_CASE("opening a missing file throws")

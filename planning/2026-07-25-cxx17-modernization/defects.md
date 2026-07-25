@@ -176,6 +176,44 @@ that is being deleted.
 
 ---
 
+## D9 — `gfx::Context` computes window flags and then discards them
+
+**WRONG.** `gfx/context.cc`
+
+```cpp
+Uint32 flags = SDL_WINDOW_OPENGL;
+if (fullscreen) {
+    flags |= SDL_WINDOW_FULLSCREEN;
+    SDL_ShowCursor(SDL_DISABLE);
+    SDL_SetRelativeMouseMode(SDL_TRUE);
+}
+// ...
+_sdl_window = SDL_CreateWindow(
+    title.c_str(), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+    dm.w, dm.h, SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);   // flags unused
+```
+
+`flags` is built up and never passed. The window is **always** fullscreen
+regardless of the `fullscreen` argument, so there is no way to run `skratch`
+windowed — which makes the demo needlessly hostile to debug, since it grabs the
+display and hides the cursor on every run.
+
+Two further problems in the same call:
+
+- `SDL_WINDOW_FULLSCREEN` requests a real display mode change rather than
+  `SDL_WINDOW_FULLSCREEN_DESKTOP`, which takes the panel's native mode. On a
+  handheld the requested mode may not exist; on Wayland a mode change is not the
+  native concept. `gfx::software::Context` already uses `_DESKTOP` for this reason.
+- The side effects (`SDL_ShowCursor`, `SDL_SetRelativeMouseMode`) *do* respect the
+  parameter, so passing `fullscreen=false` yields a fullscreen window with a
+  visible, ungrabbed cursor — the worst of both.
+
+**Fix:** pass `flags`. Switch to `SDL_WINDOW_FULLSCREEN_DESKTOP`. Worth doing
+early despite `gl_legacy` being slated for deletion, purely because a windowed
+demo is far easier to work with.
+
+---
+
 ## Already fixed
 
 | | Where | What |

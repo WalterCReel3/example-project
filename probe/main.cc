@@ -12,12 +12,16 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <vector>
+
+#include <audio/device.hpp>
 
 #if defined(WREEL_PROBE_GL)
 #include <SDL_opengl.h>
 #endif
 
-namespace {
+namespace
+{
 
 void heading(const char* title)
 {
@@ -119,8 +123,8 @@ void report_displays()
 
         SDL_DisplayMode desktop;
         if (SDL_GetDesktopDisplayMode(d, &desktop) == 0) {
-            std::printf("    desktop mode  %dx%d @ %dHz  (%s)\n",
-                        desktop.w, desktop.h, desktop.refresh_rate,
+            std::printf("    desktop mode  %dx%d @ %dHz  (%s)\n", desktop.w,
+                        desktop.h, desktop.refresh_rate,
                         SDL_GetPixelFormatName(desktop.format));
         }
 
@@ -131,8 +135,8 @@ void report_displays()
         for (int m = 0; m < limit; ++m) {
             SDL_DisplayMode mode;
             if (SDL_GetDisplayMode(d, m, &mode) == 0) {
-                std::printf("      %dx%d @ %dHz\n",
-                            mode.w, mode.h, mode.refresh_rate);
+                std::printf("      %dx%d @ %dHz\n", mode.w, mode.h,
+                            mode.refresh_rate);
             }
         }
         if (modes > limit) {
@@ -150,9 +154,9 @@ void report_input()
     for (int i = 0; i < SDL_NumJoysticks(); ++i) {
         const char* name = SDL_JoystickNameForIndex(i);
         const bool is_gamepad = SDL_IsGameController(i) == SDL_TRUE;
-        std::printf("  [%d] %-28s %s\n", i,
-                    name ? name : "(unnamed)",
-                    is_gamepad ? "(gamepad mapping present)" : "(raw joystick)");
+        std::printf("  [%d] %-28s %s\n", i, name ? name : "(unnamed)",
+                    is_gamepad ? "(gamepad mapping present)"
+                               : "(raw joystick)");
 
         SDL_Joystick* stick = SDL_JoystickOpen(i);
         if (stick) {
@@ -165,6 +169,49 @@ void report_input()
     }
 }
 
+// Whether audio actually opens is a real per-device unknown: some handheld
+// firmwares expose no audio device at all, and those that do often substitute a
+// different rate or channel count than requested. Report what was granted.
+void report_audio()
+{
+    heading("Audio");
+
+    std::string codecs;
+    for (const std::string& codec : audio::compiled_codecs()) {
+        if (!codecs.empty()) {
+            codecs += ", ";
+        }
+        codecs += codec;
+    }
+    field("codecs compiled", codecs);
+    field("codec tier", WREEL_AUDIO_CODEC_TIER);
+
+    const audio::Spec requested;
+    field("requested", std::to_string(requested.frequency) + " Hz, " +
+                           std::to_string(requested.channels) + " ch, " +
+                           std::to_string(requested.buffer) + " buf, " +
+                           std::to_string(requested.voices) + " voices");
+
+    // Constructing a Device opens the mixer; it reports unavailable rather than
+    // throwing when there is no hardware.
+    const audio::Device device;
+    if (!device.available()) {
+        field("device", "UNAVAILABLE — this device has no usable audio output");
+        return;
+    }
+
+    const audio::Spec& got = device.actual();
+    field("granted", std::to_string(got.frequency) + " Hz, " +
+                         std::to_string(got.channels) + " ch, " +
+                         std::to_string(got.voices) + " voices");
+    field("driver", device.driver_name());
+
+    if (got.frequency != requested.frequency ||
+        got.channels != requested.channels) {
+        field("note", "device substituted a different format");
+    }
+}
+
 // A GL context is only attempted where SDL was built with GL support. On
 // GPU-less targets this whole function is compiled out.
 void report_gl()
@@ -173,8 +220,8 @@ void report_gl()
     heading("OpenGL");
 
     SDL_Window* window = SDL_CreateWindow(
-        "wreel-probe", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-        64, 64, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+        "wreel-probe", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 64, 64,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
     if (!window) {
         field("context", std::string("window failed: ") + SDL_GetError());
         return;
@@ -187,9 +234,11 @@ void report_gl()
         return;
     }
 
-    const auto* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+    const auto* version =
+        reinterpret_cast<const char*>(glGetString(GL_VERSION));
     const auto* vendor = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
-    const auto* renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    const auto* renderer =
+        reinterpret_cast<const char*>(glGetString(GL_RENDERER));
 
     field("version", version ? version : "(unavailable)");
     field("vendor", vendor ? vendor : "(unavailable)");
@@ -199,7 +248,8 @@ void report_gl()
     int minor = 0;
     SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &major);
     SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &minor);
-    field("context version", std::to_string(major) + "." + std::to_string(minor));
+    field("context version",
+          std::to_string(major) + "." + std::to_string(minor));
 
     SDL_GL_DeleteContext(context);
     SDL_DestroyWindow(window);
@@ -226,9 +276,9 @@ int main(int, char**)
     SDL_version linked;
     SDL_VERSION(&compiled);
     SDL_GetVersion(&linked);
-    std::printf("SDL2 compiled %d.%d.%d, linked %d.%d.%d\n",
-                compiled.major, compiled.minor, compiled.patch,
-                linked.major, linked.minor, linked.patch);
+    std::printf("SDL2 compiled %d.%d.%d, linked %d.%d.%d\n", compiled.major,
+                compiled.minor, compiled.patch, linked.major, linked.minor,
+                linked.patch);
 
     // Video is required; joystick is best-effort so a headless CI box still
     // gets a useful report.
@@ -248,6 +298,7 @@ int main(int, char**)
     report_renderers();
     report_displays();
     report_input();
+    report_audio();
     report_gl();
 
     std::printf("\n");

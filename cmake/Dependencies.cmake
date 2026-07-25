@@ -14,6 +14,7 @@ include(FetchContent)
 set(WREEL_PIN_SDL2        "release-2.32.10")
 set(WREEL_PIN_SDL2_IMAGE  "release-2.8.12")
 set(WREEL_PIN_SDL2_TTF    "release-2.24.0")
+set(WREEL_PIN_SDL2_MIXER  "release-2.8.2")
 set(WREEL_PIN_JSON        "v3.12.0")
 set(WREEL_PIN_DOCTEST     "v2.5.3")
 
@@ -172,6 +173,92 @@ message(STATUS "SDL2 satellite targets: ${WREEL_SDL2_IMAGE_TARGET}, "
                "${WREEL_SDL2_TTF_TARGET}")
 
 # ---------------------------------------------------------------------------
+# SDL2_mixer
+# ---------------------------------------------------------------------------
+#
+# Audio is a base requirement, so this is not optional. What IS configurable is
+# the codec set, via WREEL_AUDIO_CODECS (see cmake/ProjectOptions.cmake).
+#
+# An important property that makes the tiers cheap: SDL2_mixer dispatches on file
+# type at load time, so a compiled-in decoder that never sees a matching file
+# costs nothing at runtime. Extra codecs cost BINARY SIZE, not per-frame CPU.
+# Per-frame cost lives in the mixer profile — sample rate, buffer, voice count —
+# which is configured independently.
+#
+# Upstream defaults are wrong for us in three ways, all corrected below:
+#   - FLAC, MP3, MIDI, Opus and WavPack all default ON
+#   - SDL2MIXER_DEPS_SHARED defaults ON, which dlopen()s codec libraries and so
+#     conflicts with linking everything static
+#   - SDL2MIXER_MIDI pulls FluidSynth/Timidity, which need soundfonts
+
+set(SDL2MIXER_DEPS_SHARED OFF CACHE BOOL "" FORCE)
+set(SDL2MIXER_SAMPLES     OFF CACHE BOOL "" FORCE)
+set(SDL2MIXER_INSTALL     OFF CACHE BOOL "" FORCE)
+set(SDL2MIXER_VENDORED    ON  CACHE BOOL "" FORCE)
+
+# Uncompressed WAV for sound effects: no decode cost at all. Always on.
+set(SDL2MIXER_WAVE ON CACHE BOOL "" FORCE)
+
+# Tracker music via libxmp, which SDL2_mixer vendors. Songs are tens of KB
+# rather than megabytes, and playback is sample mixing rather than transform
+# decoding — which is what makes it the right default on a 128 MB device.
+#
+# NOTE: libxmp can report row/pattern/tick position, which would be ideal for
+# syncing visuals. SDL2_mixer does NOT expose that — Mix_GetMusicPosition() gives
+# seconds only. Row-level sync would mean driving libxmp directly, bypassing the
+# mixer. Recorded as an option in planning/2026-07-25-midi-live-visuals/.
+set(SDL2MIXER_MOD          ON  CACHE BOOL "" FORCE)
+set(SDL2MIXER_MOD_XMP      ON  CACHE BOOL "" FORCE)
+set(SDL2MIXER_MOD_MODPLUG  OFF CACHE BOOL "" FORCE)
+
+# Always off. Unlike the codecs above, these pull real external dependencies:
+# Opus and WavPack need libogg and friends, and MIDI needs FluidSynth or Timidity
+# plus a soundfont, which is tens of megabytes.
+#
+# SDL2MIXER_MIDI is about *playing* MIDI files through a synthesiser. The
+# project's MIDI goal is *input* from a hardware controller via RtMidi — a
+# different subsystem entirely. Do not conflate them.
+set(SDL2MIXER_OPUS    OFF CACHE BOOL "" FORCE)
+set(SDL2MIXER_WAVPACK OFF CACHE BOOL "" FORCE)
+set(SDL2MIXER_MIDI    OFF CACHE BOOL "" FORCE)
+set(SDL2MIXER_GME     OFF CACHE BOOL "" FORCE)
+set(SDL2MIXER_CMD     OFF CACHE BOOL "" FORCE)
+
+# Tiered codecs. Every decoder selected here is header-only or vendored, so no
+# tier adds an external dependency:
+#   stb_vorbis (Ogg), minimp3 (MP3), dr_flac (FLAC), libxmp (tracker).
+if(WREEL_AUDIO_CODECS STREQUAL "minimal")
+    set(SDL2MIXER_VORBIS ""  CACHE STRING "" FORCE)
+    set(SDL2MIXER_MP3    OFF CACHE BOOL "" FORCE)
+    set(SDL2MIXER_FLAC   OFF CACHE BOOL "" FORCE)
+elseif(WREEL_AUDIO_CODECS STREQUAL "standard")
+    set(SDL2MIXER_VORBIS "STB" CACHE STRING "" FORCE)
+    set(SDL2MIXER_MP3    OFF CACHE BOOL "" FORCE)
+    set(SDL2MIXER_FLAC   OFF CACHE BOOL "" FORCE)
+elseif(WREEL_AUDIO_CODECS STREQUAL "full")
+    set(SDL2MIXER_VORBIS "STB" CACHE STRING "" FORCE)
+    set(SDL2MIXER_MP3          ON  CACHE BOOL "" FORCE)
+    set(SDL2MIXER_MP3_MINIMP3  ON  CACHE BOOL "" FORCE)
+    set(SDL2MIXER_MP3_MPG123   OFF CACHE BOOL "" FORCE)
+    set(SDL2MIXER_FLAC         ON  CACHE BOOL "" FORCE)
+    set(SDL2MIXER_FLAC_DRFLAC  ON  CACHE BOOL "" FORCE)
+    set(SDL2MIXER_FLAC_LIBFLAC OFF CACHE BOOL "" FORCE)
+endif()
+
+message(STATUS "SDL2_mixer: pinned ${WREEL_PIN_SDL2_MIXER}, "
+               "codec tier '${WREEL_AUDIO_CODECS}'")
+
+FetchContent_Declare(SDL2_mixer
+    GIT_REPOSITORY https://github.com/libsdl-org/SDL_mixer.git
+    GIT_TAG        ${WREEL_PIN_SDL2_MIXER}
+    GIT_SHALLOW    TRUE
+    GIT_SUBMODULES "external/libxmp")
+FetchContent_MakeAvailable(SDL2_mixer)
+
+_wreel_resolve_sdl_target(WREEL_SDL2_MIXER_TARGET SDL2_mixer)
+message(STATUS "SDL2_mixer target: ${WREEL_SDL2_MIXER_TARGET}")
+
+# ---------------------------------------------------------------------------
 # nlohmann/json
 # ---------------------------------------------------------------------------
 #
@@ -215,14 +302,49 @@ endif()
 # The 2016 renderer needs desktop GL, GLU (gluPerspective) and GLEW. None of
 # that exists on a Miyoo Mini, which is the whole reason for backend gating.
 
-if(WREEL_GFX_BACKEND STREQUAL "gl_legacy")
+# Looked for whenever the target could have a GPU, not just under gl_legacy —
+# wreel-probe reports GL version/vendor/renderer and therefore needs to link
+# OpenGL even when the graphics backend is `software`. Keeping this inside the
+# gl_legacy block is what caused wreel-probe to fail at link with
+# "undefined reference to glGetString".
+#
+# QUIET and non-REQUIRED: a target may legitimately have a GPU with only GLES
+# headers available, in which case the probe simply omits its GL section.
+set(WREEL_HAVE_OPENGL OFF)
+if(WREEL_TARGET_HAS_GPU)
     set(OpenGL_GL_PREFERENCE GLVND)
-    find_package(OpenGL REQUIRED COMPONENTS OpenGL)
-    find_package(GLEW REQUIRED)
+    find_package(OpenGL QUIET COMPONENTS OpenGL)
+    if(OpenGL_FOUND OR OPENGL_FOUND)
+        set(WREEL_HAVE_OPENGL ON)
+    endif()
+    message(STATUS "Desktop OpenGL available: ${WREEL_HAVE_OPENGL}")
+endif()
+
+if(WREEL_GFX_BACKEND STREQUAL "gl_legacy")
+    if(NOT WREEL_HAVE_OPENGL)
+        message(FATAL_ERROR
+            "The gl_legacy backend needs desktop OpenGL, which was not found.\n"
+            "  Install it:  sudo apt install libgl1-mesa-dev\n"
+            "  Or use:      cmake --preset desktop-software")
+    endif()
+
+    # Not REQUIRED: CMake's own failure message names GLEW_INCLUDE_DIRS and
+    # GLEW_LIBRARIES, which tells you nothing about what to install or that a
+    # working alternative exists.
+    find_package(GLEW QUIET)
+    if(NOT GLEW_FOUND)
+        message(FATAL_ERROR
+            "The gl_legacy backend needs GLEW (gfx/context.cc calls glewInit).\n"
+            "  Install it:  sudo apt install libglew-dev\n"
+            "  Or build the software renderer instead, which needs neither GLEW\n"
+            "  nor GLU:     cmake --preset desktop-software\n"
+            "  See docs/TARGETS.md § Graphics backends.")
+    endif()
 
     if(NOT OPENGL_GLU_FOUND)
         message(FATAL_ERROR
             "The gl_legacy backend calls gluPerspective(), but GLU was not found.\n"
-            "  Install libglu1-mesa-dev, or use -DWREEL_GFX_BACKEND=software.")
+            "  Install it:  sudo apt install libglu1-mesa-dev\n"
+            "  Or use:      cmake --preset desktop-software")
     endif()
 endif()

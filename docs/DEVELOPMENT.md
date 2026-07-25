@@ -3,10 +3,9 @@
 Setting up a Debian-based machine to build for desktop, Steam on Linux, and
 Linux retro handhelds.
 
-Everything in the "Host setup" section works today. Sections marked
-**⏳ not yet wired** describe the intended interface for build machinery that is
-still landing — see [Status](#status) at the bottom for exactly where the line
-is.
+See [Status](#status) at the bottom for exactly which targets have been built and
+run, and which have not. That distinction is maintained deliberately — treat
+anything not listed as verified with suspicion.
 
 **Assumed audience:** Debian 12 (bookworm) or a derivative. Ubuntu 22.04+,
 Linux Mint 21+, and Pop!_OS 22.04+ use identical package names. Package names
@@ -64,7 +63,7 @@ all of them:
 | X11 | `libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxkbcommon-dev` | X11 video |
 | Wayland | `libwayland-dev wayland-protocols libdecor-0-dev` | Wayland video |
 | KMSDRM | `libdrm-dev libgbm-dev` | direct-to-display video |
-| GL | `libgl1-mesa-dev libglu1-mesa-dev libegl1-mesa-dev libgles-dev libegl-dev` | desktop GL, GLES, EGL |
+| GL | `libgl1-mesa-dev libegl1-mesa-dev libgles-dev libegl-dev` | desktop GL, GLES, EGL |
 | Input | `libudev-dev libdbus-1-dev libibus-1.0-dev` | hotplug, gamepads, IME |
 
 Two notes worth keeping:
@@ -90,6 +89,28 @@ copies builds faster.
 
 `clang-format` 14 on bookworm, which is what [.clang-format](../.clang-format)
 targets.
+
+#### `legacy` — GLEW and GLU, for `gl_legacy` only
+
+`libglew-dev libglu1-mesa-dev`
+
+**Not in the default set.** These are needed by exactly one thing: the
+`gl_legacy` backend, where `gfx/context.cc` calls `glewInit()` and
+`gluPerspective()`. SDL2's own CMakeLists references neither, the `software`
+backend needs neither, and no handheld target can use `gl_legacy` at all — the
+Miyoo Mini has no GPU.
+
+Kept as its own group so that when `gl_legacy` is retired, the packages go with
+it. Buried among twenty GL entries in the `sdl` group they would quietly outlive
+the code that needed them, and the next person would have no way to tell which
+were still load-bearing.
+
+```sh
+./scripts/bootstrap-debian.sh --legacy   # just these two
+```
+
+`desktop-software` — the working preset — needs none of it, and if you do want
+`gl_legacy` the configure error names the package.
 
 #### `cross` — cross compilers
 
@@ -174,11 +195,13 @@ into a single `include/<module>/` tree.
 
 ```
 include/            public headers, one directory per module
-  gfx/  loaders/  math/  posix/  util/
+  audio/  gfx/  loaders/  math/  posix/  util/
 posix/              libposix   — errno → typed C++ exceptions
 util/               libutil    — file I/O, logging, string/tokenizing
   posix/  mswin/      compile-time platform backends (pimpl, not virtual)
+audio/              libaudio   — sound effects and music (SDL2_mixer)
 gfx/                libgfx     — SDL2 + rendering
+  software/           the GPU-less backend
 loaders/            libloaders — OBJ, image, texture atlas
 skratch/            demo application
 probe/              wreel-probe — device capability diagnostic
@@ -241,6 +264,23 @@ building the same dependencies for several targets.
 | `WREEL_BUILD_PROBE` | `ON` | build `wreel-probe` |
 | `WREEL_WERROR` | `OFF` | treat warnings as errors. Off because the 2016 sources do not survive `-Wall -Wextra` yet; flips to `ON` with the C++17 cleanup |
 | `WREEL_STATIC_CXX` | `OFF` | static-link libstdc++/libgcc. Forced `ON` by every device toolchain |
+| `WREEL_AUDIO_CODECS` | per-target | `minimal` \| `standard` \| `full`. Affects **binary size only** — see below |
+| `WREEL_AUDIO_RATE` | 44100 / 22050 | mixer sample rate. Affects **per-frame CPU** |
+| `WREEL_AUDIO_BUFFER` | 1024 / 2048 | mixer buffer in samples |
+| `WREEL_AUDIO_CHANNELS` | `2` | 1 mono, 2 stereo |
+| `WREEL_AUDIO_VOICES` | 16 / 8 | simultaneous sound effect voices |
+
+Audio is a base requirement — `wreel::audio` always builds. The codec tier and the
+mixer profile are independent knobs and cost different things: extra codecs cost
+bytes on disk (`full` is ~282 KB over `minimal`), while the mixer profile costs
+cycles every callback. So a FLAC-capable audio player on a handheld is one flag,
+not a tradeoff:
+
+```sh
+cmake --preset miyoomini -DWREEL_AUDIO_CODECS=full
+```
+
+Full reasoning in [TARGETS.md § Audio](TARGETS.md#audio).
 
 Configuring prints a summary of all of these, so you can confirm what you got:
 
@@ -286,10 +326,32 @@ cmake --preset rk3326 -DWREEL_SYSROOT=/path/to/device/rootfs \
                       -DWREEL_USE_SYSTEM_SDL2=ON
 ```
 
-### Miyoo Mini (shippable)
+### Miyoo Mini
 
-The community toolchain is a Docker image providing GCC 8.3 and a matched
-sysroot. From [union-miyoomini-toolchain](https://github.com/shauninman/union-miyoomini-toolchain):
+The `miyoomini` preset has two modes, like the aarch64 ones.
+
+**Compile-check (no download, not shippable).** With no device toolchain present
+it falls back to Debian's `arm-linux-gnueabihf` cross-GCC automatically:
+
+```sh
+sudo apt install crossbuild-essential-armhf qemu-user-static binfmt-support
+cmake --preset miyoomini && cmake --build --preset miyoomini
+ctest --preset miyoomini          # runs under qemu-arm
+```
+
+This is genuinely useful — it exercises 32-bit ARM codegen, the Cortex-A7 flags
+and `off_t` width in a couple of minutes rather than after a 279 MB toolchain
+download. **Two things it does not prove:**
+
+- **The compiler.** It uses GCC 12, not the device toolchain's GCC 8.3, so C++17
+  library gaps stay invisible.
+- **The display path.** Debian's armhf cross has no target libdrm/libgbm, so SDL2
+  silently builds *without KMSDRM* — the probe reports `wayland, offscreen,
+  dummy, evdev`. Since KMSDRM is how a handheld actually reaches its panel, video
+  is untested by this mode.
+
+**Device toolchain (shippable).** GCC 8.3 and a matched sysroot, from
+[union-miyoomini-toolchain](https://github.com/shauninman/union-miyoomini-toolchain):
 
 ```sh
 git clone https://github.com/shauninman/union-miyoomini-toolchain.git
@@ -399,46 +461,158 @@ Two inherited quirks these files intentionally settle:
 
 | Thing | State |
 |---|---|
-| `scripts/bootstrap-debian.sh` | working, verified on Debian 12 |
-| Package list | verified against bookworm apt metadata |
-| `.clang-format` / `.editorconfig` / `.gitignore` | in place |
+| `scripts/bootstrap-debian.sh` | **verified** — full `--all` install on Debian 12, 50/50 packages, shellcheck clean |
+| `.clang-format` | **verified** — config parses under clang-format 14; all authored files conform |
 | [TARGETS.md](TARGETS.md) constraints | researched and verified upstream |
 | Dependency choices | settled — SDL2, nlohmann/json, doctest |
-| Modern CMake build | **working** |
-| `CMakePresets.json` | **working** — 7 presets |
-| `cmake/toolchains/*.cmake` | written; error paths verified, real cross builds **not** yet run |
-| `docker/miyoomini.Dockerfile` | written, **not** yet built |
-| `software` graphics backend | **working** — window, renderer, blit, text |
-| `wreel-probe` | **working** |
-| doctest suite | **working** — 28 cases, 71 assertions passing |
+| Modern CMake build | **verified** on system CMake 3.25 |
+| `CMakePresets.json` | **verified** — 7 presets enumerate and configure |
+| `software` graphics backend | **verified** — builds on x86_64, aarch64 |
+| `audio` module | **verified** — opens on pulseaudio and dummy; 3 codec tiers build |
+| `wreel-probe` | **verified** — runs on x86_64 and as an aarch64 binary under qemu; reports audio |
+| doctest suite | **verified** — 36 cases, 99 assertions, passing natively and cross |
+| `rk3326` / `h700` toolchains | **verified** — cross-build plus `ctest` under qemu |
+| `miyoomini` toolchain | **verified in compile-check mode** — armv7 build + `ctest` under qemu-arm. Device toolchain (GCC 8.3) still untried |
+| `gl_legacy` backend | **verified** — `desktop-debug` builds and links, `skratch` included, 4/4 tests |
+| `steam` preset | not run — needs the sniper container |
+| `docker/miyoomini.Dockerfile` | not built — needs Docker plus the upstream base image |
 | `gles2` / `gl33` backends | not started |
 | C++17 cleanup of 2016 sources | not started (`WREEL_WERROR` stays `OFF` until then) |
 
 ### What has actually been run
 
-Verified end to end on Debian 12 / GCC 12.2 / CMake 4.4:
+On Debian 12 / GCC 12.2 / CMake 3.25 / clang-format 14, after a full
+`./scripts/bootstrap-debian.sh --all`:
 
-- `cmake --preset desktop-software` — configures, all five dependencies fetched
-  and built
-- `cmake --build --preset desktop-software` — clean build, zero errors
-- `ctest --preset desktop-software` — 3/3 tests pass, 71 assertions
-- `wreel-probe` — runs headless under `SDL_VIDEODRIVER=dummy` and correctly
-  reports the software renderer with GL compiled out
-- Configure-time guards — rejecting an unknown backend, rejecting `gl_legacy` on
-  a GPU-less target, and both missing-cross-toolchain messages
+| Check | Result |
+|---|---|
+| `desktop-software` cold configure → build → test | pass, 4/4, zero errors |
+| `rk3326` cross-build → `ctest` under qemu | pass, 4/4 |
+| `h700` cross-build → `ctest` under qemu | pass, 4/4, `-mcpu=cortex-a53` confirmed |
+| `miyoomini` armv7 build → `ctest` under qemu-arm | pass, 4/4, `-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4` confirmed |
+| `desktop-debug` (`gl_legacy`) build → test | pass, 4/4; `skratch` links; probe reports Mesa 22.3.6 / AMD |
+| `wreel-probe` as an aarch64 binary under qemu | runs, reports correctly |
+| `shellcheck scripts/bootstrap-debian.sh` | clean |
+| `clang-format --dump-config` | parses; authored files conform |
+| Configure guards ×4 | all reject correctly with actionable messages |
 
-### What has NOT been run
+Two things this pass found and fixed, both of which had been asserted as working
+without being tested:
 
-Be appropriately sceptical of these until someone tries them:
+- **`.clang-format` did not parse at all.** It used `ConstructorInitializerIndentation`,
+  which is not a clang-format key. Every invocation errored out, so "the tree is
+  formatted" was meaningless. Now `ConstructorInitializerIndentWidth`.
+- **Cross-built tests could not run under qemu.** The binaries are dynamically
+  linked against `/lib/ld-linux-aarch64.so.1`, which does not exist on an x86_64
+  host, so every test failed with `Could not open`. The toolchain files now pass
+  `-L <sysroot>` to qemu so it finds the target loader.
 
-- **`desktop-debug` / `desktop-release`** (the `gl_legacy` backend) — this box has
-  no GLEW or GLU installed, so `find_package(GLEW)` was never exercised. The 2016
-  GL sources have not been compiled under the new build.
-- **`miyoomini`, `rk3326`, `h700`** — no cross-compilers or device SDK present.
-  Only the not-found error paths were checked.
+### The `gl_legacy` backend
+
+```sh
+./scripts/bootstrap-debian.sh --legacy    # GLEW + GLU
+cmake --preset desktop-debug && cmake --build --preset desktop-debug
+```
+
+**Verified working.** The 2016 fixed-function sources compile and link clean under
+C++17 with the full warning set, `skratch` links, and `wreel-probe` reports a real
+GL context (Mesa 22.3.6 / AMD Radeon, compatibility profile 4.6).
+
+That is a better result than expected — this had been flagged as the most likely
+thing in the tree to be broken. The only failure the build surfaced was mine, not
+the 2016 code's: `wreel-probe` calls `glGetString()` directly, and
+`find_package(OpenGL)` was scoped inside the `gl_legacy` block, so probe compiled
+and then failed to link. OpenGL is now looked for whenever the target could have a
+GPU, and probe links it only when both `WREEL_TARGET_HAS_GPU` and
+`WREEL_HAVE_OPENGL` hold.
+
+### Running the `skratch` demo
+
+Read this before the first run — it is 2016 fullscreen code and it takes over the
+display.
+
+```sh
+cd /path/to/example-project          # MUST be the repo root
+SDL_VIDEODRIVER=x11 ./build/desktop-debug/bin/skratch
+```
+
+**Four things that will bite otherwise:**
+
+- **Working directory must be the repo root.** It opens `data/Speedy.fon` and
+  `data/ico.obj` by relative path and writes `runlog.txt` to the current
+  directory. Running it from `build/` fails immediately.
+- **It is always fullscreen at desktop resolution.** `gfx/context.cc` computes a
+  `flags` variable from its `fullscreen` parameter and then *ignores it* — the
+  `SDL_CreateWindow` call hardcodes `SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN`
+  (defect D9). There is no windowed mode without a code change.
+- **The cursor is hidden and the mouse is grabbed** via relative mouse mode.
+- **Errors go to `runlog.txt`, not stderr.** `skratch/main.cc` catches everything
+  and writes `e.what()` to that file, so a silent instant exit means *check the
+  log*, not "nothing happened".
+
+`SDL_VIDEODRIVER=x11` is recommended: the code requests a real display mode change
+(`SDL_WINDOW_FULLSCREEN`, not `_DESKTOP`), which is X11-shaped. It will try Wayland
+first if you let it.
+
+**Controls** (from `skratch/input.cc`):
+
+| | |
+|---|---|
+| `Escape` | quit |
+| `W` / `S` | forward / back |
+| `A` / `D` | strafe left / right |
+| `Space` / `Left Ctrl` | up / down |
+| Arrow keys | pitch and yaw |
+| Mouse | pitch and yaw (relative) |
+| Joystick axes 0/1, 3/4, hat | move and look, if a pad is attached |
+
+Roll is wired into `InputState` but has **no** keyboard binding, so it is
+unreachable. Joystick axis mapping is hardcoded for an Xbox 360 pad.
+
+**If input does not work**, `Escape` is not the only way out:
+
+- `Ctrl+C` in the launching terminal — SDL2 turns `SIGINT` into `SDL_QUIT`, which
+  `translate_input()` maps to `EXIT`, so this exits cleanly.
+- `pkill -x skratch` from another terminal or over SSH.
+- `Ctrl+Alt+F3` to switch VT, then `pkill`.
+
+For a first run, a watchdog costs nothing:
+
+```sh
+( sleep 30; pkill -x skratch ) &
+SDL_VIDEODRIVER=x11 ./build/desktop-debug/bin/skratch
+cat runlog.txt
+```
+
+**What you should see:** a 20×20 grid of icosahedra on a dark blue background,
+with a white HUD line at top-left showing camera position, orientation and
+joystick axis values. No lighting — vertex colours are faked from position — and
+the far plane is 100 units, so distant models clip out.
+
+**Already verified, so these are not the likely failure:** the assets load
+(`ico.obj` parses to 42 vertices / 240 indices, `teapot.obj` to 3644 / 18960), the
+binary links against real GLEW and GLU, and `wreel-probe` from the same build gets
+a working GL context. What is untested is this specific fullscreen mode-change path
+on your compositor.
+
+> A dry run under `SDL_VIDEODRIVER=offscreen` is **not** a valid substitute:
+> `glewInit()` fails there because GLEW needs GLX, and `runlog.txt` just says
+> `Unknown error`.
+
+### Still not run
+
+- **The device toolchain build.** Needs Docker group membership plus the upstream
+  base image and a 279 MB toolchain download. This is the only way to find out
+  whether **GCC 8.3 compiles this codebase**, which is the single largest
+  remaining unknown.
 - **`steam`** — needs the sniper container.
-- **`docker/miyoomini.Dockerfile`** — needs Docker plus the upstream base image.
-- **Anything on real hardware.**
+- **Any video or audio output on real hardware.** Both the armv7 and aarch64
+  compile-check builds lack KMSDRM, so the display path is entirely untested.
+
+Pre-flight checks that *were* done, so the above should not surprise anyone:
+the toolchain tarball resolves (HTTP 200, 279 MB), `archive.debian.org` is
+reachable for the EOL buster base, and the CMake/Ninja versions pinned in
+`docker/miyoomini.Dockerfile` both download.
 
 ## See also
 

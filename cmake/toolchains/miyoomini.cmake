@@ -29,6 +29,22 @@ set(WREEL_TARGET_HAS_GPU OFF)
 # Toolchain location
 # ---------------------------------------------------------------------------
 
+# TWO MODES, matching cmake/toolchains/aarch64-handheld.cmake:
+#
+#   Device toolchain (shippable) — the union-miyoomini-toolchain container, or an
+#       extracted copy pointed at by MIYOOMINI_TOOLCHAIN_ROOT. GCC 8.3 against a
+#       device-matched sysroot. This is the only mode whose output runs on
+#       hardware.
+#
+#   Debian armhf cross-GCC (compile-check ONLY) — used automatically when the
+#       device toolchain is absent. Its glibc is far newer than the device's, so
+#       binaries will not load there. It is still valuable: it exercises 32-bit
+#       ARM codegen, the Cortex-A7 flags and off_t width in seconds, without a
+#       279 MB toolchain download.
+#
+# Falling back rather than hard-failing keeps `cmake --preset miyoomini` useful
+# outside the container and consistent with the aarch64 presets.
+
 if(NOT MIYOOMINI_TOOLCHAIN_ROOT)
     if(DEFINED ENV{MIYOOMINI_TOOLCHAIN_ROOT})
         set(MIYOOMINI_TOOLCHAIN_ROOT "$ENV{MIYOOMINI_TOOLCHAIN_ROOT}")
@@ -40,19 +56,31 @@ endif()
 set(_wreel_triple "arm-linux-gnueabihf")
 set(_wreel_tc     "${MIYOOMINI_TOOLCHAIN_ROOT}")
 
-if(NOT EXISTS "${_wreel_tc}/usr/bin/${_wreel_triple}-gcc")
-    message(FATAL_ERROR
-        "Miyoo Mini toolchain not found at '${_wreel_tc}'.\n"
-        "  Expected: ${_wreel_tc}/usr/bin/${_wreel_triple}-gcc\n"
-        "  Run inside the union-miyoomini-toolchain container, or set\n"
-        "  -DMIYOOMINI_TOOLCHAIN_ROOT=/path/to/miyoomini-toolchain\n"
-        "  See docs/DEVELOPMENT.md § 'Miyoo Mini (shippable)'.")
-endif()
+if(EXISTS "${_wreel_tc}/usr/bin/${_wreel_triple}-gcc")
+    set(CMAKE_C_COMPILER   "${_wreel_tc}/usr/bin/${_wreel_triple}-gcc")
+    set(CMAKE_CXX_COMPILER "${_wreel_tc}/usr/bin/${_wreel_triple}-g++")
+    set(CMAKE_SYSROOT      "${_wreel_tc}/usr/${_wreel_triple}/sysroot")
+    set(CMAKE_FIND_ROOT_PATH "${CMAKE_SYSROOT}")
+    set(WREEL_BUILD_IS_SHIPPABLE ON)
+else()
+    find_program(_wreel_armhf_cc  "${_wreel_triple}-gcc")
+    find_program(_wreel_armhf_cxx "${_wreel_triple}-g++")
 
-set(CMAKE_C_COMPILER   "${_wreel_tc}/usr/bin/${_wreel_triple}-gcc")
-set(CMAKE_CXX_COMPILER "${_wreel_tc}/usr/bin/${_wreel_triple}-g++")
-set(CMAKE_SYSROOT      "${_wreel_tc}/usr/${_wreel_triple}/sysroot")
-set(CMAKE_FIND_ROOT_PATH "${CMAKE_SYSROOT}")
+    if(NOT _wreel_armhf_cc OR NOT _wreel_armhf_cxx)
+        message(FATAL_ERROR
+            "No armv7 toolchain available.\n"
+            "  Device toolchain not found at '${_wreel_tc}'\n"
+            "    (run inside union-miyoomini-toolchain, or pass\n"
+            "     -DMIYOOMINI_TOOLCHAIN_ROOT=/path/to/miyoomini-toolchain)\n"
+            "  and Debian's cross compiler is not installed either:\n"
+            "    sudo apt install crossbuild-essential-armhf\n"
+            "  See docs/DEVELOPMENT.md § 'Miyoo Mini (shippable)'.")
+    endif()
+
+    set(CMAKE_C_COMPILER   "${_wreel_armhf_cc}")
+    set(CMAKE_CXX_COMPILER "${_wreel_armhf_cxx}")
+    set(WREEL_BUILD_IS_SHIPPABLE OFF)
+endif()
 
 # ---------------------------------------------------------------------------
 # Codegen
@@ -90,7 +118,15 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 # qemu-user-static lets ctest execute armhf binaries on the dev box. Not present
 # inside the toolchain container, so this is best-effort.
 
+# -L points qemu at the target's dynamic loader, which does not exist at its
+# native path on an x86_64 host. See the equivalent note in
+# cmake/toolchains/aarch64-handheld.cmake.
 find_program(_wreel_qemu_arm qemu-arm-static qemu-arm)
 if(_wreel_qemu_arm)
     set(WREEL_TEST_EMULATOR "${_wreel_qemu_arm}")
+    if(CMAKE_SYSROOT)
+        list(APPEND WREEL_TEST_EMULATOR -L "${CMAKE_SYSROOT}")
+    elseif(EXISTS "/usr/${_wreel_triple}/lib")
+        list(APPEND WREEL_TEST_EMULATOR -L "/usr/${_wreel_triple}")
+    endif()
 endif()

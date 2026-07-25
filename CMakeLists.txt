@@ -75,6 +75,7 @@ include(Dependencies)
 
 add_subdirectory(posix)
 add_subdirectory(util)
+add_subdirectory(audio)
 add_subdirectory(gfx)
 add_subdirectory(loaders)
 

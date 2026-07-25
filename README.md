@@ -53,6 +53,7 @@ one way: `skratch` → `loaders` → `util` → `posix`.
 | [posix/](posix/) | `libposix` | errno → typed C++ exceptions |
 | [util/](util/) | `libutil` | file I/O, logging, string/tokenizing |
 | [gfx/](gfx/) | `libgfx` | SDL2 windowing and rendering |
+| [audio/](audio/) | `libaudio` | sound effects and music — SDL2_mixer |
 | [loaders/](loaders/) | `libloaders` | OBJ models, images, texture atlases |
 | [skratch/](skratch/) | executable | demo app — free camera over a model grid |
 | `probe/` | executable | `wreel-probe` — device capability diagnostic |
@@ -100,7 +101,8 @@ shader backends and the C++17 source cleanup are next.
 - [x] Cross-compile toolchain files and `CMakePresets.json` (7 presets)
 - [x] `probe/` → `wreel-probe`, replacing `project1/`
 - [x] `software` graphics backend (required for the Miyoo Mini floor)
-- [x] doctest suite — 28 cases, 71 assertions, incl. the `util/string.hpp` tokenizers
+- [x] doctest suite — 36 cases, 99 assertions, incl. the `util/string.hpp` tokenizers
+- [x] Audio as a base requirement — SDL2_mixer, tiered codecs, tracker-first ([why](docs/TARGETS.md#audio))
 - [ ] Verify the cross and Steam presets on real toolchains and hardware
 - [ ] C++17 cleanup of the 2016 sources, then `WREEL_WERROR=ON`
 - [ ] `gles2` and `gl33` backends

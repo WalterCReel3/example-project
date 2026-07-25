@@ -50,7 +50,9 @@ function(wreel_add_test name)
              COMMAND ${name}
              WORKING_DIRECTORY "${WREEL_TEST_WORKING_DIRECTORY}")
 
-    # Surface the fixture root to tests that would rather not assume a cwd.
+    # Tests must be headless-safe: they run in CI, under qemu, and over SSH where
+    # there is no display and no audio hardware. The dummy drivers make SDL
+    # succeed deterministically instead of depending on the machine.
     set_tests_properties(${name} PROPERTIES
-        ENVIRONMENT "WREEL_DATA_DIR=${WREEL_TEST_WORKING_DIRECTORY}/data")
+        ENVIRONMENT "WREEL_DATA_DIR=${WREEL_TEST_WORKING_DIRECTORY}/data;SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy")
 endfunction()

@@ -11,7 +11,8 @@ namespace gfx
 namespace software
 {
 
-namespace {
+namespace
+{
 
 SDL_Color to_sdl(const Color& c)
 {
@@ -46,8 +47,8 @@ Context::Context(const std::string& title, int width, int height,
     _window = SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_CENTERED,
                                SDL_WINDOWPOS_CENTERED, width, height, flags);
     if (!_window) {
-        throw std::runtime_error(std::string("could not create window: ")
-                                 + SDL_GetError());
+        throw std::runtime_error(std::string("could not create window: ") +
+                                 SDL_GetError());
     }
 
     // -1 lets SDL pick the first driver satisfying the flags. On a GPU-less
@@ -58,8 +59,8 @@ Context::Context(const std::string& title, int width, int height,
     if (!_renderer) {
         SDL_DestroyWindow(_window);
         _window = nullptr;
-        throw std::runtime_error(std::string("could not create renderer: ")
-                                 + SDL_GetError());
+        throw std::runtime_error(std::string("could not create renderer: ") +
+                                 SDL_GetError());
     }
 
     SDL_GetRendererOutputSize(_renderer, &_width, &_height);
@@ -109,8 +110,8 @@ void Context::draw_surface(SDL_Surface* surface, Rect* rect)
 
     SDL_Texture* texture = SDL_CreateTextureFromSurface(_renderer, surface);
     if (!texture) {
-        util::logging.error() << "could not create texture: " << SDL_GetError()
-                              << std::endl;
+        util::logging.error()
+            << "could not create texture: " << SDL_GetError() << std::endl;
         return;
     }
 
@@ -136,16 +137,17 @@ void Context::draw_text(const std::string& text, TTF_Font* font,
 
     // Blended gives antialiased output; on the weakest devices Solid is cheaper
     // if this ever shows up in a profile.
-    SDL_Surface* rendered = TTF_RenderUTF8_Blended(font, text.c_str(),
-                                                   to_sdl(color));
+    SDL_Surface* rendered =
+        TTF_RenderUTF8_Blended(font, text.c_str(), to_sdl(color));
     if (!rendered) {
-        util::logging.error() << "could not render text: " << TTF_GetError()
-                              << std::endl;
+        util::logging.error()
+            << "could not render text: " << TTF_GetError() << std::endl;
         return;
     }
 
     // No power-of-two rounding here, unlike the GL path — SDL_Renderer has no
-    // such constraint, so gfx::render_text's make_texture_size() is unnecessary.
+    // such constraint, so gfx::render_text's make_texture_size() is
+    // unnecessary.
     draw_surface(rendered, rect);
     SDL_FreeSurface(rendered);
 }

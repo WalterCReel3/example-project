@@ -31,7 +31,7 @@ AllowShortLoopsOnASingleLine: false
 #     : _last_tick(0)
 #     , _exit(false)
 BreakConstructorInitializers: BeforeComma
-ConstructorInitializerIndentation: 4
+ConstructorInitializerIndentWidth: 4
 PackConstructorInitializers: Never
 
 AlwaysBreakTemplateDeclarations: Yes

@@ -29,6 +29,73 @@ option(WREEL_STATIC_CXX
        "Static-link libstdc++/libgcc (recommended for device builds)" OFF)
 
 # ---------------------------------------------------------------------------
+# Audio
+# ---------------------------------------------------------------------------
+#
+# Audio is a base requirement: wreel::audio is always built and every target gets
+# it. What varies is the codec set and the mixer profile, and it is worth being
+# precise about which of those costs what:
+#
+#   WREEL_AUDIO_CODECS  affects BINARY SIZE. SDL2_mixer dispatches on file type
+#                       at load time, so a decoder that never sees a matching
+#                       file never runs. Compiling in FLAC costs bytes on disk,
+#                       not cycles per frame.
+#
+#   The mixer profile    affects PER-FRAME CPU. Sample rate, channel count, voice
+#                       count and buffer size determine how much mixing work
+#                       happens in every audio callback, whatever is playing.
+#
+# So "support a FLAC-capable audio player without slowing the game down" is
+# satisfied by codec tier 'full' plus a modest mixer profile — the two are
+# independent.
+
+set(WREEL_AUDIO_CODEC_VALUES minimal standard full)
+set(WREEL_AUDIO_CODECS "" CACHE STRING
+    "Audio codec tier: ${WREEL_AUDIO_CODEC_VALUES}")
+set_property(CACHE WREEL_AUDIO_CODECS PROPERTY STRINGS ${WREEL_AUDIO_CODEC_VALUES})
+
+# Handhelds default to 'standard' to keep binaries small; desktop and Steam get
+# 'full'. Either can be overridden freely — 'full' adds no external dependency,
+# so a handheld audio-player build is a one-flag change.
+if(NOT WREEL_AUDIO_CODECS)
+    if(WREEL_TARGET_IS_HANDHELD)
+        set(WREEL_AUDIO_CODECS "standard" CACHE STRING "" FORCE)
+    else()
+        set(WREEL_AUDIO_CODECS "full" CACHE STRING "" FORCE)
+    endif()
+endif()
+
+if(NOT WREEL_AUDIO_CODECS IN_LIST WREEL_AUDIO_CODEC_VALUES)
+    message(FATAL_ERROR
+        "WREEL_AUDIO_CODECS='${WREEL_AUDIO_CODECS}' is not one of: "
+        "${WREEL_AUDIO_CODEC_VALUES}\n"
+        "  minimal   WAV + tracker (MOD/XM/IT)\n"
+        "  standard  + Ogg Vorbis\n"
+        "  full      + MP3 + FLAC   (all header-only decoders, no extra deps)")
+endif()
+
+# Mixer profile — this is where per-frame cost lives.
+#
+# 22050 Hz halves mixing work versus 44100 and is ample for tracker music, which
+# is why the handhelds default to it. A 2048-sample buffer is ~93 ms at 22050 Hz;
+# smaller buffers underrun on two Cortex-A7 cores that are also software-
+# rasterising. Desktop can afford 44100 with a 1024-sample buffer (~23 ms).
+if(WREEL_TARGET_IS_HANDHELD)
+    set(_wreel_rate 22050)
+    set(_wreel_buffer 2048)
+    set(_wreel_voices 8)
+else()
+    set(_wreel_rate 44100)
+    set(_wreel_buffer 1024)
+    set(_wreel_voices 16)
+endif()
+
+set(WREEL_AUDIO_RATE     "${_wreel_rate}"   CACHE STRING "Mixer sample rate (Hz)")
+set(WREEL_AUDIO_BUFFER   "${_wreel_buffer}" CACHE STRING "Mixer buffer in samples")
+set(WREEL_AUDIO_CHANNELS "2"                CACHE STRING "Output channels: 1 mono, 2 stereo")
+set(WREEL_AUDIO_VOICES   "${_wreel_voices}" CACHE STRING "Simultaneous sound effect voices")
+
+# ---------------------------------------------------------------------------
 # Backend defaulting and validation
 # ---------------------------------------------------------------------------
 #
@@ -74,6 +141,18 @@ endif()
 # ---------------------------------------------------------------------------
 # wreel_options — language level and per-config codegen
 # ---------------------------------------------------------------------------
+
+# Raised here rather than in the toolchain file, which is re-included for every
+# try_compile and so would print this four or more times per configure.
+if(CMAKE_CROSSCOMPILING AND DEFINED WREEL_BUILD_IS_SHIPPABLE
+        AND NOT WREEL_BUILD_IS_SHIPPABLE)
+    message(WARNING
+        "No WREEL_SYSROOT set — using the host cross-GCC.\n"
+        "  This build is COMPILE-CHECK ONLY. Its glibc requirements are newer\n"
+        "  than any handheld's, so it will not run on device.\n"
+        "  Pass -DWREEL_SYSROOT=/path/to/device/rootfs for a shippable build.\n"
+        "  See docs/TARGETS.md § 2.")
+endif()
 
 add_library(wreel_options INTERFACE)
 add_library(wreel::options ALIAS wreel_options)
@@ -150,6 +229,10 @@ function(wreel_print_summary)
     message(STATUS "  C++ standard ....... 17")
     message(STATUS "  gfx backend ........ ${WREEL_GFX_BACKEND}")
     message(STATUS "  target has GPU ..... ${WREEL_TARGET_HAS_GPU}")
+    message(STATUS "  audio codecs ....... ${WREEL_AUDIO_CODECS}")
+    message(STATUS "  audio mixer ........ ${WREEL_AUDIO_RATE} Hz, "
+                   "${WREEL_AUDIO_CHANNELS} ch, ${WREEL_AUDIO_BUFFER} buf, "
+                   "${WREEL_AUDIO_VOICES} voices")
     message(STATUS "  system SDL2 ........ ${WREEL_USE_SYSTEM_SDL2}")
     message(STATUS "  warnings as errors . ${WREEL_WERROR}")
     message(STATUS "  static libstdc++ ... ${WREEL_STATIC_CXX}")

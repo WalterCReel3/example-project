@@ -64,18 +64,16 @@ set(CMAKE_CXX_COMPILER "${_wreel_cxx_path}")
 # Sysroot
 # ---------------------------------------------------------------------------
 
+# The compile-check-only warning is raised once from ProjectOptions.cmake rather
+# than here: toolchain files are re-included for every try_compile, so warning
+# here prints it four or more times per configure.
 if(WREEL_SYSROOT)
     set(CMAKE_SYSROOT        "${WREEL_SYSROOT}")
     set(CMAKE_FIND_ROOT_PATH "${WREEL_SYSROOT}")
     set(WREEL_BUILD_IS_SHIPPABLE ON)
 else()
-    # Debian multiarch layout; no explicit sysroot needed.
+    # Debian multiarch layout; no explicit sysroot needed to compile.
     set(WREEL_BUILD_IS_SHIPPABLE OFF)
-    message(WARNING
-        "No WREEL_SYSROOT set — using the host cross-GCC.\n"
-        "  This build is COMPILE-CHECK ONLY. Its glibc requirements are newer\n"
-        "  than any handheld's, so it will not run on device.\n"
-        "  See docs/TARGETS.md § 2.")
 endif()
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
@@ -100,7 +98,21 @@ set(WREEL_STATIC_CXX ON CACHE BOOL "" FORCE)
 # Running cross-built tests
 # ---------------------------------------------------------------------------
 
+# qemu needs to be told where the *target's* dynamic loader lives. Without it,
+# running a cross-built binary on an x86_64 host fails with:
+#
+#   qemu-aarch64-static: Could not open '/lib/ld-linux-aarch64.so.1'
+#
+# because that path only exists on the target. Debian's cross toolchain ships a
+# sysroot at /usr/aarch64-linux-gnu containing the loader; a device sysroot has
+# its own. Passed as -L rather than QEMU_LD_PREFIX so it travels with the
+# emulator command instead of depending on the environment ctest happens to run in.
 find_program(_wreel_qemu_aarch64 qemu-aarch64-static qemu-aarch64)
 if(_wreel_qemu_aarch64)
     set(WREEL_TEST_EMULATOR "${_wreel_qemu_aarch64}")
+    if(CMAKE_SYSROOT)
+        list(APPEND WREEL_TEST_EMULATOR -L "${CMAKE_SYSROOT}")
+    elseif(EXISTS "/usr/${_wreel_triple}/lib")
+        list(APPEND WREEL_TEST_EMULATOR -L "/usr/${_wreel_triple}")
+    endif()
 endif()

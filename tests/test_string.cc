@@ -2,9 +2,9 @@
 //
 // This is the highest-value test file in the tree. string.hpp is 688 lines, a
 // fifth of the codebase, and it MUST change for C++17: it is built on
-// std::ptr_fun, std::not1 and std::unary_function, all of which C++17 removed or
-// deprecated (libstdc++ still provides them, so it compiles today with warnings
-// — but only just).
+// std::ptr_fun, std::not1 and std::unary_function, all of which C++17 removed
+// or deprecated (libstdc++ still provides them, so it compiles today with
+// warnings — but only just).
 //
 // Its only consumer is loaders/obj.cc, so a tokenizer regression surfaces as
 // malformed geometry rather than a compile error. These tests pin down current
@@ -20,7 +20,8 @@
 #include <string>
 #include <vector>
 
-namespace {
+namespace
+{
 
 using Tokenizer = util::quoted_whitespace_tokenizer<std::string>;
 using TokenGen = util::token_generator<std::string::const_iterator, Tokenizer>;
@@ -170,8 +171,8 @@ TEST_CASE("tokenize fills an output iterator and drops empty tokens")
     const std::string input = "  a  b  c  ";
     std::vector<std::string> tokens;
 
-    util::tokenize(input.begin(), input.end(),
-                   std::back_inserter(tokens), Tokenizer());
+    util::tokenize(input.begin(), input.end(), std::back_inserter(tokens),
+                   Tokenizer());
 
     REQUIRE(tokens.size() == 3);
     CHECK(tokens[0] == "a");
@@ -223,10 +224,9 @@ TEST_CASE("blank lines terminate iteration")
 
 TEST_CASE("line and token iteration compose, as in the OBJ loader")
 {
-    const std::string obj =
-        "v 0.0 0.0 0.0\n"
-        "v 1.0 0.0 0.0\n"
-        "f 1 2 3\n";
+    const std::string obj = "v 0.0 0.0 0.0\n"
+                            "v 1.0 0.0 0.0\n"
+                            "f 1 2 3\n";
 
     std::vector<std::string> keywords;
     for (const auto& line : split_lines(obj)) {
