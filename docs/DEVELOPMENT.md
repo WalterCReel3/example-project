@@ -304,10 +304,32 @@ cmake --preset rk3326 -DWREEL_SYSROOT=/path/to/device/rootfs \
                       -DWREEL_USE_SYSTEM_SDL2=ON
 ```
 
-### Miyoo Mini (shippable)
+### Miyoo Mini
 
-The community toolchain is a Docker image providing GCC 8.3 and a matched
-sysroot. From [union-miyoomini-toolchain](https://github.com/shauninman/union-miyoomini-toolchain):
+The `miyoomini` preset has two modes, like the aarch64 ones.
+
+**Compile-check (no download, not shippable).** With no device toolchain present
+it falls back to Debian's `arm-linux-gnueabihf` cross-GCC automatically:
+
+```sh
+sudo apt install crossbuild-essential-armhf qemu-user-static binfmt-support
+cmake --preset miyoomini && cmake --build --preset miyoomini
+ctest --preset miyoomini          # runs under qemu-arm
+```
+
+This is genuinely useful — it exercises 32-bit ARM codegen, the Cortex-A7 flags
+and `off_t` width in a couple of minutes rather than after a 279 MB toolchain
+download. **Two things it does not prove:**
+
+- **The compiler.** It uses GCC 12, not the device toolchain's GCC 8.3, so C++17
+  library gaps stay invisible.
+- **The display path.** Debian's armhf cross has no target libdrm/libgbm, so SDL2
+  silently builds *without KMSDRM* — the probe reports `wayland, offscreen,
+  dummy, evdev`. Since KMSDRM is how a handheld actually reaches its panel, video
+  is untested by this mode.
+
+**Device toolchain (shippable).** GCC 8.3 and a matched sysroot, from
+[union-miyoomini-toolchain](https://github.com/shauninman/union-miyoomini-toolchain):
 
 ```sh
 git clone https://github.com/shauninman/union-miyoomini-toolchain.git
@@ -428,8 +450,8 @@ Two inherited quirks these files intentionally settle:
 | `wreel-probe` | **verified** — runs on x86_64 and as an aarch64 binary under qemu; reports audio |
 | doctest suite | **verified** — 36 cases, 99 assertions, passing natively and cross |
 | `rk3326` / `h700` toolchains | **verified** — cross-build plus `ctest` under qemu |
-| `gl_legacy` backend | **blocked** — needs `libglew-dev`, see below |
-| `miyoomini` toolchain | error paths verified; real build needs the container |
+| `miyoomini` toolchain | **verified in compile-check mode** — armv7 build + `ctest` under qemu-arm. Device toolchain (GCC 8.3) still untried |
+| `gl_legacy` sources | **compile-clean under C++17** (checked with a GLEW stub); full link needs `libglew-dev` |
 | `steam` preset | not run — needs the sniper container |
 | `docker/miyoomini.Dockerfile` | not built — needs Docker plus the upstream base image |
 | `gles2` / `gl33` backends | not started |
@@ -445,6 +467,8 @@ On Debian 12 / GCC 12.2 / CMake 3.25 / clang-format 14, after a full
 | `desktop-software` cold configure → build → test | pass, 4/4, zero errors |
 | `rk3326` cross-build → `ctest` under qemu | pass, 4/4 |
 | `h700` cross-build → `ctest` under qemu | pass, 4/4, `-mcpu=cortex-a53` confirmed |
+| `miyoomini` armv7 build → `ctest` under qemu-arm | pass, 4/4, `-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4` confirmed |
+| `gl_legacy` sources, `-fsyntax-only` C++17 + full warnings | 8/8 clean, 0 errors |
 | `wreel-probe` as an aarch64 binary under qemu | runs, reports correctly |
 | `shellcheck scripts/bootstrap-debian.sh` | clean |
 | `clang-format --dump-config` | parses; authored files conform |
@@ -463,24 +487,31 @@ without being tested:
 
 ### To build the `gl_legacy` backend
 
-Not covered by the original bootstrap set — a gap this pass also found, now
-fixed in the script:
-
 ```sh
 sudo apt install libglew-dev
 cmake --preset desktop-debug && cmake --build --preset desktop-debug
 ```
 
-Until then, `desktop-debug` fails at configure with an actionable message. This
-remains the **most likely thing in the tree to be broken**: the 2016 GL sources
-have never been compiled under the new build.
+All eight `gl_legacy` sources have been syntax-checked under C++17 with the full
+warning set and are clean — four directly, and the four that include `GL/glew.h`
+against a minimal stub. So this is expected to work; what remains unproven is
+linking against real GLEW and running an actual GL context.
 
 ### Still not run
 
+- **The device toolchain build.** Needs Docker group membership plus the upstream
+  base image and a 279 MB toolchain download. This is the only way to find out
+  whether **GCC 8.3 compiles this codebase**, which is the single largest
+  remaining unknown.
+- **`desktop-debug` linking**, pending `libglew-dev`.
 - **`steam`** — needs the sniper container.
-- **`docker/miyoomini.Dockerfile`** and the `miyoomini` build — needs Docker plus
-  the upstream base image.
-- **Anything on real hardware.**
+- **Any video or audio output on real hardware.** Both the armv7 and aarch64
+  compile-check builds lack KMSDRM, so the display path is entirely untested.
+
+Pre-flight checks that *were* done, so the above should not surprise anyone:
+the toolchain tarball resolves (HTTP 200, 279 MB), `archive.debian.org` is
+reachable for the EOL buster base, and the CMake/Ninja versions pinned in
+`docker/miyoomini.Dockerfile` both download.
 
 ## See also
 
