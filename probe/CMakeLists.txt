@@ -26,10 +26,18 @@ target_compile_definitions(wreel-probe PRIVATE
     WREEL_TARGET_ID="${WREEL_TARGET_ID}"
     WREEL_VERSION="${PROJECT_VERSION}")
 
-# SDL2 is configured with SDL_OPENGL=OFF on GPU-less targets, so GL probing is
-# compiled out rather than failing at runtime.
-if(WREEL_TARGET_HAS_GPU)
+# GL probing is compiled out unless desktop OpenGL is actually linkable. Two
+# separate conditions, and conflating them is a real bug:
+#
+#   WREEL_TARGET_HAS_GPU  — SDL2 was built with SDL_OPENGL, so the SDL_GL_* calls
+#                           exist. Gating only on this got as far as compiling and
+#                           then failed at link with "undefined reference to
+#                           glGetString", because report_gl() calls GL directly.
+#   WREEL_HAVE_OPENGL     — find_package(OpenGL) succeeded, so there is a library
+#                           to resolve those symbols against.
+if(WREEL_TARGET_HAS_GPU AND WREEL_HAVE_OPENGL)
     target_compile_definitions(wreel-probe PRIVATE WREEL_PROBE_GL=1)
+    target_link_libraries(wreel-probe PRIVATE OpenGL::GL)
 endif()
 
 set_target_properties(wreel-probe PROPERTIES

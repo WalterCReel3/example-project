@@ -302,9 +302,31 @@ endif()
 # The 2016 renderer needs desktop GL, GLU (gluPerspective) and GLEW. None of
 # that exists on a Miyoo Mini, which is the whole reason for backend gating.
 
-if(WREEL_GFX_BACKEND STREQUAL "gl_legacy")
+# Looked for whenever the target could have a GPU, not just under gl_legacy —
+# wreel-probe reports GL version/vendor/renderer and therefore needs to link
+# OpenGL even when the graphics backend is `software`. Keeping this inside the
+# gl_legacy block is what caused wreel-probe to fail at link with
+# "undefined reference to glGetString".
+#
+# QUIET and non-REQUIRED: a target may legitimately have a GPU with only GLES
+# headers available, in which case the probe simply omits its GL section.
+set(WREEL_HAVE_OPENGL OFF)
+if(WREEL_TARGET_HAS_GPU)
     set(OpenGL_GL_PREFERENCE GLVND)
-    find_package(OpenGL REQUIRED COMPONENTS OpenGL)
+    find_package(OpenGL QUIET COMPONENTS OpenGL)
+    if(OpenGL_FOUND OR OPENGL_FOUND)
+        set(WREEL_HAVE_OPENGL ON)
+    endif()
+    message(STATUS "Desktop OpenGL available: ${WREEL_HAVE_OPENGL}")
+endif()
+
+if(WREEL_GFX_BACKEND STREQUAL "gl_legacy")
+    if(NOT WREEL_HAVE_OPENGL)
+        message(FATAL_ERROR
+            "The gl_legacy backend needs desktop OpenGL, which was not found.\n"
+            "  Install it:  sudo apt install libgl1-mesa-dev\n"
+            "  Or use:      cmake --preset desktop-software")
+    endif()
 
     # Not REQUIRED: CMake's own failure message names GLEW_INCLUDE_DIRS and
     # GLEW_LIBRARIES, which tells you nothing about what to install or that a

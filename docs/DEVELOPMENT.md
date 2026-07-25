@@ -63,7 +63,7 @@ all of them:
 | X11 | `libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxkbcommon-dev` | X11 video |
 | Wayland | `libwayland-dev wayland-protocols libdecor-0-dev` | Wayland video |
 | KMSDRM | `libdrm-dev libgbm-dev` | direct-to-display video |
-| GL | `libgl1-mesa-dev libglu1-mesa-dev libegl1-mesa-dev libgles-dev libegl-dev` | desktop GL, GLES, EGL |
+| GL | `libgl1-mesa-dev libegl1-mesa-dev libgles-dev libegl-dev` | desktop GL, GLES, EGL |
 | Input | `libudev-dev libdbus-1-dev libibus-1.0-dev` | hotplug, gamepads, IME |
 
 Two notes worth keeping:
@@ -89,6 +89,28 @@ copies builds faster.
 
 `clang-format` 14 on bookworm, which is what [.clang-format](../.clang-format)
 targets.
+
+#### `legacy` — GLEW and GLU, for `gl_legacy` only
+
+`libglew-dev libglu1-mesa-dev`
+
+**Not in the default set.** These are needed by exactly one thing: the
+`gl_legacy` backend, where `gfx/context.cc` calls `glewInit()` and
+`gluPerspective()`. SDL2's own CMakeLists references neither, the `software`
+backend needs neither, and no handheld target can use `gl_legacy` at all — the
+Miyoo Mini has no GPU.
+
+Kept as its own group so that when `gl_legacy` is retired, the packages go with
+it. Buried among twenty GL entries in the `sdl` group they would quietly outlive
+the code that needed them, and the next person would have no way to tell which
+were still load-bearing.
+
+```sh
+./scripts/bootstrap-debian.sh --legacy   # just these two
+```
+
+`desktop-software` — the working preset — needs none of it, and if you do want
+`gl_legacy` the configure error names the package.
 
 #### `cross` — cross compilers
 
@@ -451,7 +473,7 @@ Two inherited quirks these files intentionally settle:
 | doctest suite | **verified** — 36 cases, 99 assertions, passing natively and cross |
 | `rk3326` / `h700` toolchains | **verified** — cross-build plus `ctest` under qemu |
 | `miyoomini` toolchain | **verified in compile-check mode** — armv7 build + `ctest` under qemu-arm. Device toolchain (GCC 8.3) still untried |
-| `gl_legacy` sources | **compile-clean under C++17** (checked with a GLEW stub); full link needs `libglew-dev` |
+| `gl_legacy` backend | **verified** — `desktop-debug` builds and links, `skratch` included, 4/4 tests |
 | `steam` preset | not run — needs the sniper container |
 | `docker/miyoomini.Dockerfile` | not built — needs Docker plus the upstream base image |
 | `gles2` / `gl33` backends | not started |
@@ -468,7 +490,7 @@ On Debian 12 / GCC 12.2 / CMake 3.25 / clang-format 14, after a full
 | `rk3326` cross-build → `ctest` under qemu | pass, 4/4 |
 | `h700` cross-build → `ctest` under qemu | pass, 4/4, `-mcpu=cortex-a53` confirmed |
 | `miyoomini` armv7 build → `ctest` under qemu-arm | pass, 4/4, `-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4` confirmed |
-| `gl_legacy` sources, `-fsyntax-only` C++17 + full warnings | 8/8 clean, 0 errors |
+| `desktop-debug` (`gl_legacy`) build → test | pass, 4/4; `skratch` links; probe reports Mesa 22.3.6 / AMD |
 | `wreel-probe` as an aarch64 binary under qemu | runs, reports correctly |
 | `shellcheck scripts/bootstrap-debian.sh` | clean |
 | `clang-format --dump-config` | parses; authored files conform |
@@ -485,17 +507,28 @@ without being tested:
   host, so every test failed with `Could not open`. The toolchain files now pass
   `-L <sysroot>` to qemu so it finds the target loader.
 
-### To build the `gl_legacy` backend
+### The `gl_legacy` backend
 
 ```sh
-sudo apt install libglew-dev
+./scripts/bootstrap-debian.sh --legacy    # GLEW + GLU
 cmake --preset desktop-debug && cmake --build --preset desktop-debug
 ```
 
-All eight `gl_legacy` sources have been syntax-checked under C++17 with the full
-warning set and are clean — four directly, and the four that include `GL/glew.h`
-against a minimal stub. So this is expected to work; what remains unproven is
-linking against real GLEW and running an actual GL context.
+**Verified working.** The 2016 fixed-function sources compile and link clean under
+C++17 with the full warning set, `skratch` links, and `wreel-probe` reports a real
+GL context (Mesa 22.3.6 / AMD Radeon, compatibility profile 4.6).
+
+That is a better result than expected — this had been flagged as the most likely
+thing in the tree to be broken. The only failure the build surfaced was mine, not
+the 2016 code's: `wreel-probe` calls `glGetString()` directly, and
+`find_package(OpenGL)` was scoped inside the `gl_legacy` block, so probe compiled
+and then failed to link. OpenGL is now looked for whenever the target could have a
+GPU, and probe links it only when both `WREEL_TARGET_HAS_GPU` and
+`WREEL_HAVE_OPENGL` hold.
+
+> `skratch` opens **fullscreen with the cursor hidden and relative mouse mode**,
+> and exits only on its mapped quit input. It has not been run here for that
+> reason — be ready to switch VTs if it misbehaves.
 
 ### Still not run
 
@@ -503,7 +536,6 @@ linking against real GLEW and running an actual GL context.
   base image and a 279 MB toolchain download. This is the only way to find out
   whether **GCC 8.3 compiles this codebase**, which is the single largest
   remaining unknown.
-- **`desktop-debug` linking**, pending `libglew-dev`.
 - **`steam`** — needs the sniper container.
 - **Any video or audio output on real hardware.** Both the armv7 and aarch64
   compile-check builds lack KMSDRM, so the display path is entirely untested.

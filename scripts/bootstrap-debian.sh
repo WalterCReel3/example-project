@@ -7,7 +7,7 @@
 # what each group is for and why.
 #
 # Usage:
-#   ./scripts/bootstrap-debian.sh                 # core + sdl + tools (default)
+#   ./scripts/bootstrap-debian.sh                 # core+sdl+codecs+tools (default)
 #   ./scripts/bootstrap-debian.sh --all           # everything
 #   ./scripts/bootstrap-debian.sh --cross --midi  # add specific groups
 #   ./scripts/bootstrap-debian.sh --dry-run       # print, install nothing
@@ -60,15 +60,13 @@ PKGS_SDL=(
     # Desktop GL / GLES / EGL headers.
     # NOTE: libgles2-mesa-dev is a transitional dummy on bookworm; the real
     # package is libgles-dev.
+    #
+    # GLU and GLEW are deliberately NOT here — see PKGS_LEGACY. SDL2's own
+    # CMakeLists references neither.
     libgl1-mesa-dev
-    libglu1-mesa-dev
     libegl1-mesa-dev
     libgles-dev
     libegl-dev
-    # GLEW and GLU are needed by the gl_legacy backend specifically, not by SDL:
-    # gfx/context.cc calls glewInit() and gluPerspective(). Without these,
-    # -DWREEL_GFX_BACKEND=gl_legacy fails at find_package().
-    libglew-dev
     # Input plumbing and hotplug
     libudev-dev
     libdbus-1-dev
@@ -83,6 +81,25 @@ PKGS_CODECS=(
     libjpeg-dev
     libfreetype-dev
     libharfbuzz-dev
+)
+
+# Needed ONLY by the gl_legacy graphics backend, which is desktop-only and
+# scheduled for removal — gfx/context.cc calls glewInit() and gluPerspective().
+# Neither is used by SDL2, by the software backend, or by any handheld target.
+#
+# Kept in its own group, and out of the default set, for two reasons:
+#
+#   1. Nobody bootstrapping for handheld work should install packages for a
+#      backend their device cannot run. The Miyoo Mini has no GPU at all.
+#   2. When gl_legacy is deleted, this group goes with it. Buried in PKGS_SDL
+#      these would quietly outlive the code that needed them, and the next person
+#      would have no way to tell which of twenty GL packages were still load-bearing.
+#
+# `desktop-software` — the documented working preset — needs none of this, and the
+# configure error names the package if you do want gl_legacy.
+PKGS_LEGACY=(
+    libglew-dev
+    libglu1-mesa-dev
 )
 
 # Static analysis, formatting, debugging.
@@ -143,6 +160,7 @@ Groups:
   sdl        SDL2 source-build dependencies             (default)
   codecs     libpng/jpeg/freetype/harfbuzz              (default)
   tools      clang-format, clang-tidy, gdb, cppcheck    (default)
+  legacy     GLEW + GLU, for the gl_legacy backend only
   cross      armhf/arm64 cross gcc, qemu-user-static
   container  docker.io, for device SDKs + Steam Runtime
   midi       librtmidi, alsa-utils
@@ -153,11 +171,12 @@ EOF
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --all)       SELECTED=(core sdl codecs tools cross container midi math) ;;
+        --all)       SELECTED=(core sdl codecs tools legacy cross container midi math) ;;
         --core)      SELECTED+=(core) ;;
         --sdl)       SELECTED+=(sdl) ;;
         --codecs)    SELECTED+=(codecs) ;;
         --tools)     SELECTED+=(tools) ;;
+        --legacy)    SELECTED+=(legacy) ;;
         --cross)     SELECTED+=(cross) ;;
         --container) SELECTED+=(container) ;;
         --midi)      SELECTED+=(midi) ;;
@@ -215,6 +234,7 @@ for g in "${SELECTED[@]}"; do
         sdl)       WANTED+=("${PKGS_SDL[@]}") ;;
         codecs)    WANTED+=("${PKGS_CODECS[@]}") ;;
         tools)     WANTED+=("${PKGS_TOOLS[@]}") ;;
+        legacy)    WANTED+=("${PKGS_LEGACY[@]}") ;;
         cross)     WANTED+=("${PKGS_CROSS[@]}") ;;
         container) WANTED+=("${PKGS_CONTAINER[@]}") ;;
         midi)      WANTED+=("${PKGS_MIDI[@]}") ;;
