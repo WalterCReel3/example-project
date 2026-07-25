@@ -399,45 +399,68 @@ Two inherited quirks these files intentionally settle:
 
 | Thing | State |
 |---|---|
-| `scripts/bootstrap-debian.sh` | working, verified on Debian 12 |
-| Package list | verified against bookworm apt metadata |
-| `.clang-format` / `.editorconfig` / `.gitignore` | in place |
+| `scripts/bootstrap-debian.sh` | **verified** — full `--all` install on Debian 12, 50/50 packages, shellcheck clean |
+| `.clang-format` | **verified** — config parses under clang-format 14; all authored files conform |
 | [TARGETS.md](TARGETS.md) constraints | researched and verified upstream |
 | Dependency choices | settled — SDL2, nlohmann/json, doctest |
-| Modern CMake build | **working** |
-| `CMakePresets.json` | **working** — 7 presets |
-| `cmake/toolchains/*.cmake` | written; error paths verified, real cross builds **not** yet run |
-| `docker/miyoomini.Dockerfile` | written, **not** yet built |
-| `software` graphics backend | **working** — window, renderer, blit, text |
-| `wreel-probe` | **working** |
-| doctest suite | **working** — 28 cases, 71 assertions passing |
+| Modern CMake build | **verified** on system CMake 3.25 |
+| `CMakePresets.json` | **verified** — 7 presets enumerate and configure |
+| `software` graphics backend | **verified** — builds on x86_64, aarch64 |
+| `wreel-probe` | **verified** — runs on x86_64 and as an aarch64 binary under qemu |
+| doctest suite | **verified** — 28 cases, 71 assertions, passing natively and cross |
+| `rk3326` / `h700` toolchains | **verified** — cross-build plus `ctest` under qemu |
+| `gl_legacy` backend | **blocked** — needs `libglew-dev`, see below |
+| `miyoomini` toolchain | error paths verified; real build needs the container |
+| `steam` preset | not run — needs the sniper container |
+| `docker/miyoomini.Dockerfile` | not built — needs Docker plus the upstream base image |
 | `gles2` / `gl33` backends | not started |
 | C++17 cleanup of 2016 sources | not started (`WREEL_WERROR` stays `OFF` until then) |
 
 ### What has actually been run
 
-Verified end to end on Debian 12 / GCC 12.2 / CMake 4.4:
+On Debian 12 / GCC 12.2 / CMake 3.25 / clang-format 14, after a full
+`./scripts/bootstrap-debian.sh --all`:
 
-- `cmake --preset desktop-software` — configures, all five dependencies fetched
-  and built
-- `cmake --build --preset desktop-software` — clean build, zero errors
-- `ctest --preset desktop-software` — 3/3 tests pass, 71 assertions
-- `wreel-probe` — runs headless under `SDL_VIDEODRIVER=dummy` and correctly
-  reports the software renderer with GL compiled out
-- Configure-time guards — rejecting an unknown backend, rejecting `gl_legacy` on
-  a GPU-less target, and both missing-cross-toolchain messages
+| Check | Result |
+|---|---|
+| `desktop-software` cold configure → build → test | pass, 3/3, zero errors |
+| `rk3326` cross-build → `ctest` under qemu | pass, 3/3, 415 targets |
+| `h700` cross-build → `ctest` under qemu | pass, 3/3, `-mcpu=cortex-a53` confirmed |
+| `wreel-probe` as an aarch64 binary under qemu | runs, reports correctly |
+| `shellcheck scripts/bootstrap-debian.sh` | clean |
+| `clang-format --dump-config` | parses; authored files conform |
+| Configure guards ×4 | all reject correctly with actionable messages |
 
-### What has NOT been run
+Two things this pass found and fixed, both of which had been asserted as working
+without being tested:
 
-Be appropriately sceptical of these until someone tries them:
+- **`.clang-format` did not parse at all.** It used `ConstructorInitializerIndentation`,
+  which is not a clang-format key. Every invocation errored out, so "the tree is
+  formatted" was meaningless. Now `ConstructorInitializerIndentWidth`.
+- **Cross-built tests could not run under qemu.** The binaries are dynamically
+  linked against `/lib/ld-linux-aarch64.so.1`, which does not exist on an x86_64
+  host, so every test failed with `Could not open`. The toolchain files now pass
+  `-L <sysroot>` to qemu so it finds the target loader.
 
-- **`desktop-debug` / `desktop-release`** (the `gl_legacy` backend) — this box has
-  no GLEW or GLU installed, so `find_package(GLEW)` was never exercised. The 2016
-  GL sources have not been compiled under the new build.
-- **`miyoomini`, `rk3326`, `h700`** — no cross-compilers or device SDK present.
-  Only the not-found error paths were checked.
+### To build the `gl_legacy` backend
+
+Not covered by the original bootstrap set — a gap this pass also found, now
+fixed in the script:
+
+```sh
+sudo apt install libglew-dev
+cmake --preset desktop-debug && cmake --build --preset desktop-debug
+```
+
+Until then, `desktop-debug` fails at configure with an actionable message. This
+remains the **most likely thing in the tree to be broken**: the 2016 GL sources
+have never been compiled under the new build.
+
+### Still not run
+
 - **`steam`** — needs the sniper container.
-- **`docker/miyoomini.Dockerfile`** — needs Docker plus the upstream base image.
+- **`docker/miyoomini.Dockerfile`** and the `miyoomini` build — needs Docker plus
+  the upstream base image.
 - **Anything on real hardware.**
 
 ## See also

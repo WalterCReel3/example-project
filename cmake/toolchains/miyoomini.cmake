@@ -90,7 +90,10 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 # qemu-user-static lets ctest execute armhf binaries on the dev box. Not present
 # inside the toolchain container, so this is best-effort.
 
+# -L points qemu at the target's dynamic loader, which does not exist at its
+# native path on an x86_64 host. See the equivalent note in
+# cmake/toolchains/aarch64-handheld.cmake.
 find_program(_wreel_qemu_arm qemu-arm-static qemu-arm)
 if(_wreel_qemu_arm)
-    set(WREEL_TEST_EMULATOR "${_wreel_qemu_arm}")
+    set(WREEL_TEST_EMULATOR "${_wreel_qemu_arm}" -L "${CMAKE_SYSROOT}")
 endif()

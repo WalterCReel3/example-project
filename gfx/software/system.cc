@@ -18,14 +18,14 @@ System::System()
     // Joystick is required, not optional: handhelds have no keyboard, so
     // failing to init it leaves the device with no input at all.
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) != 0) {
-        throw std::runtime_error(std::string("SDL_Init failed: ")
-                                 + SDL_GetError());
+        throw std::runtime_error(std::string("SDL_Init failed: ") +
+                                 SDL_GetError());
     }
 
     if (TTF_Init() != 0) {
         SDL_Quit();
-        throw std::runtime_error(std::string("TTF_Init failed: ")
-                                 + TTF_GetError());
+        throw std::runtime_error(std::string("TTF_Init failed: ") +
+                                 TTF_GetError());
     }
 
     const int want = IMG_INIT_PNG | IMG_INIT_JPG;
@@ -33,11 +33,10 @@ System::System()
     if ((got & want) != want) {
         // Not fatal on its own — report which codec is missing and continue,
         // since a build may legitimately ship only one asset format.
-        util::logging.warning()
-            << "IMG_Init: requested PNG|JPG, got "
-            << ((got & IMG_INIT_PNG) ? "PNG " : "")
-            << ((got & IMG_INIT_JPG) ? "JPG " : "")
-            << "(" << IMG_GetError() << ")" << std::endl;
+        util::logging.warning() << "IMG_Init: requested PNG|JPG, got "
+                                << ((got & IMG_INIT_PNG) ? "PNG " : "")
+                                << ((got & IMG_INIT_JPG) ? "JPG " : "") << "("
+                                << IMG_GetError() << ")" << std::endl;
     }
 
     util::logging.info() << "software system initialised, video driver "

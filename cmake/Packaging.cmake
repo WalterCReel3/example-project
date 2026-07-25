@@ -1,64 +1,69 @@
-# Install layout and per-target packaging.
+# Install layout and packaging.
 #
 # The original build installed to an in-source dist/ with binaries under bin/.
-# That shape is kept — it's convenient for copying onto an SD card — but the
-# hard-coded CMAKE_INSTALL_PREFIX override is gone, since it broke any attempt
-# to install elsewhere.
+# That shape is kept — it is convenient for copying onto an SD card — but the
+# hard-coded CMAKE_INSTALL_PREFIX override is gone, since it made installing
+# anywhere else impossible.
+#
+# Deliberately thin. Per-firmware bundle layouts are NOT defined here because
+# they are not known yet: they differ across OnionOS, muOS, ArkOS and ROCKNIX,
+# and confirming them needs a real SD card rather than documentation. Writing a
+# plausible-looking launcher now would be inventing a decision instead of making
+# one. See planning/2026-07-25-packaging-distribution/.
 
 include_guard(GLOBAL)
 include(GNUInstallDirs)
 
-# Assets the runtime actually opens. The demo loads data/ico.obj and
-# data/Speedy.fon by relative path, so data/ ships next to the binary.
+# ---------------------------------------------------------------------------
+# Assets
+# ---------------------------------------------------------------------------
+#
+# Both consumers currently open assets by path *relative to the working
+# directory* — skratch/application.cc does TTF_OpenFontIndex("data/Speedy.fon")
+# and load_obj_model("data/ico.obj"). So data/ is installed next to the binary
+# rather than under share/, because anything else breaks the moment a firmware
+# launcher cd's elsewhere.
+#
+# The real fix is SDL_GetBasePath(), tracked in the packaging snapshot. Until
+# that lands, this layout is load-bearing, not cosmetic.
+
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/data/"
-        DESTINATION "${CMAKE_INSTALL_DATADIR}/wreel/data"
+        DESTINATION "${CMAKE_INSTALL_BINDIR}/data"
         COMPONENT runtime)
 
 # ---------------------------------------------------------------------------
-# Handheld bundle
+# Handheld bundles
 # ---------------------------------------------------------------------------
-#
-# Handheld firmwares (OnionOS, muOS, ArkOS, ROCKNIX) launch apps from a
-# self-contained directory with a small shell entrypoint, rather than from a
-# system prefix. This produces that shape:
-#
-#     pkg/<target>/
-#       launch.sh
-#       bin/...
-#       data/...
 
 function(wreel_add_handheld_bundle)
     if(NOT WREEL_TARGET_IS_HANDHELD)
         return()
     endif()
 
-    set(_bundle "${CMAKE_BINARY_DIR}/bundle")
-
-    file(WRITE "${_bundle}/launch.sh"
-"#!/bin/sh
-# Entry point for handheld firmware launchers.
-DIR=\"$(dirname \"$0\")\"
-cd \"$DIR\" || exit 1
-export LD_LIBRARY_PATH=\"$DIR/lib:$LD_LIBRARY_PATH\"
-exec ./bin/wreel-probe \"$@\"
-")
-
-    install(PROGRAMS "${_bundle}/launch.sh"
-            DESTINATION "."
-            COMPONENT handheld)
-
-    message(STATUS "Handheld bundle enabled for '${WREEL_TARGET_ID}'")
+    # Reported rather than silently skipped, so it is obvious that `install`
+    # produces a prefix tree and not a firmware-ready bundle.
+    message(STATUS
+        "Handheld target '${WREEL_TARGET_ID}': `install` gives a plain "
+        "bin/ + bin/data/ tree.")
+    message(STATUS
+        "  No firmware bundle is generated yet — layouts differ per firmware "
+        "and are unconfirmed.")
+    message(STATUS
+        "  See planning/2026-07-25-packaging-distribution/README.md")
 endfunction()
 
 # ---------------------------------------------------------------------------
 # CPack
 # ---------------------------------------------------------------------------
+#
+# TGZ only. A tarball of the install tree is genuinely useful for getting a build
+# onto a device; DEB/RPM are not, since no handheld firmware uses a package
+# manager and Steam takes a depot directory.
 
 set(CPACK_PACKAGE_NAME "wreel-${WREEL_TARGET_ID}")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
-set(CPACK_PACKAGE_FILE_NAME
-    "wreel-${PROJECT_VERSION}-${WREEL_TARGET_ID}")
+set(CPACK_PACKAGE_FILE_NAME "wreel-${PROJECT_VERSION}-${WREEL_TARGET_ID}")
 set(CPACK_PACKAGE_DIRECTORY "${CMAKE_SOURCE_DIR}/pkg")
 set(CPACK_GENERATOR "TGZ")
 set(CPACK_SOURCE_GENERATOR "TGZ")

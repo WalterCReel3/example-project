@@ -18,9 +18,10 @@ struct SDL_Window;
 struct SDL_Renderer;
 struct SDL_Surface;
 struct SDL_Texture;
-// Must match SDL_ttf.h exactly — it declares `typedef struct TTF_Font TTF_Font;`
-// (the struct tag is TTF_Font, not _TTF_Font as older releases used). A
-// mismatched tag here is a hard error in any TU that also includes SDL_ttf.h.
+// Must match SDL_ttf.h exactly — it declares `typedef struct TTF_Font
+// TTF_Font;` (the struct tag is TTF_Font, not _TTF_Font as older releases
+// used). A mismatched tag here is a hard error in any TU that also includes
+// SDL_ttf.h.
 typedef struct TTF_Font TTF_Font;
 
 namespace gfx
@@ -73,7 +74,8 @@ public:
     void draw_surface(SDL_Surface* surface, Rect* rect);
 
     // Renders UTF-8 text and returns the pixel size consumed. Costly: this
-    // rasterises and uploads every call, so cache the result for static strings.
+    // rasterises and uploads every call, so cache the result for static
+    // strings.
     void draw_text(const std::string& text, TTF_Font* font, const Color& color,
                    Rect* rect);
 

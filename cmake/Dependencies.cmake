@@ -218,11 +218,24 @@ endif()
 if(WREEL_GFX_BACKEND STREQUAL "gl_legacy")
     set(OpenGL_GL_PREFERENCE GLVND)
     find_package(OpenGL REQUIRED COMPONENTS OpenGL)
-    find_package(GLEW REQUIRED)
+
+    # Not REQUIRED: CMake's own failure message names GLEW_INCLUDE_DIRS and
+    # GLEW_LIBRARIES, which tells you nothing about what to install or that a
+    # working alternative exists.
+    find_package(GLEW QUIET)
+    if(NOT GLEW_FOUND)
+        message(FATAL_ERROR
+            "The gl_legacy backend needs GLEW (gfx/context.cc calls glewInit).\n"
+            "  Install it:  sudo apt install libglew-dev\n"
+            "  Or build the software renderer instead, which needs neither GLEW\n"
+            "  nor GLU:     cmake --preset desktop-software\n"
+            "  See docs/TARGETS.md § Graphics backends.")
+    endif()
 
     if(NOT OPENGL_GLU_FOUND)
         message(FATAL_ERROR
             "The gl_legacy backend calls gluPerspective(), but GLU was not found.\n"
-            "  Install libglu1-mesa-dev, or use -DWREEL_GFX_BACKEND=software.")
+            "  Install it:  sudo apt install libglu1-mesa-dev\n"
+            "  Or use:      cmake --preset desktop-software")
     endif()
 endif()

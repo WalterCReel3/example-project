@@ -16,7 +16,7 @@ from the foundation the rest of the project sits on.
 
 ## What is verified today
 
-On Debian 12 / GCC 12.2 / CMake 4.4:
+On Debian 12 / GCC 12.2:
 
 - `desktop-software` — cold configure, build, and `ctest` (3/3, 71 assertions)
 - `wreel-probe` — runs headless under `SDL_VIDEODRIVER=dummy`

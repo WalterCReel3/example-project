@@ -65,6 +65,10 @@ PKGS_SDL=(
     libegl1-mesa-dev
     libgles-dev
     libegl-dev
+    # GLEW and GLU are needed by the gl_legacy backend specifically, not by SDL:
+    # gfx/context.cc calls glewInit() and gluPerspective(). Without these,
+    # -DWREEL_GFX_BACKEND=gl_legacy fails at find_package().
+    libglew-dev
     # Input plumbing and hotplug
     libudev-dev
     libdbus-1-dev
@@ -276,8 +280,9 @@ for tool in ninja g++ pkg-config ccache; do
 done
 
 for tool in arm-linux-gnueabihf-g++ aarch64-linux-gnu-g++; do
-    command -v "$tool" >/dev/null 2>&1 \
-        && printf '    %-9s %s\n' "cross" "$tool $($tool -dumpversion)" || true
+    if command -v "$tool" >/dev/null 2>&1; then
+        printf '    %-9s %s\n' "cross" "$tool $("$tool" -dumpversion)"
+    fi
 done
 
 # binfmt registration is what makes `ctest` work on cross-built binaries.

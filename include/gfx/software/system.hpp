@@ -4,10 +4,10 @@
 // Subsystem lifetime for the software backend.
 //
 // Same shape as gfx::System, minus GLEW — there is no GL to load entry points
-// for. Unlike the original, ownership is explicit rather than a leaked singleton:
-// the 2016 gfx::System::get_instance() heap-allocated an instance that
-// Application's destructor then deleted, leaving the static _instance pointer
-// dangling if anything asked for it again.
+// for. Unlike the original, ownership is explicit rather than a leaked
+// singleton: the 2016 gfx::System::get_instance() heap-allocated an instance
+// that Application's destructor then deleted, leaving the static _instance
+// pointer dangling if anything asked for it again.
 
 #include <string>
 #include <vector>

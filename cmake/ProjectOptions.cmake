@@ -75,6 +75,18 @@ endif()
 # wreel_options — language level and per-config codegen
 # ---------------------------------------------------------------------------
 
+# Raised here rather than in the toolchain file, which is re-included for every
+# try_compile and so would print this four or more times per configure.
+if(CMAKE_CROSSCOMPILING AND DEFINED WREEL_BUILD_IS_SHIPPABLE
+        AND NOT WREEL_BUILD_IS_SHIPPABLE)
+    message(WARNING
+        "No WREEL_SYSROOT set — using the host cross-GCC.\n"
+        "  This build is COMPILE-CHECK ONLY. Its glibc requirements are newer\n"
+        "  than any handheld's, so it will not run on device.\n"
+        "  Pass -DWREEL_SYSROOT=/path/to/device/rootfs for a shippable build.\n"
+        "  See docs/TARGETS.md § 2.")
+endif()
+
 add_library(wreel_options INTERFACE)
 add_library(wreel::options ALIAS wreel_options)
 
