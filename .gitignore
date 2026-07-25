@@ -1,0 +1,42 @@
+# Build trees (one per preset, see CMakePresets.json)
+/build/
+/build-*/
+/out/
+
+# Install / packaging output
+/dist/
+/pkg/
+
+# Dependency source+build cache populated by FetchContent
+/.cache/
+/_deps/
+
+# Toolchain container workspace mounts
+/docker/*/workspace/
+/docker/.build-*
+
+# Editor / tooling
+/.vscode/
+/.idea/
+/compile_commands.json
+/.clangd/
+/.cache/clangd/
+
+# Claude Code: .claude/settings.json is shared and committed;
+# per-user overrides and local state are not.
+/.claude/settings.local.json
+/.claude/*.local.json
+*.swp
+*.swo
+tags
+cscope.*
+
+# Runtime artifacts produced by the demos
+runlog.txt
+*.log
+core
+core.*
+
+# OS cruft
+.DS_Store
+Thumbs.db

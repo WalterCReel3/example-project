@@ -1,0 +1,55 @@
+# Codifies the style already present in the 2016 tree so reformatting produces
+# minimal diffs: 4-space indent, 80 columns, brace-on-next-line for functions
+# and types but attached for control flow, `Type* name` pointer binding.
+#
+# Requires clang-format >= 14 (Debian 12 ships 14).
+---
+Language: Cpp
+BasedOnStyle: LLVM
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 80
+
+# `void f()\n{` for functions/classes, `if (x) {` for control flow.
+BreakBeforeBraces: Linux
+
+# `public:` / `private:` sit flush with the `class` keyword.
+AccessModifierOffset: -4
+
+# The tree consistently writes `SDL_Window* window` and `Context* context`.
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+
+# Constructor init lists in this tree are one-per-line, leading comma:
+#     : _last_tick(0)
+#     , _exit(false)
+BreakConstructorInitializers: BeforeComma
+ConstructorInitializerIndentation: 4
+PackConstructorInitializers: Never
+
+AlwaysBreakTemplateDeclarations: Yes
+SpaceAfterTemplateKeyword: false
+
+# Keep the layered include order legible and stable. Category 0 is the file's
+# own associated header (clang-format handles that implicitly).
+IncludeBlocks: Preserve
+SortIncludes: Never
+
+IndentCaseLabels: false
+NamespaceIndentation: None
+FixNamespaceComments: true
+
+AlignAfterOpenBracket: Align
+AlignEscapedNewlines: Left
+AlignTrailingComments: true
+
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+...

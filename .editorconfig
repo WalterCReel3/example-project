@@ -1,0 +1,42 @@
+# https://editorconfig.org
+#
+# The original tree carried `vim: set sts=2 sw=2 expandtab` modelines that
+# disagreed with the actual 4-space indentation in every file. This settles it:
+# 4 spaces, everywhere, and the stale modelines get dropped as files are touched.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{cc,cpp,hpp,h,c}]
+indent_size = 4
+max_line_length = 80
+
+[*.{cmake,txt}]
+indent_size = 4
+
+[CMakeLists.txt]
+indent_size = 4
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+[*.md]
+indent_size = 2
+trim_trailing_whitespace = false
+
+[*.sh]
+indent_size = 4
+
+[Makefile]
+indent_style = tab
+
+[data/**]
+insert_final_newline = false
+trim_trailing_whitespace = false
