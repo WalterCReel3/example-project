@@ -1,0 +1,162 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "installDir": "${sourceDir}/dist/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+
+    {
+      "name": "desktop-debug",
+      "inherits": "base",
+      "displayName": "Desktop (Debug)",
+      "description": "Native build with the legacy GL backend. Day-to-day development.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "WREEL_GFX_BACKEND": "gl_legacy"
+      }
+    },
+    {
+      "name": "desktop-release",
+      "inherits": "base",
+      "displayName": "Desktop (Release)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "WREEL_GFX_BACKEND": "gl_legacy"
+      }
+    },
+    {
+      "name": "desktop-software",
+      "inherits": "base",
+      "displayName": "Desktop (software backend)",
+      "description": "Native build of the software renderer. This is how you test the Miyoo Mini code path without a device.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "WREEL_GFX_BACKEND": "software",
+        "WREEL_TARGET_HAS_GPU": "OFF"
+      }
+    },
+
+    {
+      "name": "steam",
+      "inherits": "base",
+      "displayName": "Steam on Linux (sniper runtime)",
+      "description": "Run this INSIDE the steamrt/sniper/sdk container. See docs/DEVELOPMENT.md.",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/steam-linux.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "WREEL_GFX_BACKEND": "gl_legacy",
+        "WREEL_BUILD_TESTS": "ON"
+      }
+    },
+
+    {
+      "name": "miyoomini",
+      "inherits": "base",
+      "displayName": "Miyoo Mini / Mini Plus (SSD202D, no GPU)",
+      "description": "Run inside union-miyoomini-toolchain, or set MIYOOMINI_TOOLCHAIN_ROOT. GCC 8.3, software renderer only.",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/miyoomini.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "WREEL_GFX_BACKEND": "software"
+      }
+    },
+
+    {
+      "name": "rk3326",
+      "inherits": "base",
+      "displayName": "Anbernic RK3326 (RG351/RG353)",
+      "description": "Compile-check by default. Pass -DWREEL_SYSROOT=... for a shippable build.",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/rk3326.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "WREEL_GFX_BACKEND": "software"
+      }
+    },
+    {
+      "name": "h700",
+      "inherits": "base",
+      "displayName": "Anbernic H700 (RG35XX Plus/H/SP, RG40XX)",
+      "description": "Compile-check by default. Pass -DWREEL_SYSROOT=... for a shippable build.",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/h700.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "WREEL_GFX_BACKEND": "software"
+      }
+    }
+  ],
+
+  "buildPresets": [
+    { "name": "desktop-debug",    "configurePreset": "desktop-debug" },
+    { "name": "desktop-release",  "configurePreset": "desktop-release" },
+    { "name": "desktop-software", "configurePreset": "desktop-software" },
+    { "name": "steam",            "configurePreset": "steam" },
+    { "name": "miyoomini",        "configurePreset": "miyoomini" },
+    { "name": "rk3326",           "configurePreset": "rk3326" },
+    { "name": "h700",             "configurePreset": "h700" }
+  ],
+
+  "testPresets": [
+    {
+      "name": "test-base",
+      "hidden": true,
+      "output": {
+        "outputOnFailure": true,
+        "verbosity": "default"
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": false
+      }
+    },
+    {
+      "name": "desktop-debug",
+      "inherits": "test-base",
+      "configurePreset": "desktop-debug"
+    },
+    {
+      "name": "desktop-release",
+      "inherits": "test-base",
+      "configurePreset": "desktop-release"
+    },
+    {
+      "name": "desktop-software",
+      "inherits": "test-base",
+      "configurePreset": "desktop-software"
+    },
+    {
+      "name": "steam",
+      "inherits": "test-base",
+      "configurePreset": "steam"
+    },
+    {
+      "name": "miyoomini",
+      "inherits": "test-base",
+      "configurePreset": "miyoomini",
+      "description": "Requires qemu-user-static + binfmt-support on the host."
+    },
+    {
+      "name": "rk3326",
+      "inherits": "test-base",
+      "configurePreset": "rk3326",
+      "description": "Requires qemu-user-static + binfmt-support on the host."
+    },
+    {
+      "name": "h700",
+      "inherits": "test-base",
+      "configurePreset": "h700",
+      "description": "Requires qemu-user-static + binfmt-support on the host."
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(cmake:*)",
+      "Bash(ctest:*)",
+      "Bash(cpack:*)",
+      "Bash(ninja:*)",
+      "Bash(make:*)",
+      "Bash(clang-format:*)",
+      "Bash(clang-tidy:*)",
+      "Bash(cppcheck:*)",
+      "Bash(shellcheck:*)",
+      "Bash(pkg-config:*)",
+      "Bash(apt-cache:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git remote:*)",
+      "Bash(file:*)",
+      "Bash(ldd:*)",
+      "Bash(nm:*)",
+      "Bash(objdump:*)",
+      "Bash(readelf:*)",
+      "Bash(strings:*)"
+    ],
+    "ask": [
+      "Bash(sudo:*)",
+      "Bash(apt-get:*)",
+      "Bash(apt:*)",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(docker:*)",
+      "Bash(git push:*)",
+      "Bash(git commit:*)"
+    ],
+    "deny": [
+      "Edit(build/**)",
+      "Write(build/**)",
+      "Edit(dist/**)",
+      "Write(dist/**)"
+    ]
+  }
+}

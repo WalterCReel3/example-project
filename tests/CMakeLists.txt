@@ -1,17 +1,30 @@
-project(tests)
+# Test suite.
+#
+# wreel_add_test() (cmake/Testing.cmake) is the modern form of the original
+# `test_module` macro, and keeps both of its important properties: one
+# executable per test, and the repository root as the working directory so
+# data/ fixture paths resolve.
 
-set(TEST_LIBS
-	util
-	posix
-	${OPENGL_LIBRARIES}
-	${GLEW_LIBRARIES})
+# --- Currently building ------------------------------------------------------
+#
+# These need no graphics context, so they run on every target — including under
+# qemu-user-static for cross builds.
 
-macro (test_module tname)
-  add_executable(${tname} ${tname}.cc)
-  target_link_libraries(${tname} ${TEST_LIBS})
-  add_test(NAME ${tname} COMMAND ${tname} WORKING_DIRECTORY ${TEST_DIRECTORY})
-endmacro (test_module)
+wreel_add_test(test_file    LIBS wreel::util wreel::posix)
+wreel_add_test(test_json    LIBS wreel::util)
+wreel_add_test(test_string  LIBS wreel::util)
 
-test_module(test_basic)
-test_module(test_file)
-test_module(test_json)
+# --- Priority queue ----------------------------------------------------------
+#
+# test_string.cc above is the important one and is not yet complete.
+# include/util/string.hpp is 688 lines — a fifth of the codebase — and its
+# std::ptr_fun usage must be removed for C++17. Its only consumer is
+# loaders/obj.cc, so a broken tokenizer edge case shows up as malformed geometry
+# rather than a compile error. Cover it *before* that refactor.
+#
+# Still to write:
+#   test_obj      — parse data/cube.obj, ico.obj, teapot.obj; check counts
+#   test_errors   — posix::wrap() errno dispatch across the generated types
+#   test_logging  — LoggingManager keyed streams and level filtering
+#
+# See docs/TARGETS.md § "Where the test surface actually is".
