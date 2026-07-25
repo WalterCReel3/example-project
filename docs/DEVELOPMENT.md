@@ -526,9 +526,78 @@ and then failed to link. OpenGL is now looked for whenever the target could have
 GPU, and probe links it only when both `WREEL_TARGET_HAS_GPU` and
 `WREEL_HAVE_OPENGL` hold.
 
-> `skratch` opens **fullscreen with the cursor hidden and relative mouse mode**,
-> and exits only on its mapped quit input. It has not been run here for that
-> reason — be ready to switch VTs if it misbehaves.
+### Running the `skratch` demo
+
+Read this before the first run — it is 2016 fullscreen code and it takes over the
+display.
+
+```sh
+cd /path/to/example-project          # MUST be the repo root
+SDL_VIDEODRIVER=x11 ./build/desktop-debug/bin/skratch
+```
+
+**Four things that will bite otherwise:**
+
+- **Working directory must be the repo root.** It opens `data/Speedy.fon` and
+  `data/ico.obj` by relative path and writes `runlog.txt` to the current
+  directory. Running it from `build/` fails immediately.
+- **It is always fullscreen at desktop resolution.** `gfx/context.cc` computes a
+  `flags` variable from its `fullscreen` parameter and then *ignores it* — the
+  `SDL_CreateWindow` call hardcodes `SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN`
+  (defect D9). There is no windowed mode without a code change.
+- **The cursor is hidden and the mouse is grabbed** via relative mouse mode.
+- **Errors go to `runlog.txt`, not stderr.** `skratch/main.cc` catches everything
+  and writes `e.what()` to that file, so a silent instant exit means *check the
+  log*, not "nothing happened".
+
+`SDL_VIDEODRIVER=x11` is recommended: the code requests a real display mode change
+(`SDL_WINDOW_FULLSCREEN`, not `_DESKTOP`), which is X11-shaped. It will try Wayland
+first if you let it.
+
+**Controls** (from `skratch/input.cc`):
+
+| | |
+|---|---|
+| `Escape` | quit |
+| `W` / `S` | forward / back |
+| `A` / `D` | strafe left / right |
+| `Space` / `Left Ctrl` | up / down |
+| Arrow keys | pitch and yaw |
+| Mouse | pitch and yaw (relative) |
+| Joystick axes 0/1, 3/4, hat | move and look, if a pad is attached |
+
+Roll is wired into `InputState` but has **no** keyboard binding, so it is
+unreachable. Joystick axis mapping is hardcoded for an Xbox 360 pad.
+
+**If input does not work**, `Escape` is not the only way out:
+
+- `Ctrl+C` in the launching terminal — SDL2 turns `SIGINT` into `SDL_QUIT`, which
+  `translate_input()` maps to `EXIT`, so this exits cleanly.
+- `pkill -x skratch` from another terminal or over SSH.
+- `Ctrl+Alt+F3` to switch VT, then `pkill`.
+
+For a first run, a watchdog costs nothing:
+
+```sh
+( sleep 30; pkill -x skratch ) &
+SDL_VIDEODRIVER=x11 ./build/desktop-debug/bin/skratch
+cat runlog.txt
+```
+
+**What you should see:** a 20×20 grid of icosahedra on a dark blue background,
+with a white HUD line at top-left showing camera position, orientation and
+joystick axis values. No lighting — vertex colours are faked from position — and
+the far plane is 100 units, so distant models clip out.
+
+**Already verified, so these are not the likely failure:** the assets load
+(`ico.obj` parses to 42 vertices / 240 indices, `teapot.obj` to 3644 / 18960), the
+binary links against real GLEW and GLU, and `wreel-probe` from the same build gets
+a working GL context. What is untested is this specific fullscreen mode-change path
+on your compositor.
+
+> A dry run under `SDL_VIDEODRIVER=offscreen` is **not** a valid substitute:
+> `glewInit()` fails there because GLEW needs GLX, and `runlog.txt` just says
+> `Unknown error`.
 
 ### Still not run
 
