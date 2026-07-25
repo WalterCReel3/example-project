@@ -1,67 +1,98 @@
-cmake_minimum_required(VERSION 2.8)
-project(WinBuildTest)
+# wreel — SDL2 toy game and live-graphics scaffold.
+#
+# Targets Linux handhelds (Miyoo Mini, Anbernic) and Steam on Linux from one
+# tree. See docs/TARGETS.md for the constraints that shape this build, and
+# docs/DEVELOPMENT.md for how to drive it.
+#
+# 3.21 is required for CMakePresets.json schema v3. Note that the Miyoo Mini
+# toolchain container ships CMake 3.13 — docker/miyoomini.Dockerfile layers a
+# current CMake on top for exactly this reason.
 
-if(GCC)
-    set(CMAKE_CXX_FLAGS "-Wall -Werror")
+cmake_minimum_required(VERSION 3.21)
+
+project(wreel
+    VERSION     0.2.0
+    DESCRIPTION "SDL2 toy game and live-graphics scaffold for Linux handhelds and Steam"
+    HOMEPAGE_URL "https://github.com/WalterCReel3/example-project"
+    LANGUAGES   CXX C)
+
+# ---------------------------------------------------------------------------
+# Guards and defaults
+# ---------------------------------------------------------------------------
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
+    message(FATAL_ERROR
+        "In-source builds are not supported. Use a preset:\n"
+        "  cmake --preset desktop-debug")
 endif()
 
-if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    message(STATUS "No build type selected, default to Debug")
-    set(CMAKE_BUILD_TYPE "Debug")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "" FORCE)
+    message(STATUS "No build type selected, defaulting to Debug")
 endif()
 
-#
-# Basic Directory Layout
-#
-set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/Modules")
-set(CMAKE_INSTALL_PREFIX "${CMAKE_SOURCE_DIR}/dist")
+# Identifies the target in binary names, package names and probe output. Set by
+# the toolchain files; "desktop" when building natively without one.
+if(NOT DEFINED WREEL_TARGET_ID)
+    set(WREEL_TARGET_ID "desktop")
+endif()
 
-set(RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-set(TEST_DIRECTORY ${CMAKE_SOURCE_DIR})
-set(PROJECT_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/include)
-set(EXECUTABLE_OUTPUT_PATH ${RUNTIME_OUTPUT_DIRECTORY})
+# Keep the original bin/ + lib/ output shape.
+set(WREEL_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${WREEL_RUNTIME_OUTPUT_DIRECTORY}")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-include_directories("${PROJECT_INCLUDE_DIR}")
+# Tests resolve fixtures relative to the repo root, as they always have.
+set(WREEL_TEST_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# Speed up rebuilds across five build trees when ccache is present.
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    set(CMAKE_C_COMPILER_LAUNCHER   "${CCACHE_PROGRAM}")
+endif()
+
+# Handy for clangd / clang-tidy.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+include(ProjectOptions)
+include(Dependencies)
+
+# ---------------------------------------------------------------------------
+# Components
 #
-# Installed Third Party Packages
-#
-find_package(OpenGL REQUIRED)
-find_package(GLEW REQUIRED)
-find_package(SDL2 REQUIRED)
-find_package(SDL2_ttf REQUIRED)
-find_package(SDL2_image REQUIRED)
- 
-include_directories("${SDL2_INCLUDE_DIR}")
-include_directories("${SDL2_TTF_INCLUDE_DIRS}")
-include_directories("${SDL2_IMAGE_INCLUDE_DIRS}")
-include_directories("${GLEW_INCLUDE_DIR}")
+# Flat module directories, one static library each, public headers hoisted into
+# include/<module>/. Dependencies run one way:
+#     skratch -> loaders -> util -> posix
+# ---------------------------------------------------------------------------
 
-#
-# Embedded Third Party Packages
-#
-include(ExternalProject)
-include(ExternalRapidJson)
-
-# Pull in installed headers
-include_directories("${CMAKE_BINARY_DIR}/include")
-
-# Allow for tests
-enable_testing()
-
-#
-# COMPONENTS
-#
-add_subdirectory(project1)
 add_subdirectory(posix)
 add_subdirectory(util)
 add_subdirectory(gfx)
 add_subdirectory(loaders)
-add_subdirectory(skratch)
 
-#
-# Tests
-#
-add_subdirectory(tests)
+if(WREEL_BUILD_PROBE)
+    add_subdirectory(probe)
+endif()
+
+if(WREEL_BUILD_DEMOS)
+    add_subdirectory(skratch)
+endif()
+
+if(WREEL_BUILD_TESTS)
+    enable_testing()
+    include(Testing)
+    add_subdirectory(tests)
+endif()
+
+include(Packaging)
+wreel_add_handheld_bundle()
+
+wreel_print_summary()
