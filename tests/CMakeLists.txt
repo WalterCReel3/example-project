@@ -13,6 +13,7 @@
 wreel_add_test(test_file    LIBS wreel::util wreel::posix)
 wreel_add_test(test_json    LIBS wreel::util)
 wreel_add_test(test_string  LIBS wreel::util)
+wreel_add_test(test_audio   LIBS wreel::audio)
 
 # --- Priority queue ----------------------------------------------------------
 #

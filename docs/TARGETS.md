@@ -147,6 +147,97 @@ and `glTranslatef` directly. Decoupling model data from GPU buffers is part of
 the `gles2` work; the configure step disables the demo automatically rather than
 failing.
 
+## Audio
+
+Audio is a **base requirement**: `wreel::audio` is built unconditionally on every
+target, and there is no option to disable it. What varies is the codec set and the
+mixer profile.
+
+### The cost model, which is easy to get backwards
+
+Two independent things, often conflated:
+
+| | Controlled by | Costs |
+|---|---|---|
+| **Codec set** | `WREEL_AUDIO_CODECS` | **binary size only** |
+| **Mixer profile** | `WREEL_AUDIO_RATE` / `_BUFFER` / `_CHANNELS` / `_VOICES` | **per-frame CPU** |
+
+SDL2_mixer picks a decoder from the file's contents at load time, so a decoder
+that never sees a matching file never executes. A FLAC-capable build does not slow
+down a game that only plays WAV. Per-frame cost comes from mixing work — rate,
+channel count, voice count — which happens in every audio callback regardless of
+what is playing.
+
+Measured, `wreel-probe` Release on x86_64:
+
+| Tier | Binary | `libSDL2_mixer.a` | Adds |
+|---|---|---|---|
+| `minimal` | 2.95 MB | 208 KB | — |
+| `standard` | 3.05 MB | 319 KB | Ogg Vorbis |
+| `full` | 3.23 MB | 552 KB | + MP3, FLAC |
+
+**`full` costs ~282 KB over `minimal` and zero per-frame CPU.** On a 128 MB device
+that is negligible, which is why a FLAC/MP3-capable audio-player build is
+essentially free — it is one flag, not a fork.
+
+### Codec tiers
+
+Every decoder here is header-only or vendored, so **no tier adds an external
+dependency**: `stb_vorbis`, `minimp3`, `dr_flac`, and libxmp which SDL2_mixer
+vendors itself.
+
+| Tier | Formats | Default for |
+|---|---|---|
+| `minimal` | WAV, MOD/XM/IT/S3M | — |
+| `standard` | + Ogg Vorbis | handheld targets |
+| `full` | + MP3, FLAC | desktop, Steam |
+
+```sh
+# A FLAC-capable player build for a handheld:
+cmake --preset miyoomini -DWREEL_AUDIO_CODECS=full
+```
+
+**Deliberately excluded:** Opus and WavPack (need libogg and friends — real
+external dependencies), GME, and MIDI. Ask `audio::compiled_codecs()` at runtime
+rather than assuming; `wreel-probe` prints it.
+
+> **`SDL2MIXER_MIDI` is not the project's MIDI goal.** It means *playing* MIDI
+> files through a synthesiser — FluidSynth or Timidity, plus a soundfont of tens
+> of megabytes. The secondary goal is MIDI *input* from a hardware controller via
+> RtMidi, a different subsystem entirely. `SDL2MIXER_MIDI` is `OFF`.
+
+### Mixer profile
+
+| | Desktop / Steam | Handhelds |
+|---|---|---|
+| Sample rate | 44100 Hz | 22050 Hz |
+| Buffer | 1024 samples (~23 ms) | 2048 samples (~93 ms) |
+| Channels | 2 | 2 |
+| Voices | 16 | 8 |
+
+22050 Hz halves mixing work and is ample for tracker music. Smaller buffers
+underrun on two Cortex-A7 cores that are also software-rasterising.
+
+### Prefer tracker formats for music
+
+On handhelds, `.mod` / `.xm` / `.it` / `.s3m` are the right default: a song is
+tens of kilobytes rather than megabytes, and playback is sample mixing rather than
+transform decoding.
+
+One caveat worth recording, because it is a natural assumption. libxmp can report
+tracker row/pattern/tick, which would give sample-accurate visual sync — but
+**SDL2_mixer does not expose it.** `Mix_GetMusicPosition()` returns seconds only.
+Row-level sync would mean driving libxmp directly and bypassing the mixer, noted
+as an option in
+[planning/2026-07-25-midi-live-visuals](../planning/2026-07-25-midi-live-visuals/).
+
+### No device is not an error
+
+Some handheld firmwares expose no audio output at all. `audio::Device` reports
+`available() == false` and `Sound`/`Music` become no-ops rather than throwing, so
+a game stays playable in silence instead of refusing to start. A program that
+constructs no `Device` never initialises the audio subsystem and pays nothing.
+
 ## Pinned dependencies
 
 Fetched and built from source per target, so every target gets identical
@@ -157,6 +248,7 @@ library versions. Tags verified upstream.
 | SDL2 | `release-2.32.10` | SDL2, not SDL3 — SDL2 is what every handheld firmware ships. Static (`SDL2::SDL2-static`) |
 | SDL2_image | `release-2.8.12` | **not** vendored — decodes PNG/JPEG via bundled `stb_image`, so needs no libpng/libjpeg anywhere |
 | SDL2_ttf | `release-2.24.0` | vendored FreeType on **every** target; HarfBuzz off |
+| SDL2_mixer | `release-2.8.2` | codec set per `WREEL_AUDIO_CODECS`; vendored libxmp, no external deps |
 | nlohmann/json | `v3.12.0` | JSON config and data; replaces RapidJSON |
 | doctest | `v2.5.3` | test framework; single header, no per-target build |
 

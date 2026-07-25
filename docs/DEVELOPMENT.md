@@ -3,10 +3,9 @@
 Setting up a Debian-based machine to build for desktop, Steam on Linux, and
 Linux retro handhelds.
 
-Everything in the "Host setup" section works today. Sections marked
-**⏳ not yet wired** describe the intended interface for build machinery that is
-still landing — see [Status](#status) at the bottom for exactly where the line
-is.
+See [Status](#status) at the bottom for exactly which targets have been built and
+run, and which have not. That distinction is maintained deliberately — treat
+anything not listed as verified with suspicion.
 
 **Assumed audience:** Debian 12 (bookworm) or a derivative. Ubuntu 22.04+,
 Linux Mint 21+, and Pop!_OS 22.04+ use identical package names. Package names
@@ -174,11 +173,13 @@ into a single `include/<module>/` tree.
 
 ```
 include/            public headers, one directory per module
-  gfx/  loaders/  math/  posix/  util/
+  audio/  gfx/  loaders/  math/  posix/  util/
 posix/              libposix   — errno → typed C++ exceptions
 util/               libutil    — file I/O, logging, string/tokenizing
   posix/  mswin/      compile-time platform backends (pimpl, not virtual)
+audio/              libaudio   — sound effects and music (SDL2_mixer)
 gfx/                libgfx     — SDL2 + rendering
+  software/           the GPU-less backend
 loaders/            libloaders — OBJ, image, texture atlas
 skratch/            demo application
 probe/              wreel-probe — device capability diagnostic
@@ -241,6 +242,23 @@ building the same dependencies for several targets.
 | `WREEL_BUILD_PROBE` | `ON` | build `wreel-probe` |
 | `WREEL_WERROR` | `OFF` | treat warnings as errors. Off because the 2016 sources do not survive `-Wall -Wextra` yet; flips to `ON` with the C++17 cleanup |
 | `WREEL_STATIC_CXX` | `OFF` | static-link libstdc++/libgcc. Forced `ON` by every device toolchain |
+| `WREEL_AUDIO_CODECS` | per-target | `minimal` \| `standard` \| `full`. Affects **binary size only** — see below |
+| `WREEL_AUDIO_RATE` | 44100 / 22050 | mixer sample rate. Affects **per-frame CPU** |
+| `WREEL_AUDIO_BUFFER` | 1024 / 2048 | mixer buffer in samples |
+| `WREEL_AUDIO_CHANNELS` | `2` | 1 mono, 2 stereo |
+| `WREEL_AUDIO_VOICES` | 16 / 8 | simultaneous sound effect voices |
+
+Audio is a base requirement — `wreel::audio` always builds. The codec tier and the
+mixer profile are independent knobs and cost different things: extra codecs cost
+bytes on disk (`full` is ~282 KB over `minimal`), while the mixer profile costs
+cycles every callback. So a FLAC-capable audio player on a handheld is one flag,
+not a tradeoff:
+
+```sh
+cmake --preset miyoomini -DWREEL_AUDIO_CODECS=full
+```
+
+Full reasoning in [TARGETS.md § Audio](TARGETS.md#audio).
 
 Configuring prints a summary of all of these, so you can confirm what you got:
 
@@ -406,8 +424,9 @@ Two inherited quirks these files intentionally settle:
 | Modern CMake build | **verified** on system CMake 3.25 |
 | `CMakePresets.json` | **verified** — 7 presets enumerate and configure |
 | `software` graphics backend | **verified** — builds on x86_64, aarch64 |
-| `wreel-probe` | **verified** — runs on x86_64 and as an aarch64 binary under qemu |
-| doctest suite | **verified** — 28 cases, 71 assertions, passing natively and cross |
+| `audio` module | **verified** — opens on pulseaudio and dummy; 3 codec tiers build |
+| `wreel-probe` | **verified** — runs on x86_64 and as an aarch64 binary under qemu; reports audio |
+| doctest suite | **verified** — 36 cases, 99 assertions, passing natively and cross |
 | `rk3326` / `h700` toolchains | **verified** — cross-build plus `ctest` under qemu |
 | `gl_legacy` backend | **blocked** — needs `libglew-dev`, see below |
 | `miyoomini` toolchain | error paths verified; real build needs the container |
@@ -423,9 +442,9 @@ On Debian 12 / GCC 12.2 / CMake 3.25 / clang-format 14, after a full
 
 | Check | Result |
 |---|---|
-| `desktop-software` cold configure → build → test | pass, 3/3, zero errors |
-| `rk3326` cross-build → `ctest` under qemu | pass, 3/3, 415 targets |
-| `h700` cross-build → `ctest` under qemu | pass, 3/3, `-mcpu=cortex-a53` confirmed |
+| `desktop-software` cold configure → build → test | pass, 4/4, zero errors |
+| `rk3326` cross-build → `ctest` under qemu | pass, 4/4 |
+| `h700` cross-build → `ctest` under qemu | pass, 4/4, `-mcpu=cortex-a53` confirmed |
 | `wreel-probe` as an aarch64 binary under qemu | runs, reports correctly |
 | `shellcheck scripts/bootstrap-debian.sh` | clean |
 | `clang-format --dump-config` | parses; authored files conform |

@@ -19,6 +19,7 @@ wreel_set_target_defaults(wreel-probe)
 target_link_libraries(wreel-probe PRIVATE
     wreel::util
     wreel::posix
+    wreel::audio
     ${WREEL_SDL2_TARGET})
 
 target_compile_definitions(wreel-probe PRIVATE

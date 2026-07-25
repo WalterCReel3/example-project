@@ -12,6 +12,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <vector>
+
+#include <audio/device.hpp>
 
 #if defined(WREEL_PROBE_GL)
 #include <SDL_opengl.h>
@@ -166,6 +169,49 @@ void report_input()
     }
 }
 
+// Whether audio actually opens is a real per-device unknown: some handheld
+// firmwares expose no audio device at all, and those that do often substitute a
+// different rate or channel count than requested. Report what was granted.
+void report_audio()
+{
+    heading("Audio");
+
+    std::string codecs;
+    for (const std::string& codec : audio::compiled_codecs()) {
+        if (!codecs.empty()) {
+            codecs += ", ";
+        }
+        codecs += codec;
+    }
+    field("codecs compiled", codecs);
+    field("codec tier", WREEL_AUDIO_CODEC_TIER);
+
+    const audio::Spec requested;
+    field("requested", std::to_string(requested.frequency) + " Hz, " +
+                           std::to_string(requested.channels) + " ch, " +
+                           std::to_string(requested.buffer) + " buf, " +
+                           std::to_string(requested.voices) + " voices");
+
+    // Constructing a Device opens the mixer; it reports unavailable rather than
+    // throwing when there is no hardware.
+    const audio::Device device;
+    if (!device.available()) {
+        field("device", "UNAVAILABLE — this device has no usable audio output");
+        return;
+    }
+
+    const audio::Spec& got = device.actual();
+    field("granted", std::to_string(got.frequency) + " Hz, " +
+                         std::to_string(got.channels) + " ch, " +
+                         std::to_string(got.voices) + " voices");
+    field("driver", device.driver_name());
+
+    if (got.frequency != requested.frequency ||
+        got.channels != requested.channels) {
+        field("note", "device substituted a different format");
+    }
+}
+
 // A GL context is only attempted where SDL was built with GL support. On
 // GPU-less targets this whole function is compiled out.
 void report_gl()
@@ -252,6 +298,7 @@ int main(int, char**)
     report_renderers();
     report_displays();
     report_input();
+    report_audio();
     report_gl();
 
     std::printf("\n");
