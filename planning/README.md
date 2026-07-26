@@ -34,7 +34,8 @@ Each `README.md` opens with one of:
 | Topic | Status | Summary |
 |---|---|---|
 | [2026-07-25-cxx17-modernization](2026-07-25-cxx17-modernization/) | `in-progress` | Remove removed-in-C++17 constructs, fix the defects they hide, then turn on `-Werror`. Warning load measured; character-classification approach decided |
-| [2026-07-25-graphics-backends](2026-07-25-graphics-backends/) | `snapshot` | `gles2` and `gl33` backends; retire `gl_legacy`. Shrunk by the 2D-only decision |
+| [2026-07-25-graphics-backends](2026-07-25-graphics-backends/) | `superseded` | `gles2` and `gl33` backends; retire `gl_legacy`. Replaced by the two-renderer snapshot below |
+| [2026-07-26-gfx-renderer-and-gles2](2026-07-26-gfx-renderer-and-gles2/) | `in-progress` | `gfx::renderer` (SDL_Renderer) everywhere, accelerated on Mali; `gfx::gles2` for shaders and 3D; `skratch` becomes the modern-GL reference |
 | [2026-07-25-software-2d-sprites-tiling](2026-07-25-software-2d-sprites-tiling/) | `in-progress` | Where the handheld work goes: textures, atlases, TMX tilemaps, a minimal entity store. XML dependency landed; `Texture` is next |
 | [2026-07-25-software-3d-rasteriser](2026-07-25-software-3d-rasteriser/) | `snapshot` | Deliberately not scheduled. Records what a CPU rasteriser would cost, and the cheaper alternatives |
 | [2026-07-25-target-validation](2026-07-25-target-validation/) | `in-progress` | Prove the cross and Steam presets on real toolchains and hardware. Steps 1–2 done; the device toolchain, containers and hardware remain |
@@ -61,8 +62,12 @@ The rest:
   the device. It is also the only way to answer the fill-rate question that
   `software-2d-sprites-tiling` lists as its main risk, which makes the two worth
   interleaving rather than sequencing.
-- **`graphics-backends`** is now about `gles2` for the Mali handhelds and retiring
-  `gl_legacy`. Neither blocks the 2D work.
+- **`gfx-renderer-and-gles2`** replaced `graphics-backends` on 2026-07-26. Its
+  first stage is a correctness fix rather than a feature: `rk3326` and `h700` are
+  currently compiled as though they had no GPU (D18), so the Mali devices get
+  accelerated 2D from code that already exists. `gles2` after that, for shaders
+  and for `skratch` as the modern-GL reference. Neither stage blocks the 2D work,
+  but stage 1 changes which driver the 2D work runs on.
 - **`software-3d-rasteriser`** is deliberately unscheduled; it exists to record
   what was decided and what it would cost.
 

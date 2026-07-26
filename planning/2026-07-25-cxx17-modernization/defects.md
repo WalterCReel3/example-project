@@ -585,6 +585,53 @@ malformed and absent both mean "fallback". Asserted in `tests/test_xml.cc`.
 
 ---
 
+## D18 — both Mali handhelds are built as though they had no GPU
+
+**WRONG.** `cmake/toolchains/aarch64-handheld.cmake:29`
+
+```cmake
+# Mali GPUs: GLES 2.0 / 3.x is available. The gles2 backend is not written yet,
+# so these presets currently build with the software backend; the flag records
+# device capability, not backend readiness.
+set(WREEL_TARGET_HAS_GPU OFF)
+```
+
+The comment states the intent precisely and the code does the opposite: the flag
+is set from backend readiness, which is the one thing it says it does not record.
+
+It matters because `WREEL_TARGET_HAS_GPU` is not confined to backend selection.
+[`cmake/Dependencies.cmake`](../../cmake/Dependencies.cmake) consumes it to decide
+whether SDL2 is built with GL, GLES and EGL at all, so a flag meant to say "which
+of our backends is ready" silently configures the *dependency*. Read out of each
+preset's generated `SDL_config.h` on 2026-07-26:
+
+| Preset | `OPENGL` | `OPENGL_ES2` | `OPENGL_EGL` | `RENDER_OGL_ES2` |
+|---|---|---|---|---|
+| `desktop-software` | off | off | off | off |
+| `desktop-debug` | on | on | on | on |
+| `rk3326` | off | off | off | off |
+| `h700` | off | off | off | off |
+| `miyoomini` | off | off | off | off |
+
+`miyoomini` and `desktop-software` are correct. `rk3326` and `h700` are not: SDL's
+`GLES2_RenderDriver` is compiled out, so even the accelerated 2D path that needs
+no code of ours is unavailable on both Mali devices. The build succeeds and
+produces a CPU-blitting binary for hardware with a GPU, with no diagnostic.
+
+Invisible because nothing has run on the devices and because the software driver
+is a correct fallback — the failure mode is a performance one, on the targets
+whose fill rate is already the main risk in
+[software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/).
+
+**Fix:** set the flag from device capability, per its own comment, and gate
+backend *readiness* separately —
+[2026-07-26-gfx-renderer-and-gles2](../2026-07-26-gfx-renderer-and-gles2/)
+decision 1. Note that the flag alone is not enough: Debian's aarch64 cross sysroot
+carries no `GLES2/gl2.h` or `EGL/egl.h`, so SDL's configure will still disable
+them until `libgles-dev:arm64` and `libegl-dev:arm64` are installed.
+
+---
+
 ## Already fixed
 
 | | Where | What |
