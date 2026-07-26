@@ -52,24 +52,32 @@ consumer of the JSON config work — a mapping file per controller, with comment
 which is exactly what `ignore_comments` was kept for.
 
 **Effects.** The actual old-school demo material: plasma, tunnel, rotozoom,
-copper bars, starfield, feedback. On desktop these are shader-friendly, which
-argues for building this *after* `gles2` exists — but plasma and rotozoom are
-famously CPU-plotted effects, and the `software` backend can already do direct
-pixel work. Starting there costs nothing and needs no new renderer.
+copper bars, starfield, feedback. Both routes are open now, which they were not
+when this was written.
 
-## Why this might come before `gles2`
+## Both renderers are available — pick per effect
 
-The software backend can carry a real plasma or rotozoom today. Building one or
-two CPU effects first would:
+> **Rewritten 2026-07-26.** This section used to ask whether the MIDI work should
+> come *before* a `gles2` backend, and argued for CPU effects on the software
+> backend because no shader pipeline existed. That question is closed:
+> [gfx::gles2](../2026-07-26-gfx-renderer-and-gles2/) is implemented, `skratch`
+> renders through it, and `gfx::software` is now `gfx::renderer`.
 
-- exercise `gfx::software::Context` under sustained per-frame load, which nothing
-  currently does
-- surface whatever the software backend is missing (direct framebuffer access,
-  double buffering, timing) while the API is still cheap to change
-- produce something demoable without waiting on hardware or a shader pipeline
+So the choice is per effect rather than per project:
 
-That is a stronger argument than it first looks. The software backend is currently
-unexercised beyond a headless smoke test.
+- **`gfx::gles2`** — a fragment shader is the natural home for plasma, tunnel and
+  feedback, and `Program` reports compile errors with the driver's info log, so
+  iterating on shader source is not a guessing game. Desktop and both Mali
+  handhelds; never the Miyoo Mini.
+- **`gfx::renderer`** — still the right answer for anything wanting direct pixel
+  access, via `SDL_LockTexture`, and the only option on the Miyoo Mini. Note that
+  `renderer::Context` has no locked-pixels view yet; that is the open design
+  question in
+  [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/).
+
+What has *not* changed: neither renderer has been exercised under sustained
+per-frame load by anything except `skratch`, and nothing has run on a device. An
+effect running at a real frame rate would be the first evidence either way.
 
 ## Tasks
 
@@ -79,7 +87,8 @@ unexercised beyond a headless smoke test.
       hardware required
 - [ ] Parameter table with CC binding and smoothing
 - [ ] JSON mapping file per controller, loaded through the `util::json` facade
-- [ ] One CPU effect on the software backend (plasma or rotozoom)
+- [ ] One effect end to end — a fragment shader through `gfx::gles2`, or a
+      CPU-plotted one through `gfx::renderer` if the Miyoo Mini is a target for it
 - [ ] Frame timing: the demo loop currently `SDL_Delay(10)`s unconditionally,
       which is neither a frame cap nor vsync
 - [ ] A `visuals/` executable, separate from `skratch`
@@ -96,6 +105,7 @@ unexercised beyond a headless smoke test.
 
 ## References
 
-- `include/gfx/software/context.hpp` — what is available to draw with today
+- `include/gfx/renderer/context.hpp` and `include/gfx/gles2/` — what is available
+  to draw with today
 - [docs/TARGETS.md](../../docs/TARGETS.md)
 - `scripts/bootstrap-debian.sh --midi`

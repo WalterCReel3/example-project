@@ -50,12 +50,13 @@ authoritative record — this list is kept for the reasoning, not the checklist.
 | `steam` | needs the sniper container | glibc targeting, static libstdc++ |
 | `docker/miyoomini.Dockerfile` | needs Docker + upstream base image | CMake/Ninja layering |
 | any real hardware | needs a device | display path, SDL video driver, gamepad enumeration |
+| Mali GLES2 on `rk3326` / `h700` | needs a device | **new since 2026-07-26.** Both now request an accelerated render driver and can build `gfx::gles2`. If a firmware's vendor blobs do not expose a working GLES2 context, `gfx::renderer` degrades to software and the game still runs — that is what `PreferAccelerated` is for — but `gfx::gles2` cannot, and would throw at context creation |
 
 Resolved since this was written:
 
 | Preset | Was | Now |
 |---|---|---|
-| `desktop-debug` / `-release` | "**highest** risk — `find_package(GLEW)` never ran" | **verified.** Builds, links, 4/4. The 2016 GL sources compile clean under C++17/GCC 12.2 |
+| `desktop-debug` / `-release` | "**highest** risk — `find_package(GLEW)` never ran" | **moot.** GLEW and GLU are gone with the 2016 backend; nothing links a GL library at all now. The preset builds, links and renders |
 | `rk3326` / `h700` | "needs `crossbuild-essential-arm64`" | **verified.** Cross-build plus qemu `ctest`; `WREEL_TEST_EMULATOR` wiring confirmed |
 | `miyoomini` (compile-check) | "needs the toolchain container" | **verified** in armv7 compile-check mode under qemu-arm |
 
@@ -118,6 +119,26 @@ bite:
 - `std::filesystem` — nothing uses it yet, but `wreel_options` links `stdc++fs`
   on GCC < 10, and that link should be confirmed to resolve
 
+Added since this was written, and all of it unverified on GCC 8.3 — the list has
+grown considerably, which is the argument for doing this step sooner rather than
+later:
+
+- **`std::from_chars` for integers**, which `util::from_string` depends on. The
+  C++17 library gap table in docs/TARGETS.md says GCC 8 has the integer overload
+  and not the floating-point one, and the whole traits-dispatch design in
+  `include/util/number.hpp` rests on that being true
+- **`inline constexpr` callable objects** — `util/ascii.hpp`'s thirteen predicates,
+  and `std::not_fn`, both documented as GCC 7+ and neither actually compiled by 8.3
+  here
+- **pugixml v1.16 and glm 1.0.3**, two dependencies added after this list
+- **`decltype(&::glFoo)` over SDL's bundled Khronos headers**, which is how
+  `gfx/gles2/api.hpp` declares its entry points. It is plain C++11 and should be
+  fine, but it is unusual enough to be worth confirming rather than assuming — and
+  `WREEL_ENABLE_GLES2` is off for this target anyway, so a failure here would only
+  show up on the aarch64 device SDKs
+- **`if constexpr`** in `util/number.hpp`'s floating-point path and `-Os` codegen
+  across all of it
+
 ### 4. On-device
 
 Copy `wreel-probe` to a Miyoo Mini and run it over SSH or from the firmware's
@@ -130,6 +151,24 @@ file manager. Its output answers questions that are currently assumptions:
 - real display mode and refresh rate
 - what the gamepad enumerates as, which `skratch/input.cc`'s hard-coded Xbox 360
   axis mapping certainly gets wrong
+
+Two tools exist specifically to make this a command rather than a judgement, both
+added 2026-07-26:
+
+- **`wreel-probe` reports GLES** as well as GL. It attempts an ES 2.0 request and a
+  default request separately and prints version, vendor, renderer, GLSL version and
+  max texture size for each. On an aarch64 handheld this is the answer to "do the
+  vendor blobs work". It had been compiled *out* on `rk3326` and `h700` until the
+  `find_package(OpenGL)` requirement was removed — the two targets it matters most
+  for could not produce a report at all.
+- **`skratch --screenshot <path.bmp>`** renders two frames, writes a BMP and exits.
+  Nobody can watch a handheld's panel over SSH, and there is no headless GL to test
+  against, so this is the only way to confirm the renderer draws on a device. It
+  needs `gfx::gles2`, so it applies to the two Mali targets and not the Miyoo Mini.
+
+For the Miyoo Mini the equivalent check is still missing: `gfx::renderer` has no
+screenshot path, because `SDL_Renderer` needs `SDL_RenderReadPixels` rather than
+`glReadPixels`. Worth adding when the fill-rate measurement below is taken.
 
 ### 5. Steam Runtime
 
@@ -157,6 +196,11 @@ glibc symbol versioning, which `objdump -T | grep GLIBC_` can confirm directly.
   `WREEL_USE_SYSTEM_SDL2=ON` mandatory there? This is the largest single unknown
   in the project, and it decides whether the hermetic-FetchContent approach holds
   for the hardest target or needs a documented exception.
+- **What is the software driver's fill rate at 320×240 on two Cortex-A7 cores?**
+  This is the one measurement
+  [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/) calls its
+  main risk, and it is the reason that snapshot says to measure before building a
+  tilemap on the assumption that per-tile blitting is viable.
 - Should CI be added now? A GitHub Actions matrix over `desktop-software`,
   `desktop-debug` and the two aarch64 compile-checks would catch regressions
   cheaply. The container-based targets are harder and can come later.
