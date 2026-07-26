@@ -33,9 +33,9 @@ Each `README.md` opens with one of:
 
 | Topic | Status | Summary |
 |---|---|---|
-| [2026-07-25-cxx17-modernization](2026-07-25-cxx17-modernization/) | `in-progress` | Remove removed-in-C++17 constructs, fix the defects they hide, then turn on `-Werror`. Warning load measured; character-classification approach decided |
+| [2026-07-25-cxx17-modernization](2026-07-25-cxx17-modernization/) | `done` | Removed the removed-in-C++17 constructs and the defects they hid. **167 warnings to zero**, `-Werror` on since 2026-07-26. Kept for the defect inventory |
 | [2026-07-25-graphics-backends](2026-07-25-graphics-backends/) | `superseded` | `gles2` and `gl33` backends; retire `gl_legacy`. Replaced by the two-renderer snapshot below |
-| [2026-07-26-gfx-renderer-and-gles2](2026-07-26-gfx-renderer-and-gles2/) | `in-progress` | `gfx::renderer` (SDL_Renderer) everywhere, accelerated on Mali; `gfx::gles2` for shaders and 3D; `skratch` becomes the modern-GL reference |
+| [2026-07-26-gfx-renderer-and-gles2](2026-07-26-gfx-renderer-and-gles2/) | `done` | `gfx::renderer` everywhere, accelerated on Mali; `gfx::gles2` for shaders and 3D; `skratch` ported onto it as the modern-GL reference; 2016 backend deleted and `WREEL_WERROR` on |
 | [2026-07-25-software-2d-sprites-tiling](2026-07-25-software-2d-sprites-tiling/) | `in-progress` | Where the handheld work goes: textures, atlases, TMX tilemaps, a minimal entity store. XML dependency landed; `Texture` is next |
 | [2026-07-25-software-3d-rasteriser](2026-07-25-software-3d-rasteriser/) | `snapshot` | Deliberately not scheduled. Records what a CPU rasteriser would cost, and the cheaper alternatives |
 | [2026-07-25-target-validation](2026-07-25-target-validation/) | `in-progress` | Prove the cross and Steam presets on real toolchains and hardware. Steps 1–2 done; the device toolchain, containers and hardware remain |
@@ -44,34 +44,36 @@ Each `README.md` opens with one of:
 
 ## Ordering
 
-Revised 2026-07-25, after the software backend was settled as 2D only.
+Revised 2026-07-26, after the renderer rework landed.
 
-`cxx17-modernization` has done its job as an unblocker: `util/string.hpp` and the
-logger are dealt with, and `desktop-software` builds warning-free. What remains in
-it is confined to files `graphics-backends` deletes, so it no longer gates
-anything.
+Two snapshots closed. `cxx17-modernization` finished the job it existed for: the
+removed-in-C++17 constructs are gone, the defects they hid are fixed or withdrawn,
+and the tree is at **zero warnings on all five configured presets** with
+`WREEL_WERROR=ON`. `gfx-renderer-and-gles2` replaced `graphics-backends` and
+delivered both renderers, deleting the 2016 backend — which is what cleared the last
+30 warnings, since they were all in code it removed.
 
-**`software-2d-sprites-tiling` is the main line now.** It depends on nothing, it
-is where a handheld game actually comes from, and the software backend cannot
-currently draw a sprite at all.
+**`software-2d-sprites-tiling` is the main line, and it now has two prerequisites
+met that it did not before:** `util::xml` reads Sparrow and TMX, and its rendering
+target is hardware accelerated on the Mali handhelds rather than CPU-blitting. What
+it still needs is the thing it always needed — `gfx::renderer::Texture` and a
+source-rect blit, because the renderer cannot draw a sprite from an atlas yet.
 
 The rest:
 
-- **`target-validation`** remains a prerequisite for `packaging-distribution` —
-  there is no point defining a bundle layout for a binary that has never run on
-  the device. It is also the only way to answer the fill-rate question that
-  `software-2d-sprites-tiling` lists as its main risk, which makes the two worth
-  interleaving rather than sequencing.
-- **`gfx-renderer-and-gles2`** replaced `graphics-backends` on 2026-07-26. Its
-  first stage is a correctness fix rather than a feature: `rk3326` and `h700` are
-  currently compiled as though they had no GPU (D18), so the Mali devices get
-  accelerated 2D from code that already exists. `gles2` after that, for shaders
-  and for `skratch` as the modern-GL reference. Neither stage blocks the 2D work,
-  but stage 1 changes which driver the 2D work runs on.
+- **`target-validation`** is now the binding constraint on almost everything. Six
+  snapshots' worth of work has been verified by compiling and by tests, and **no
+  part of this project has run on a device**. It remains a prerequisite for
+  `packaging-distribution`, it owns the fill-rate question that
+  `software-2d-sprites-tiling` calls its main risk, and it is the only way to find
+  out whether the Mali blobs expose the GLES2 context `gfx::gles2` now assumes.
+  `skratch --screenshot` and `wreel-probe` exist to make that check a command
+  rather than a judgement.
 - **`software-3d-rasteriser`** is deliberately unscheduled; it exists to record
-  what was decided and what it would cost.
+  what was decided and what it would cost. Note that `gfx::gles2` gives the two
+  Mali devices real 3D, so the only target it would ever serve is the Miyoo Mini.
 
-`midi-live-visuals` is still the one to reach for when other work stalls — it is
-desktop-only and depends on nothing. It shares the frame-timing task with
-`software-2d-sprites-tiling`, and its CPU effects want direct pixel access, which
-is an open design question in that snapshot.
+`midi-live-visuals` is the one to reach for when other work stalls — desktop-only,
+depends on nothing, and its shader-based effects are now possible rather than
+hypothetical. It shares the frame-timing task with `software-2d-sprites-tiling`;
+`skratch`'s loop still `SDL_Delay(10)`s unconditionally.

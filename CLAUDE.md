@@ -313,12 +313,17 @@ Inventory with severity in
 [planning/2026-07-25-cxx17-modernization/defects.md](planning/2026-07-25-cxx17-modernization/defects.md).
 The ones most likely to surprise you:
 
-- `math::Vector3::operator+` **mutates its left operand** and returns a reference.
-- `skratch/application.cc` calls fixed-function GL directly, so the demo needs
-  `WREEL_ENABLE_GL_LEGACY` until it is ported. `gfx::ObjModel` holds `GLuint`
-  handles, which is why `loaders/obj.cc` is gated the same way.
 - Assets are opened by **relative path**, so anything that changes the working
-  directory breaks the demo.
+  directory breaks the demo. `SDL_GetBasePath()` is the fix and it is not done yet;
+  `skratch`'s *log* already moved to `SDL_GetPrefPath()`.
+- `util/string.hpp` still has `using namespace std;` inside `namespace util` (D5),
+  which is why the rest of that header qualifies everything explicitly.
+
+Two long-standing ones are gone rather than fixed, both by deletion in the renderer
+rework: `math::Vector3::operator+` mutating its left operand (D7 — glm replaced the
+header), and `skratch` calling fixed-function GL directly (it renders through
+`gfx::gles2` now, and `gfx::ObjModel` with its `GLuint` handles went with the 2016
+backend).
 
 Tests exist for the tokenizers specifically so this code can be changed safely:
 `tests/test_string.cc`, 21 cases pinning current behaviour including the

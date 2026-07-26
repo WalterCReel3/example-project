@@ -71,6 +71,19 @@ public:
     void clear(float r, float g, float b);
     void present();
 
+    // Writes the current back buffer to a BMP. Returns false and logs on
+    // failure.
+    //
+    // This is the only way to find out whether this renderer actually draws
+    // anything: there is no headless GL, so gfx::gles2 has no unit tests, and
+    // "the process did not crash" is not evidence that geometry appeared. It is
+    // also how a handheld can be checked over SSH, where nobody is looking at
+    // the panel — see planning/2026-07-25-target-validation/ step 4.
+    //
+    // Call it after drawing and before present(): the back buffer is undefined
+    // after a swap.
+    bool save_screenshot(const std::string& path) const;
+
 private:
     SDL_Window* _window;
     SDL_GLContext _gl;

@@ -155,9 +155,10 @@ Consequences:
 - `gfx::renderer` with its software driver is not a fallback here, it is the
   **only** thing that runs, so it has to be good enough to be the baseline
   everywhere. `WREEL_ENABLE_GLES2` is rejected outright on this target.
-- The 2016 [gfx/](../gfx/) code — `glBegin`/`glEnd`, `glMatrixMode`,
-  `gluPerspective`, GLEW — cannot compile for this target at all. It is gated
-  behind the desktop-only `WREEL_ENABLE_GL_LEGACY`.
+- `WREEL_ENABLE_GLES2` is **rejected** here rather than silently downgraded, and
+  `WREEL_BUILD_DEMOS` turns itself off because `skratch` needs that renderer. The
+  2016 fixed-function code that could never compile for this target is gone
+  entirely.
 - RAM is **128 MB total**, shared with the OS. Asset budgets are tight and
   unbounded caches are not an option.
 
@@ -173,8 +174,7 @@ a build compiles both and each executable chooses. Full reasoning in
 | Renderer | Built | API | Draws | Status |
 |---|---|---|---|---|
 | `gfx::renderer` | **always** | `SDL_Renderer` | textures, atlases, tilemaps, text — the game | **implemented** — the baseline |
-| `gfx::gles2` | `WREEL_ENABLE_GLES2` | GLES 2.0 context we own | anything a shader can express; 3D | **not written yet** |
-| `gl_legacy` | `WREEL_ENABLE_GL_LEGACY` | fixed-function GL + GLU + GLEW | the 2016 demo | **being retired**, once `skratch` is ported |
+| `gfx::gles2` | `WREEL_ENABLE_GLES2` | GLES 2.0 context we own | anything a shader can express; 3D | **implemented**, and `skratch` renders through it. Never run on a device |
 | `gl33` | — | GL 3.3 core | — | only if Steam needs something `gles2` cannot give |
 
 A window is driven by one renderer or the other. `SDL_Renderer` owns its window's
@@ -208,30 +208,34 @@ built with GL/GLES/EGL at all, so using it to record which *renderer* is ready
 silently disables the accelerated driver — which is exactly what had happened to
 `rk3326` and `h700` (D18). Renderer readiness is `WREEL_ENABLE_GLES2`.
 
-`gl_legacy` cannot be ported forward: GL 3.3 core removed the entire
-fixed-function pipeline it is built on. The `gl33` backend is a rewrite, not a
-migration.
+**The 2016 backend was not ported forward, and could not have been.** GL 3.3 core
+removed the entire fixed-function pipeline it was built on, so `skratch` was
+rewritten against `gfx::gles2` rather than migrated: explicit matrices instead of
+`glRotatef` on a driver-side stack, `glm::perspective` instead of `gluPerspective`,
+shaders instead of immediate-mode state. It is kept deliberately as the worked
+example of that difference. A `gl33` renderer, if Steam ever needs something
+`gles2` cannot give, would be a rewrite for the same reason.
 
 ### What actually gets built
 
 The gates are in [gfx/CMakeLists.txt](../gfx/CMakeLists.txt), and they reach
 further than `gfx` itself:
 
-| | always | `+ WREEL_ENABLE_GL_LEGACY` |
+| | always | `+ WREEL_ENABLE_GLES2` |
 |---|---|---|
-| `gfx` | `spritesheet.cc` + `renderer/` | plus the 2016 GL sources |
-| `loaders` | `image.cc`, `sparrow.cc` | plus `obj.cc` |
+| `gfx` | `spritesheet.cc`, `system.cc`, `renderer/` | plus `gles2/` |
+| `loaders` | `image.cc`, `obj.cc`, `sparrow.cc` | — |
 | `skratch` demo | **not built** | built |
 | `wreel-probe` | built | built |
 | tests | built | built |
 
-`loaders/obj.cc` is gated because it populates `gfx::ObjModel`, which holds
-`GLuint` buffer handles and is therefore inherently OpenGL — a text parser that
-transitively includes `SDL_opengl.h`. `skratch` is gated because
-[skratch/application.cc](../skratch/application.cc) calls `glClear`, `glRotatef`
-and `glTranslatef` directly. Splitting model data from GPU residency is stage 2 of
-the renderer snapshot, after which `obj.cc` builds everywhere; the configure step
-disables the demo automatically rather than failing.
+Nothing in `loaders` is gated any more. `obj.cc` used to be, because it filled a
+`gfx::ObjModel` holding `GLuint` buffer handles — a text parser that transitively
+included `SDL_opengl.h`. It produces `gfx::Mesh` now, so it builds and is tested on
+every target including the GPU-less one.
+
+`skratch` needs `gfx::gles2`, so the configure step disables the demo on a target
+without a GPU rather than failing.
 
 ## Audio
 

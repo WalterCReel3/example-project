@@ -21,10 +21,9 @@
       "name": "desktop-debug",
       "inherits": "base",
       "displayName": "Desktop (Debug)",
-      "description": "Native build. gfx::renderer plus the legacy GL backend, so the skratch demo builds. Day-to-day development.",
+      "description": "Native build. gfx::renderer plus gfx::gles2, so the skratch demo builds. Day-to-day development.",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "WREEL_ENABLE_GL_LEGACY": "ON"
+        "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
@@ -32,8 +31,7 @@
       "inherits": "base",
       "displayName": "Desktop (Release)",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "WREEL_ENABLE_GL_LEGACY": "ON"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
     },
     {
@@ -55,7 +53,6 @@
       "toolchainFile": "${sourceDir}/cmake/toolchains/steam-linux.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "WREEL_ENABLE_GL_LEGACY": "ON",
         "WREEL_BUILD_TESTS": "ON"
       }
     },

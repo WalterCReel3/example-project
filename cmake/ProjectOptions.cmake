@@ -33,19 +33,22 @@ include_guard(GLOBAL)
 # configure, reporting an empty "Offending entry".
 set(WREEL_ENABLE_GLES2 "" CACHE STRING "gfx::gles2: ON, OFF, or empty=auto")
 
-# Transitional, and on its way out with the skratch port. The 2016 fixed-function
-# backend is desktop-only and needs GLEW and GLU; nothing but the demo uses it.
-option(WREEL_ENABLE_GL_LEGACY "Build the 2016 fixed-function gl_legacy backend" OFF)
-
 option(WREEL_BUILD_TESTS  "Build the doctest suite"              ON)
 option(WREEL_BUILD_DEMOS  "Build the skratch demo application"   ON)
 option(WREEL_BUILD_PROBE  "Build the wreel-probe device tool"    ON)
 option(WREEL_USE_SYSTEM_SDL2
        "Link the sysroot's SDL2 instead of building a pinned copy" OFF)
 
-# Legacy 2016 sources do not survive -Wall -Wextra -Werror yet. This flips to ON
-# as the C++17 cleanup lands; see README.md's checklist.
-option(WREEL_WERROR "Treat warnings as errors" OFF)
+# ON since 2026-07-26. It was off for as long as the 2016 fixed-function sources
+# were in the tree: they carried 167 warnings, 30 of which survived to the end and
+# every one of which was in a file the renderer rework deleted or rewrote. With
+# gl_legacy gone the tree is clean, so the gate is on for everyone rather than
+# maintained as a per-target allowlist.
+#
+# Turning this on is what makes the warning set worth having. -Wunused-parameter
+# had been pointing at D14 -- posix::FileImpl::seek discarding its offset -- in
+# build output nobody read.
+option(WREEL_WERROR "Treat warnings as errors" ON)
 
 option(WREEL_STATIC_CXX
        "Static-link libstdc++/libgcc (recommended for device builds)" OFF)
@@ -154,18 +157,14 @@ if(WREEL_ENABLE_GLES2 AND NOT WREEL_TARGET_HAS_GPU)
         "  and it is built unconditionally. See docs/TARGETS.md § 3.")
 endif()
 
-if(WREEL_ENABLE_GL_LEGACY AND NOT WREEL_TARGET_HAS_GPU)
-    message(FATAL_ERROR
-        "WREEL_ENABLE_GL_LEGACY=ON was requested, but this target has no GPU.\n"
-        "  gl_legacy needs desktop OpenGL, GLU and GLEW. It is also on its way\n"
-        "  out; nothing but the skratch demo uses it. See docs/TARGETS.md.")
-endif()
-
-# The 2016 demo drives fixed-function OpenGL directly from
-# skratch/application.cc, so it needs gl_legacy until that port lands.
-if(WREEL_BUILD_DEMOS AND NOT WREEL_ENABLE_GL_LEGACY)
+# skratch renders through gfx::gles2, so it follows that renderer rather than
+# needing an option of its own. On a GPU-less target there is nothing for it to
+# draw with, and disabling it is better than failing a configure the user did not
+# ask to fail.
+if(WREEL_BUILD_DEMOS AND NOT WREEL_ENABLE_GLES2)
     message(STATUS
-        "skratch demo still needs WREEL_ENABLE_GL_LEGACY=ON; disabling it")
+        "skratch demo needs gfx::gles2, which is off for this target; "
+        "disabling the demo")
     set(WREEL_BUILD_DEMOS OFF)
 endif()
 
@@ -260,7 +259,6 @@ function(wreel_print_summary)
     message(STATUS "  C++ standard ....... 17")
     message(STATUS "  gfx renderer ....... gfx::renderer (always)")
     message(STATUS "  gfx gles2 .......... ${WREEL_ENABLE_GLES2}")
-    message(STATUS "  gfx gl_legacy ...... ${WREEL_ENABLE_GL_LEGACY} (being retired)")
     message(STATUS "  target has GPU ..... ${WREEL_TARGET_HAS_GPU}")
     message(STATUS "  audio codecs ....... ${WREEL_AUDIO_CODECS}")
     message(STATUS "  audio mixer ........ ${WREEL_AUDIO_RATE} Hz, "

@@ -23,7 +23,7 @@
 #include <doctest/doctest.h>
 
 #include <gfx/renderer/context.hpp>
-#include <gfx/renderer/system.hpp>
+#include <gfx/system.hpp>
 
 #include <SDL.h>
 
@@ -33,17 +33,17 @@
 namespace
 {
 
-// Pins the video driver, then brings the subsystem up. SDL reads
-// SDL_VIDEODRIVER during SDL_Init, so the order matters and the System cannot
+// Pins the video driver, then brings the subsystems up. SDL reads
+// SDL_VIDEODRIVER during SDL_Init, so the order matters and gfx::System cannot
 // be a plain member.
 struct VideoFixture {
     VideoFixture()
     {
         SDL_setenv("SDL_VIDEODRIVER", "dummy", 1);
-        system.reset(new gfx::renderer::System());
+        system.reset(new gfx::System());
     }
 
-    std::unique_ptr<gfx::renderer::System> system;
+    std::unique_ptr<gfx::System> system;
 };
 
 } // namespace

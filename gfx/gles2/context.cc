@@ -6,7 +6,10 @@
 
 #include <SDL.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <stdexcept>
+#include <vector>
 
 namespace gfx
 {
@@ -148,6 +151,64 @@ void Context::clear(float r, float g, float b)
 void Context::present()
 {
     SDL_GL_SwapWindow(_window);
+}
+
+bool Context::save_screenshot(const std::string& path) const
+{
+    if (!api_loaded() || _width <= 0 || _height <= 0) {
+        util::log_error("screenshot: no context");
+        return false;
+    }
+
+    // GL_RGBA / GL_UNSIGNED_BYTE is the only combination GLES 2.0 core
+    // guarantees glReadPixels accepts, so there is no cheaper format to ask
+    // for.
+    std::vector<unsigned char> pixels(static_cast<std::size_t>(_width) *
+                                      static_cast<std::size_t>(_height) * 4);
+    gl::PixelStorei(GL_PACK_ALIGNMENT, 1);
+    gl::ReadPixels(0, 0, _width, _height, GL_RGBA, GL_UNSIGNED_BYTE,
+                   pixels.data());
+
+    const GLenum error = gl::GetError();
+    if (error != GL_NO_ERROR) {
+        util::log_error("screenshot: glReadPixels failed with 0x%x",
+                        static_cast<unsigned>(error));
+        return false;
+    }
+
+    // GL's origin is bottom-left and an image file's is top-left, so the rows
+    // come back upside down. Flipped here rather than left for the viewer to
+    // notice.
+    const std::size_t stride = static_cast<std::size_t>(_width) * 4;
+    std::vector<unsigned char> flipped(pixels.size());
+    for (int row = 0; row < _height; ++row) {
+        const std::size_t from = static_cast<std::size_t>(row) * stride;
+        const std::size_t to =
+            static_cast<std::size_t>(_height - 1 - row) * stride;
+        std::copy(pixels.begin() + static_cast<std::ptrdiff_t>(from),
+                  pixels.begin() + static_cast<std::ptrdiff_t>(from + stride),
+                  flipped.begin() + static_cast<std::ptrdiff_t>(to));
+    }
+
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(
+        flipped.data(), _width, _height, 32, static_cast<int>(stride),
+        SDL_PIXELFORMAT_ABGR8888);
+    if (!surface) {
+        util::log_error("screenshot: could not wrap pixels: %s",
+                        SDL_GetError());
+        return false;
+    }
+
+    const bool saved = (SDL_SaveBMP(surface, path.c_str()) == 0);
+    if (!saved) {
+        util::log_error("screenshot: could not write %s: %s", path.c_str(),
+                        SDL_GetError());
+    } else {
+        util::log_info("screenshot: wrote %s (%dx%d)", path.c_str(), _width,
+                       _height);
+    }
+    SDL_FreeSurface(surface);
+    return saved;
 }
 
 } // namespace gles2

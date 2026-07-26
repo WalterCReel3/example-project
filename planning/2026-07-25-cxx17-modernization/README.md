@@ -1,7 +1,8 @@
 # C++17 modernization of the 2016 sources
 
-**Status:** `in-progress`
+**Status:** `done`
 **Written:** 2026-07-25
+**Landed:** 2026-07-26
 **Blocks:** [graphics-backends](../2026-07-25-graphics-backends/)
 
 ## Motivation
@@ -45,10 +46,17 @@ this one header, and clearing it is most of the work toward `-Werror`.
 
 Re-measured the same way after each block landed:
 
-| Preset | Start | After `string.hpp` / `ascii.hpp` | After the surviving-code sweep |
-|---|---|---|---|
-| `desktop-software` | 67 | 31 | **0** |
-| `desktop-debug` | 167 | 65 | **33** |
+| Preset | Start | After `string.hpp` / `ascii.hpp` | After the surviving-code sweep | After the renderer rework |
+|---|---|---|---|---|
+| `desktop-software` | 67 | 31 | **0** | **0** |
+| `desktop-debug` | 167 | 65 | 33 | **0** |
+
+**`WREEL_WERROR` is `ON` as of 2026-07-26**, for every target rather than as a
+per-target allowlist, and all five configured presets build clean under it. The
+last 33 were never polished: 30 of them went with the files
+[gfx-renderer-and-gles2](../2026-07-26-gfx-renderer-and-gles2/) deleted, and the
+other three went when `loaders/obj.cc` was rewritten to parse straight to `float`.
+Deferring them was the right call — the work would have been thrown away.
 
 All 96 `-Wdeprecated-declarations` went with the first block, and nothing
 deprecation-related remains anywhere. **`desktop-software` — the default working

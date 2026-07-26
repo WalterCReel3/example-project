@@ -337,15 +337,10 @@ int main(int, char**)
 {
     // Renderers are additive now, so this lists what is compiled in rather than
     // naming the one selected backend.
-    std::printf("wreel-probe %s  [target: %s, renderers: renderer%s%s]\n",
+    std::printf("wreel-probe %s  [target: %s, renderers: renderer%s]\n",
                 WREEL_VERSION, WREEL_TARGET_ID,
 #if defined(WREEL_GFX_GLES2)
-                " gles2",
-#else
-                "",
-#endif
-#if defined(WREEL_GFX_GL_LEGACY)
-                " gl_legacy"
+                " gles2"
 #else
                 ""
 #endif

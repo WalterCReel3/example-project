@@ -5,8 +5,6 @@
 
 #include <glm/mat4x4.hpp>
 
-#include <util/nocopy.hpp>
-
 //============================================================================
 //
 // Shaders and programs, GLSL ES 1.00

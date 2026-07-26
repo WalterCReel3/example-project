@@ -91,6 +91,7 @@
     /* drawing */                \
     X(DrawArrays)                \
     X(DrawElements)              \
+    X(ReadPixels)                \
     /* textures */               \
     X(GenTextures)               \
     X(BindTexture)               \

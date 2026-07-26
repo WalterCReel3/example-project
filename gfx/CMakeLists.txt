@@ -7,20 +7,20 @@
 #               which is why it is not named after either.
 #   gles2/      our own GL context, for shaders and 3D. WREEL_ENABLE_GLES2,
 #               defaulted from device capability. Never on the Miyoo Mini.
-#   gl_legacy   the original 2016 fixed-function code: context.cc, system.cc,
-#               obj.cc, utils.cc. Desktop only, WREEL_ENABLE_GL_LEGACY, and
-#               deleted once skratch is ported off it.
-#
 # A window is driven by one renderer or the other; both being compiled is what
 # lets one build contain a 2D game executable and a shader demo.
 #
+# The 2016 fixed-function backend used to be a third option here. It is gone:
+# skratch, its only consumer, now renders through gles2, and GLEW and GLU went
+# with it.
+#
 # See planning/2026-07-26-gfx-renderer-and-gles2/ and
-# docs/TARGETS.md § "Graphics backends".
+# docs/TARGETS.md § "Graphics renderers".
 
 # Renderer-agnostic: pure data, no rendering calls.
 set(WREEL_GFX_SOURCES
     spritesheet.cc
-    renderer/system.cc
+    system.cc
     renderer/context.cc)
 
 if(WREEL_ENABLE_GLES2)
@@ -31,14 +31,6 @@ if(WREEL_ENABLE_GLES2)
         gles2/mesh_buffer.cc
         gles2/sprite_renderer.cc
         gles2/texture.cc)
-endif()
-
-if(WREEL_ENABLE_GL_LEGACY)
-    list(APPEND WREEL_GFX_SOURCES
-        system.cc
-        context.cc
-        obj.cc
-        utils.cc)
 endif()
 
 add_library(wreel_gfx STATIC ${WREEL_GFX_SOURCES})
@@ -76,14 +68,6 @@ target_compile_definitions(wreel_gfx PUBLIC
 # only verification available before hardware.
 if(WREEL_ENABLE_GLES2)
     target_compile_definitions(wreel_gfx PUBLIC WREEL_GFX_GLES2=1)
-endif()
-
-if(WREEL_ENABLE_GL_LEGACY)
-    target_compile_definitions(wreel_gfx PUBLIC WREEL_GFX_GL_LEGACY=1)
-    target_link_libraries(wreel_gfx PUBLIC
-        GLEW::GLEW
-        OpenGL::GL
-        OpenGL::GLU)
 endif()
 
 set_target_properties(wreel_gfx PROPERTIES

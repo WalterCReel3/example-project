@@ -83,14 +83,15 @@ public:
     void on_joy_motion(const SDL_Event& event);
     void on_joy_hat(const SDL_Event& event);
     void translate_input(const SDL_Event& event);
-    InputState& get_state()
-    {
-        return _input_state;
-    }
+    InputState& get_state() { return _input_state; }
+    // The const overload exists so that a const member function can read input
+    // without being handed a mutable reference to it. update_state() needs the
+    // mutable one — it clears the accumulated mouse deltas after applying them.
+    const InputState& get_state() const { return _input_state; }
 
 private:
     InputState _input_state;
-    SDL_Joystick *_joystick;
+    SDL_Joystick* _joystick;
 };
 
 // vim: set sts=2 sw=2 expandtab:

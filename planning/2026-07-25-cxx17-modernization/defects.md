@@ -190,6 +190,14 @@ in the tree used `#pragma once` when this was written.
 favour of the modern spelling over matching the `WREEL_*` guards the other
 authored headers happen to use.
 
+**Mostly resolved by attrition** rather than by a sweep. Of the 20 reserved-name
+guards, the renderer rework deleted 8 outright — `gfx/context.hpp`,
+`gfx/obj.hpp`, `gfx/system.hpp`, `gfx/utils.hpp`, `gfx/primitives.hpp`,
+`math/vector.hpp`, `skratch/globals.hpp`, and `loaders/obj.hpp` was rewritten with
+`#pragma once`. Both of the wrong-module guards this entry called out went with
+them: `gfx/context.hpp`'s `__GFX_VIEW_HPP__` and `gfx/primitives.hpp`'s
+`__MATH_PRIMITIVES_HPP`. Every header authored since uses `#pragma once`.
+
 Three of the 2016 guards are also simply wrong about their own file, which is
 worth fixing in the same pass: `gfx/context.hpp` declares `__GFX_VIEW_HPP__`
 (leftover from a rename) and `gfx/primitives.hpp` declares
@@ -243,10 +251,18 @@ expressions do something nobody intends.
 Not currently exercised — `skratch` assigns components directly rather than using
 the operators.
 
-**Fix:** free `operator+` returning by value, plus member `operator+=` returning
-`Vector3&`. Also add `operator-`, `dot`, `cross`, `length` and `normalize`, which
-a renderer will need shortly. Consider whether `glm` (already in the bootstrap
-script's `math` group) should replace this header entirely.
+**Fixed** 2026-07-26 **by deletion.** `include/math/vector.hpp` is gone and glm
+`1.0.3` is pinned in its place, so the operators are not repaired — they no longer
+exist. The alternative was writing `operator+`/`operator+=` correctly plus
+`operator-`, `dot`, `cross`, `length`, `normalize` and a `Matrix4`, and the tests
+to trust all of it.
+
+It cost five lines outside the OBJ loader, because every consumer —
+`gfx/obj.hpp`, `gfx/utils.hpp`, `gfx/types.hpp`, `skratch/application.cc` — was
+already a file the renderer rework deleted or rewrote. Reasoning for taking a
+vendor type into module signatures is in
+[2026-07-26-gfx-renderer-and-gles2](../2026-07-26-gfx-renderer-and-gles2/) and
+docs/TARGETS.md.
 
 ---
 
@@ -263,9 +279,19 @@ class's destructor, which is why the ordering works only by accident.
 The new `gfx::software::System` (`include/gfx/software/system.hpp`) deliberately
 does not do this: it is a plain object with explicit ownership.
 
-**Fix:** covered by the `gl_legacy` retirement in
-[graphics-backends](../2026-07-25-graphics-backends/). Not worth fixing in code
-that is being deleted.
+**Fixed** 2026-07-26 **by deletion**, as predicted. `gfx/system.cc` and its static
+`_instance` are gone with the rest of the 2016 backend.
+
+There is a `gfx::System` again, and it is a different thing: RAII over
+SDL_Init/TTF_Init/IMG_Init with no singleton, no factory and no context ownership.
+The old one also heap-allocated contexts into a vector and deleted them in its
+destructor — a raw owning pointer plus a lifetime split across two classes. A
+context is now owned by whatever created it, which for `skratch` is a
+`unique_ptr` member.
+
+Note that `gfx::renderer::System` briefly carried the same context-owning vector
+before being promoted to the renderer-neutral `gfx::System`; nothing ever called its
+`create_context`, so it went with the promotion.
 
 ---
 

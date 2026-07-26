@@ -1,7 +1,8 @@
 # Two renderers: `gfx::renderer` everywhere, `gfx::gles2` where there is a GPU
 
-**Status:** `in-progress`
+**Status:** `done`
 **Written:** 2026-07-26
+**Landed:** 2026-07-26
 **Supersedes:** [2026-07-25-graphics-backends](../2026-07-25-graphics-backends/)
 **Blocks:** nothing. Unblocks `WREEL_WERROR`
 
@@ -337,16 +338,53 @@ through it.
 
 **Stage 4 — port `skratch`, then delete `gl_legacy`**
 
-- [ ] `skratch` on `gles2`: explicit projection and model-view matrices, shaders,
-      `MeshBuffer`. No `gl*` calls in application code
-- [ ] `skratch/main.cc` off its own `ofstream logging` onto `util::log_*`, and
-      `runlog.txt` to `SDL_GetPrefPath()` — it is a shipped executable including
-      `<fstream>`, against
-      [docs/TARGETS.md § 1a](../../docs/TARGETS.md)
-- [ ] Delete `gl_legacy`: `gfx/context.cc`, `gfx/system.cc`, `gfx/obj.cc`,
-      `gfx/utils.cc`, `include/gfx/utils.hpp`, GLEW and GLU
-- [ ] Flip `WREEL_WERROR` to `ON` and clear whatever the flip reveals
-- [ ] `docs/DEVELOPMENT.md` § Status, and the `WREEL_WERROR` row
+- [x] `skratch` on `gles2`: `glm::perspective` for the projection, an explicit view
+      matrix from a new `Camera`, one `MeshBuffer` drawn 400 times with a per-instance
+      model matrix, and a shader pair in GLSL ES 1.00. **No `gl*` calls in
+      application code**
+- [x] `Camera` replaces `gfx::Pov`/`gfx::Orientation`, which derived from a
+      3-vector so yaw, pitch and roll could be `x`, `y` and `z` behind accessors.
+      It lives in `skratch/` because it is demo state: the renderer takes a matrix
+      and does not care how one was decided
+- [x] `skratch/main.cc` off its own `ofstream logging` onto `util::log_*`, and the
+      log to `SDL_GetPrefPath()` rather than `runlog.txt` in the working directory
+- [x] `gfx::System` promoted to renderer-neutral. Deleting the 2016 one removed the
+      only `SDL_Init`/`TTF_Init` call in the tree, which the port found immediately
+      — `TTF_OpenFontIndex` reported "Library not initialized". `gfx::renderer::System`
+      was doing the same job plus owning a vector of raw `Context*` that nothing
+      ever asked it for, so the subsystem half became `gfx::System` and the factory
+      half went (D8)
+- [x] Delete the 2016 backend: `gfx/context.cc`, `gfx/system.cc`, `gfx/obj.cc`,
+      `gfx/utils.cc` and their headers, plus `gfx/primitives.hpp`, GLEW, GLU, the
+      `--legacy` bootstrap group and the `find_package(OpenGL)` block
+- [x] Flip `WREEL_WERROR` to `ON`. **Nothing to clear** — the tree was already at
+      zero once the 2016 sources were gone
+- [x] `docs/DEVELOPMENT.md`, `docs/TARGETS.md`, `README.md` and the defect
+      inventory brought in line
+
+**Stage 4 landed 2026-07-26. This snapshot is done.**
+
+From **167 warnings to zero** on all five configured presets, with `WREEL_WERROR`
+on for everyone rather than a per-target allowlist. 10/10 tests everywhere.
+
+`skratch` was seen running before the delete commit, which is what this document's
+risk section asked for. `--screenshot` was added to make that evidence rather than
+an impression: it renders two frames, writes a BMP and exits, and the observed frame
+is a 20×20 grid of icosahedra receding with correct perspective, interpolated vertex
+colours, and the HUD reading back the camera state. That also verifies everything
+stage 3 could not — both shader programs, `MeshBuffer`, `Texture`, the sprite quad's
+y-flip and the projection — and it is how a device gets checked over SSH, where
+nobody can see the panel.
+
+Two things the port found that reading would not have:
+
+- **`InputManager::get_state()` had no const overload**, so a `const` member
+  function could not read input without being handed a mutable reference to it.
+- **The demo opened from inside a model.** The camera started at the origin and so
+  did the first grid instance, so the first frame was one icosahedron's gradient
+  filling the screen. Faithful to 2016 — the port reproduced it exactly — and a poor
+  first frame for a demo whose job is now to show the renderer working, so the
+  starting position moved.
 
 ## Risks
 

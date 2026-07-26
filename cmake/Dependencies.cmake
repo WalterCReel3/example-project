@@ -382,56 +382,19 @@ if(WREEL_BUILD_TESTS)
 endif()
 
 # ---------------------------------------------------------------------------
-# OpenGL stack — only for the gl_legacy backend
+# No OpenGL stack
 # ---------------------------------------------------------------------------
 #
-# The 2016 renderer needs desktop GL, GLU (gluPerspective) and GLEW. None of
-# that exists on a Miyoo Mini, which is the whole reason for backend gating.
-
-# Looked for whenever the target could have a GPU, not just under gl_legacy —
-# wreel-probe reports GL version/vendor/renderer and therefore needs to link
-# OpenGL even when the graphics backend is `software`. Keeping this inside the
-# gl_legacy block is what caused wreel-probe to fail at link with
-# "undefined reference to glGetString".
+# There is deliberately no find_package(OpenGL), GLEW or GLU here any more.
 #
-# QUIET and non-REQUIRED: a target may legitimately have a GPU with only GLES
-# headers available, in which case the probe simply omits its GL section.
-set(WREEL_HAVE_OPENGL OFF)
-if(WREEL_TARGET_HAS_GPU)
-    set(OpenGL_GL_PREFERENCE GLVND)
-    find_package(OpenGL QUIET COMPONENTS OpenGL)
-    if(OpenGL_FOUND OR OPENGL_FOUND)
-        set(WREEL_HAVE_OPENGL ON)
-    endif()
-    message(STATUS "Desktop OpenGL available: ${WREEL_HAVE_OPENGL}")
-endif()
-
-if(WREEL_ENABLE_GL_LEGACY)
-    if(NOT WREEL_HAVE_OPENGL)
-        message(FATAL_ERROR
-            "gl_legacy needs desktop OpenGL, which was not found.\n"
-            "  Install it:  sudo apt install libgl1-mesa-dev\n"
-            "  Or drop it:  -DWREEL_ENABLE_GL_LEGACY=OFF, which leaves\n"
-            "               gfx::renderer, and that needs no GL at all.")
-    endif()
-
-    # Not REQUIRED: CMake's own failure message names GLEW_INCLUDE_DIRS and
-    # GLEW_LIBRARIES, which tells you nothing about what to install or that a
-    # working alternative exists.
-    find_package(GLEW QUIET)
-    if(NOT GLEW_FOUND)
-        message(FATAL_ERROR
-            "gl_legacy needs GLEW (gfx/context.cc calls glewInit).\n"
-            "  Install it:  sudo apt install libglew-dev\n"
-            "  Or drop it:  -DWREEL_ENABLE_GL_LEGACY=OFF. gfx::renderer needs\n"
-            "               neither GLEW nor GLU.\n"
-            "  See docs/TARGETS.md § Graphics backends.")
-    endif()
-
-    if(NOT OPENGL_GLU_FOUND)
-        message(FATAL_ERROR
-            "gl_legacy calls gluPerspective(), but GLU was not found.\n"
-            "  Install it:  sudo apt install libglu1-mesa-dev\n"
-            "  Or drop it:  -DWREEL_ENABLE_GL_LEGACY=OFF")
-    endif()
-endif()
+# Nothing in the project links a GL library. gfx::gles2 resolves its entry points
+# with SDL_GL_GetProcAddress and wreel-probe does the same for the two it reports
+# with, so the only thing that has to be true is that SDL2 was built with GL/GLES
+# support — which cmake/Dependencies.cmake decides above from
+# WREEL_TARGET_HAS_GPU.
+#
+# The removed block found GLEW and GLU for the 2016 fixed-function backend, and
+# desktop OpenGL for wreel-probe. Requiring the latter is what compiled the probe's
+# GL report *out* on rk3326 and h700: find_package(OpenGL) fails in Debian's cross
+# environment, so the two targets the report matters most for could never produce
+# one.
