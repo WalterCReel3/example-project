@@ -12,6 +12,7 @@
 #include <vector>
 #include <utility>
 #include <util/ascii.hpp>
+#include <util/number.hpp>
 
 //============================================================================
 //
@@ -497,9 +498,8 @@ reset(Container &c)
 inline
 long int long_of_string(const string &s)
 {
-    char *end;
-    long int result = strtol(s.c_str(), &end, 10);
-    if (end == 0) {
+    long int result = 0;
+    if (!util::from_string(s, result)) {
         throw domain_error("Invalid integer representation");
     }
     return result;
