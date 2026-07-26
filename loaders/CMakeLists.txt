@@ -1,15 +1,17 @@
 # libloaders — asset parsing.
 #
-# obj.cc is gated on the GL backend because it populates gfx::ObjModel, which
-# holds GLuint vertex/colour/index buffer handles and so is inherently OpenGL.
-# Decoupling model data from GPU buffers is part of the software-backend work;
-# until then a software build gets image loading only.
+# obj.cc is gated on gl_legacy because it populates gfx::ObjModel, which holds
+# GLuint vertex/colour/index buffer handles and so is inherently OpenGL — a text
+# parser that transitively depends on SDL_opengl.h. Splitting model data from GPU
+# residency is stage 2 of
+# planning/2026-07-26-gfx-renderer-and-gles2/, after which this gate goes and
+# obj.cc builds on every target.
 
 set(WREEL_LOADERS_SOURCES
     image.cc
     sparrow.cc)
 
-if(WREEL_GFX_BACKEND STREQUAL "gl_legacy")
+if(WREEL_ENABLE_GL_LEGACY)
     list(APPEND WREEL_LOADERS_SOURCES obj.cc)
 endif()
 

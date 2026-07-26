@@ -10,10 +10,28 @@ include_guard(GLOBAL)
 # Options
 # ---------------------------------------------------------------------------
 
-set(WREEL_GFX_BACKEND_VALUES software gl_legacy)
-set(WREEL_GFX_BACKEND "" CACHE STRING
-    "Graphics backend: ${WREEL_GFX_BACKEND_VALUES}")
-set_property(CACHE WREEL_GFX_BACKEND PROPERTY STRINGS ${WREEL_GFX_BACKEND_VALUES})
+# Renderers are capabilities, not alternatives.
+#
+# WREEL_GFX_BACKEND used to select one of two mutually exclusive implementations
+# of one interface, which was the right model while both were ways to put pixels
+# on the same screen. It is retired: gfx::renderer (SDL_Renderer) runs on every
+# target and draws the game, gfx::gles2 runs where there is a GPU and draws what a
+# shader can express, and a build wants both compiled with each executable
+# choosing. See planning/2026-07-26-gfx-renderer-and-gles2/ decision 1.
+#
+# gfx::renderer has no option: there is nothing to gate, it works everywhere.
+#
+# WREEL_ENABLE_GLES2 defaults OFF rather than following WREEL_TARGET_HAS_GPU for
+# one reason only: gfx/gles2/ does not exist yet (stage 3 of the snapshot). The
+# default becomes device capability when there is something to build, so that the
+# Mali targets get it without being told. Declared now because the guard below —
+# ON with no GPU is an error, not a silent downgrade — is worth having in place
+# before the sources arrive.
+option(WREEL_ENABLE_GLES2 "Build the gfx::gles2 renderer (needs a GPU)" OFF)
+
+# Transitional, and on its way out with the skratch port. The 2016 fixed-function
+# backend is desktop-only and needs GLEW and GLU; nothing but the demo uses it.
+option(WREEL_ENABLE_GL_LEGACY "Build the 2016 fixed-function gl_legacy backend" OFF)
 
 option(WREEL_BUILD_TESTS  "Build the doctest suite"              ON)
 option(WREEL_BUILD_DEMOS  "Build the skratch demo application"   ON)
@@ -99,42 +117,42 @@ set(WREEL_AUDIO_VOICES   "${_wreel_voices}" CACHE STRING "Simultaneous sound eff
 # Backend defaulting and validation
 # ---------------------------------------------------------------------------
 #
-# The Miyoo Mini (SigmaStar SSD202D) has no GPU at all, so `software` is the only
-# possible backend there. Toolchain files set WREEL_TARGET_HAS_GPU to say whether
-# a GL context is even conceivable.
+# WREEL_TARGET_HAS_GPU is set by the toolchain files and means one thing: whether
+# the *device* has a GPU. It is not a statement about which renderer is built —
+# using it for that is what left both Mali handhelds compiled as though they had
+# no GPU (D18), because cmake/Dependencies.cmake consumes it to decide whether
+# SDL2 gets GL/GLES/EGL at all.
+#
+# The Miyoo Mini (SigmaStar SSD202D) has no GPU whatsoever, so gles2 can never be
+# built there and gfx::renderer's software driver is the only thing that runs.
 
 if(NOT DEFINED WREEL_TARGET_HAS_GPU)
     set(WREEL_TARGET_HAS_GPU ON)
 endif()
 
-if(NOT WREEL_GFX_BACKEND)
-    if(WREEL_TARGET_HAS_GPU)
-        set(WREEL_GFX_BACKEND "gl_legacy" CACHE STRING "" FORCE)
-    else()
-        set(WREEL_GFX_BACKEND "software" CACHE STRING "" FORCE)
-    endif()
-    message(STATUS "WREEL_GFX_BACKEND not set, defaulting to '${WREEL_GFX_BACKEND}'")
+# Requesting a renderer the device cannot run is an error rather than a silent
+# downgrade: the only way to set either of these is to type it, so a mismatch is a
+# mistake worth reporting rather than papering over.
+if(WREEL_ENABLE_GLES2 AND NOT WREEL_TARGET_HAS_GPU)
+    message(FATAL_ERROR
+        "WREEL_ENABLE_GLES2=ON was requested, but this target has no GPU.\n"
+        "  The SSD202D has no 3D block at all — no GL, no GLES, no EGL. The\n"
+        "  gfx::renderer path with its software driver is the only option there,\n"
+        "  and it is built unconditionally. See docs/TARGETS.md § 3.")
 endif()
 
-if(NOT WREEL_GFX_BACKEND IN_LIST WREEL_GFX_BACKEND_VALUES)
+if(WREEL_ENABLE_GL_LEGACY AND NOT WREEL_TARGET_HAS_GPU)
     message(FATAL_ERROR
-        "WREEL_GFX_BACKEND='${WREEL_GFX_BACKEND}' is not one of: "
-        "${WREEL_GFX_BACKEND_VALUES}")
-endif()
-
-if(WREEL_GFX_BACKEND STREQUAL "gl_legacy" AND NOT WREEL_TARGET_HAS_GPU)
-    message(FATAL_ERROR
-        "WREEL_GFX_BACKEND=gl_legacy was requested, but this target has no GPU.\n"
-        "  The gl_legacy backend needs desktop OpenGL, GLU and GLEW. Use\n"
-        "  -DWREEL_GFX_BACKEND=software instead. See docs/TARGETS.md.")
+        "WREEL_ENABLE_GL_LEGACY=ON was requested, but this target has no GPU.\n"
+        "  gl_legacy needs desktop OpenGL, GLU and GLEW. It is also on its way\n"
+        "  out; nothing but the skratch demo uses it. See docs/TARGETS.md.")
 endif()
 
 # The 2016 demo drives fixed-function OpenGL directly from
-# skratch/application.cc, so it cannot follow the software backend.
-if(WREEL_BUILD_DEMOS AND NOT WREEL_GFX_BACKEND STREQUAL "gl_legacy")
+# skratch/application.cc, so it needs gl_legacy until that port lands.
+if(WREEL_BUILD_DEMOS AND NOT WREEL_ENABLE_GL_LEGACY)
     message(STATUS
-        "skratch demo needs the gl_legacy backend; disabling it for "
-        "backend='${WREEL_GFX_BACKEND}'")
+        "skratch demo still needs WREEL_ENABLE_GL_LEGACY=ON; disabling it")
     set(WREEL_BUILD_DEMOS OFF)
 endif()
 
@@ -227,7 +245,9 @@ function(wreel_print_summary)
     message(STATUS "  build type ......... ${CMAKE_BUILD_TYPE}")
     message(STATUS "  compiler ........... ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
     message(STATUS "  C++ standard ....... 17")
-    message(STATUS "  gfx backend ........ ${WREEL_GFX_BACKEND}")
+    message(STATUS "  gfx renderer ....... gfx::renderer (always)")
+    message(STATUS "  gfx gles2 .......... ${WREEL_ENABLE_GLES2}")
+    message(STATUS "  gfx gl_legacy ...... ${WREEL_ENABLE_GL_LEGACY} (being retired)")
     message(STATUS "  target has GPU ..... ${WREEL_TARGET_HAS_GPU}")
     message(STATUS "  audio codecs ....... ${WREEL_AUDIO_CODECS}")
     message(STATUS "  audio mixer ........ ${WREEL_AUDIO_RATE} Hz, "

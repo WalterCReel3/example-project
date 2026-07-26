@@ -263,12 +263,19 @@ void report_gl()
 
 int main(int, char**)
 {
-    std::printf("wreel-probe %s  [target: %s, gfx backend: %s]\n",
+    // Renderers are additive now, so this lists what is compiled in rather than
+    // naming the one selected backend.
+    std::printf("wreel-probe %s  [target: %s, renderers: renderer%s%s]\n",
                 WREEL_VERSION, WREEL_TARGET_ID,
-#if defined(WREEL_GFX_BACKEND_NAME)
-                WREEL_GFX_BACKEND_NAME
+#if defined(WREEL_GFX_GLES2)
+                " gles2",
 #else
-                "n/a"
+                "",
+#endif
+#if defined(WREEL_GFX_GL_LEGACY)
+                " gl_legacy"
+#else
+                ""
 #endif
     );
 

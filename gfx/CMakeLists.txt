@@ -1,24 +1,29 @@
 # libgfx — windowing and rendering.
 #
-# Sources are selected by WREEL_GFX_BACKEND. This is the gate that makes a Miyoo
-# Mini build possible at all: the 2016 renderer is fixed-function desktop OpenGL
-# plus GLU and GLEW, and the SSD202D has no GPU whatsoever.
+# The renderers are additive, not alternatives:
 #
-#   software    SDL_Renderer, CPU blitting. Works everywhere. The baseline.
-#   gl_legacy   the original 2016 code. Desktop only. Will be retired.
+#   renderer/   SDL_Renderer. Built ALWAYS, on every target. Draws the game.
+#               Its driver is software on the Miyoo Mini and opengles2 on Mali,
+#               which is why it is not named after either.
+#   gles2/      our own GL context, for shaders and 3D. WREEL_ENABLE_GLES2,
+#               defaulted from device capability. Never on the Miyoo Mini.
+#   gl_legacy   the original 2016 fixed-function code: context.cc, system.cc,
+#               obj.cc, utils.cc. Desktop only, WREEL_ENABLE_GL_LEGACY, and
+#               deleted once skratch is ported off it.
 #
-# See docs/TARGETS.md § "Graphics backends".
+# A window is driven by one renderer or the other; both being compiled is what
+# lets one build contain a 2D game executable and a shader demo.
+#
+# See planning/2026-07-26-gfx-renderer-and-gles2/ and
+# docs/TARGETS.md § "Graphics backends".
 
-# Backend-agnostic: pure data, no rendering calls.
+# Renderer-agnostic: pure data, no rendering calls.
 set(WREEL_GFX_SOURCES
-    spritesheet.cc)
+    spritesheet.cc
+    renderer/system.cc
+    renderer/context.cc)
 
-if(WREEL_GFX_BACKEND STREQUAL "software")
-    list(APPEND WREEL_GFX_SOURCES
-        software/system.cc
-        software/context.cc)
-
-elseif(WREEL_GFX_BACKEND STREQUAL "gl_legacy")
+if(WREEL_ENABLE_GL_LEGACY)
     list(APPEND WREEL_GFX_SOURCES
         system.cc
         context.cc
@@ -41,13 +46,17 @@ target_link_libraries(wreel_gfx
             ${WREEL_SDL2_TTF_TARGET}
             ${WREEL_SDL2_IMAGE_TARGET})
 
-# Let headers and sources branch on the active backend.
-string(TOUPPER "${WREEL_GFX_BACKEND}" _backend_upper)
+# Let headers, sources and wreel-probe report which renderers are present. These
+# say "compiled in", not "in use" — the choice is per-window now, not per-build.
 target_compile_definitions(wreel_gfx PUBLIC
-    WREEL_GFX_BACKEND_${_backend_upper}=1
-    WREEL_GFX_BACKEND_NAME="${WREEL_GFX_BACKEND}")
+    WREEL_GFX_RENDERER=1)
 
-if(WREEL_GFX_BACKEND STREQUAL "gl_legacy")
+if(WREEL_ENABLE_GLES2)
+    target_compile_definitions(wreel_gfx PUBLIC WREEL_GFX_GLES2=1)
+endif()
+
+if(WREEL_ENABLE_GL_LEGACY)
+    target_compile_definitions(wreel_gfx PUBLIC WREEL_GFX_GL_LEGACY=1)
     target_link_libraries(wreel_gfx PUBLIC
         GLEW::GLEW
         OpenGL::GL

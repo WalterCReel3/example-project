@@ -19,7 +19,7 @@
 // Must match SDL_mixer.h exactly: it declares `typedef struct Mix_Music
 // Mix_Music;` — the struct tag is Mix_Music. Getting this wrong is a hard error
 // in any TU that also includes SDL_mixer.h, which is the same trap
-// include/gfx/software/context.hpp documents for TTF_Font.
+// include/gfx/renderer/context.hpp documents for TTF_Font.
 //
 // (Mix_Chunk needs no such care: SDL_mixer.h defines it as a complete struct,
 // so audio/sound.hpp can simply forward-declare `struct Mix_Chunk;`.)

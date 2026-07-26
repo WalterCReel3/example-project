@@ -90,25 +90,32 @@ Full detail in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Status
 
-Revival in progress. The build system works and the software renderer runs;
-shader backends and the C++17 source cleanup are next.
+Revival in progress. The build system works, the SDL_Renderer path runs on all
+five configured presets, and the 2D asset pipeline has its XML dependency. The
+GLES2 renderer and the last of the C++17 cleanup are next.
 
 - [x] Debian dev environment, scripted and documented
 - [x] Target matrix, toolchain, and constraint research
 - [x] Editor/format configuration
-- [x] Dependencies settled — SDL2, nlohmann/json, doctest ([why](docs/TARGETS.md#pinned-dependencies))
+- [x] Dependencies settled — SDL2, nlohmann/json, pugixml, doctest ([why](docs/TARGETS.md#pinned-dependencies))
 - [x] Modern CMake build with pinned `FetchContent` dependencies
 - [x] Cross-compile toolchain files and `CMakePresets.json` (7 presets)
 - [x] `probe/` → `wreel-probe`, replacing `project1/`
-- [x] `software` graphics backend (required for the Miyoo Mini floor)
-- [x] doctest suite — 36 cases, 99 assertions, incl. the `util/string.hpp` tokenizers
+- [x] `gfx::renderer` — the SDL_Renderer path, on every target. Software driver on
+      the Miyoo Mini, `opengles2` on the Mali handhelds
+- [x] doctest suite — 99 cases, 1401 assertions, 8/8 executables on all five presets
 - [x] Audio as a base requirement — SDL2_mixer, tiered codecs, tracker-first ([why](docs/TARGETS.md#audio))
 - [ ] Verify the cross and Steam presets on real toolchains and hardware
 - [ ] C++17 cleanup of the 2016 sources, then `WREEL_WERROR=ON`
-- [ ] `gles2` and `gl33` backends
+- [x] `util::xml` — pugixml behind a facade, so Sparrow atlases and TMX are read as
+      authored
+- [ ] `gfx::gles2` for shaders and 3D; retire the 2016 fixed-function backend
 - [ ] Packaging: handheld bundles and a Steam depot layout
 
-Only `desktop-software` has actually been built and run — see
+Five of the seven presets are built and tested — both desktop ones natively, and
+`rk3326`, `h700` and `miyoomini` cross-built with their tests run under qemu. **No
+part of this has run on real hardware**, and neither the Miyoo Mini device
+toolchain nor the Steam runtime container has been tried. See
 [docs/DEVELOPMENT.md § Status](docs/DEVELOPMENT.md#status) for exactly what is
 verified and what isn't.
 

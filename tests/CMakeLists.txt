@@ -19,6 +19,10 @@ wreel_add_test(test_string  LIBS wreel::util)
 wreel_add_test(test_xml     LIBS wreel::util wreel::posix)
 wreel_add_test(test_audio   LIBS wreel::audio)
 
+# Needs a video subsystem, so it runs under SDL_VIDEODRIVER=dummy like the audio
+# tests run under the dummy audio driver.
+wreel_add_test(test_renderer LIBS wreel::gfx)
+
 # --- Priority queue ----------------------------------------------------------
 #
 # test_string.cc above is the important one and is not yet complete.

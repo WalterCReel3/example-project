@@ -151,48 +151,77 @@ Consequences:
 - RAM is **128 MB total**, shared with the OS. Asset budgets are tight and
   unbounded caches are not an option.
 
-## Graphics backends
+## Graphics renderers
 
-Selected at configure time with `-DWREEL_GFX_BACKEND=<name>`.
+**Renderers are capabilities, not alternatives.** There is no
+`-DWREEL_GFX_BACKEND=<name>` any more: it selected one of two mutually exclusive
+implementations of one interface, which was the right model while both were ways
+to put pixels on the same screen. The two that survive are not interchangeable, so
+a build compiles both and each executable chooses. Full reasoning in
+[planning/2026-07-26-gfx-renderer-and-gles2](../planning/2026-07-26-gfx-renderer-and-gles2/).
 
-**The option currently accepts `software` and `gl_legacy` only.** Anything else
-is rejected at configure time rather than failing later in the build.
+| Renderer | Built | API | Draws | Status |
+|---|---|---|---|---|
+| `gfx::renderer` | **always** | `SDL_Renderer` | textures, atlases, tilemaps, text — the game | **implemented** — the baseline |
+| `gfx::gles2` | `WREEL_ENABLE_GLES2` | GLES 2.0 context we own | anything a shader can express; 3D | **not written yet** |
+| `gl_legacy` | `WREEL_ENABLE_GL_LEGACY` | fixed-function GL + GLU + GLEW | the 2016 demo | **being retired**, once `skratch` is ported |
+| `gl33` | — | GL 3.3 core | — | only if Steam needs something `gles2` cannot give |
 
-| Backend | API | Runs on | Status |
-|---|---|---|---|
-| `software` | `SDL_Renderer` software | everything, incl. Miyoo Mini | **implemented** — the baseline |
-| `gl_legacy` | fixed-function GL + GLU + GLEW | desktop only | **implemented** — the 2016 code, kept so [skratch](../skratch/) keeps running during the port; will be retired |
-| `gles2` | OpenGL ES 2.0 | Mali handhelds, desktop via Mesa | **not written yet** |
-| `gl33` | OpenGL 3.3 core | desktop, Steam | **not written yet** |
+A window is driven by one renderer or the other. `SDL_Renderer` owns its window's
+GL context internally, and mixing our own GL calls into it is possible in
+SDL ≥ 2.0.10 but not worth the state-restoration discipline.
 
-Until `gles2` exists, the `rk3326` and `h700` presets build with the `software`
-backend. Those devices do have Mali GPUs — `WREEL_TARGET_HAS_GPU` records device
-capability, not backend readiness.
+### `gfx::renderer`'s driver is not always software
+
+This is the point the old `software` name obscured, and why the namespace was
+renamed. SDL picks a **render driver** underneath `SDL_Renderer`:
+
+| Target | Driver | Consequence |
+|---|---|---|
+| Miyoo Mini | `software` | two Cortex-A7 cores doing the blitting |
+| RK3326, H700 | `opengles2` | **hardware accelerated**, same source |
+| desktop | `opengl` | whatever Mesa offers |
+
+So the 2D game path is GPU-accelerated on the Mali handhelds without a line of GL
+in this project. `gfx::renderer::Driver` selects among `PreferAccelerated` (the
+default), `Accelerated` and `Software`; `Context::driver_name()` and
+`accelerated()` report what SDL actually gave, and `tests/test_renderer.cc`
+asserts the resolution rather than trusting the log line.
+
+`PreferAccelerated` degrades to software rather than failing, for the same reason
+`audio::Device` tolerates a missing audio device: a firmware with broken vendor
+blobs should still boot into a playable game.
+
+**`WREEL_TARGET_HAS_GPU` means device capability and nothing else.** It is consumed
+by [Dependencies.cmake](../cmake/Dependencies.cmake) to decide whether SDL2 is
+built with GL/GLES/EGL at all, so using it to record which *renderer* is ready
+silently disables the accelerated driver — which is exactly what had happened to
+`rk3326` and `h700` (D18). Renderer readiness is `WREEL_ENABLE_GLES2`.
 
 `gl_legacy` cannot be ported forward: GL 3.3 core removed the entire
 fixed-function pipeline it is built on. The `gl33` backend is a rewrite, not a
 migration.
 
-### What each backend actually builds
+### What actually gets built
 
-The gate is in [gfx/CMakeLists.txt](../gfx/CMakeLists.txt), and it reaches
+The gates are in [gfx/CMakeLists.txt](../gfx/CMakeLists.txt), and they reach
 further than `gfx` itself:
 
-| | `software` | `gl_legacy` |
+| | always | `+ WREEL_ENABLE_GL_LEGACY` |
 |---|---|---|
-| `gfx` | `spritesheet.cc` + `software/` | `spritesheet.cc` + the 2016 GL sources |
+| `gfx` | `spritesheet.cc` + `renderer/` | plus the 2016 GL sources |
 | `loaders` | `image.cc`, `sparrow.cc` | plus `obj.cc` |
 | `skratch` demo | **not built** | built |
 | `wreel-probe` | built | built |
 | tests | built | built |
 
-`loaders/obj.cc` is excluded under `software` because it populates
-`gfx::ObjModel`, which holds `GLuint` buffer handles and is therefore inherently
-OpenGL. `skratch` is excluded because
+`loaders/obj.cc` is gated because it populates `gfx::ObjModel`, which holds
+`GLuint` buffer handles and is therefore inherently OpenGL — a text parser that
+transitively includes `SDL_opengl.h`. `skratch` is gated because
 [skratch/application.cc](../skratch/application.cc) calls `glClear`, `glRotatef`
-and `glTranslatef` directly. Decoupling model data from GPU buffers is part of
-the `gles2` work; the configure step disables the demo automatically rather than
-failing.
+and `glTranslatef` directly. Splitting model data from GPU residency is stage 2 of
+the renderer snapshot, after which `obj.cc` builds everywhere; the configure step
+disables the demo automatically rather than failing.
 
 ## Audio
 

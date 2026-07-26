@@ -1,4 +1,4 @@
-#include <gfx/software/system.hpp>
+#include <gfx/renderer/system.hpp>
 
 #include <SDL.h>
 #include <SDL_image.h>
@@ -9,7 +9,7 @@
 
 namespace gfx
 {
-namespace software
+namespace renderer
 {
 
 System::System()
@@ -39,7 +39,7 @@ System::System()
     }
 
     const char* driver = SDL_GetCurrentVideoDriver();
-    util::log_info("software system initialised, video driver %s",
+    util::log_info("renderer system initialised, video driver %s",
                    driver ? driver : "(none)");
 }
 
@@ -63,5 +63,5 @@ Context* System::create_context(const std::string& title, int width, int height,
     return context;
 }
 
-} // namespace software
+} // namespace renderer
 } // namespace gfx
