@@ -21,10 +21,9 @@
       "name": "desktop-debug",
       "inherits": "base",
       "displayName": "Desktop (Debug)",
-      "description": "Native build with the legacy GL backend. Day-to-day development.",
+      "description": "Native build. gfx::renderer plus gfx::gles2, so the skratch demo builds. Day-to-day development.",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "WREEL_GFX_BACKEND": "gl_legacy"
+        "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
@@ -32,18 +31,16 @@
       "inherits": "base",
       "displayName": "Desktop (Release)",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "WREEL_GFX_BACKEND": "gl_legacy"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
     },
     {
       "name": "desktop-software",
       "inherits": "base",
-      "displayName": "Desktop (software backend)",
-      "description": "Native build of the software renderer. This is how you test the Miyoo Mini code path without a device.",
+      "displayName": "Desktop (Miyoo Mini configuration)",
+      "description": "Native build with WREEL_TARGET_HAS_GPU=OFF, so SDL is built without GL and gfx::renderer gets its software driver. This is how you test the Miyoo Mini code path without a device.",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "WREEL_GFX_BACKEND": "software",
         "WREEL_TARGET_HAS_GPU": "OFF"
       }
     },
@@ -56,7 +53,6 @@
       "toolchainFile": "${sourceDir}/cmake/toolchains/steam-linux.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "WREEL_GFX_BACKEND": "gl_legacy",
         "WREEL_BUILD_TESTS": "ON"
       }
     },
@@ -65,11 +61,10 @@
       "name": "miyoomini",
       "inherits": "base",
       "displayName": "Miyoo Mini / Mini Plus (SSD202D, no GPU)",
-      "description": "Run inside union-miyoomini-toolchain, or set MIYOOMINI_TOOLCHAIN_ROOT. GCC 8.3, software renderer only.",
+      "description": "Run inside union-miyoomini-toolchain, or set MIYOOMINI_TOOLCHAIN_ROOT. GCC 8.3; no GPU, so gfx::renderer with the software driver is the only path.",
       "toolchainFile": "${sourceDir}/cmake/toolchains/miyoomini.cmake",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "WREEL_GFX_BACKEND": "software"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     },
 
@@ -80,8 +75,7 @@
       "description": "Compile-check by default. Pass -DWREEL_SYSROOT=... for a shippable build.",
       "toolchainFile": "${sourceDir}/cmake/toolchains/rk3326.cmake",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "WREEL_GFX_BACKEND": "software"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     },
     {
@@ -91,8 +85,7 @@
       "description": "Compile-check by default. Pass -DWREEL_SYSROOT=... for a shippable build.",
       "toolchainFile": "${sourceDir}/cmake/toolchains/h700.cmake",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "WREEL_GFX_BACKEND": "software"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     }
   ],

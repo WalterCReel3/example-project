@@ -14,8 +14,9 @@ add_executable(wreel-probe
 
 wreel_set_target_defaults(wreel-probe)
 
-# Deliberately does not link wreel::gfx — the probe must build and run on
-# targets where no graphics backend is viable yet.
+# Deliberately does not link wreel::gfx. The probe reports what the *device*
+# offers, so it should not depend on our renderers being able to run there — and
+# for GL it needs two entry points, which it resolves itself.
 target_link_libraries(wreel-probe PRIVATE
     wreel::util
     wreel::posix
@@ -26,18 +27,19 @@ target_compile_definitions(wreel-probe PRIVATE
     WREEL_TARGET_ID="${WREEL_TARGET_ID}"
     WREEL_VERSION="${PROJECT_VERSION}")
 
-# GL probing is compiled out unless desktop OpenGL is actually linkable. Two
-# separate conditions, and conflating them is a real bug:
+# One condition, because nothing is linked: report_gl() resolves glGetString and
+# glGetIntegerv with SDL_GL_GetProcAddress, so all it needs is an SDL2 built with
+# GL/GLES support. That is what WREEL_TARGET_HAS_GPU decides, via
+# cmake/Dependencies.cmake.
 #
-#   WREEL_TARGET_HAS_GPU  — SDL2 was built with SDL_OPENGL, so the SDL_GL_* calls
-#                           exist. Gating only on this got as far as compiling and
-#                           then failed at link with "undefined reference to
-#                           glGetString", because report_gl() calls GL directly.
-#   WREEL_HAVE_OPENGL     — find_package(OpenGL) succeeded, so there is a library
-#                           to resolve those symbols against.
-if(WREEL_TARGET_HAS_GPU AND WREEL_HAVE_OPENGL)
+# It used to also require find_package(OpenGL), because the probe called GL
+# directly and needed a library to resolve against. The consequence was that the GL
+# section was compiled out on precisely the targets it matters most for: no
+# libGL/libGLESv2 exists for aarch64 in Debian's cross environment, so rk3326 and
+# h700 reported "not compiled in" and could never answer whether a device's blob
+# works.
+if(WREEL_TARGET_HAS_GPU)
     target_compile_definitions(wreel-probe PRIVATE WREEL_PROBE_GL=1)
-    target_link_libraries(wreel-probe PRIVATE OpenGL::GL)
 endif()
 
 set_target_properties(wreel-probe PROPERTIES

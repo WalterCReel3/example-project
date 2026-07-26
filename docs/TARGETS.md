@@ -7,17 +7,24 @@ elsewhere don't have to re-derive them.
 
 ## Target matrix
 
-| Preset | Devices | SoC | Arch | GPU | Backend today | Toolchain |
+| Preset | Devices | SoC | Arch | GPU | `gfx::renderer` driver | Toolchain |
 |---|---|---|---|---|---|---|
-| `desktop-debug` / `-release` | your dev box | any | `x86_64` | any | `gl_legacy` | host GCC/Clang |
-| `desktop-software` | your dev box | any | `x86_64` | any | `software` | host GCC/Clang |
-| `steam` | Steam / Steam Deck | any | `x86_64` | any | `gl_legacy` | Steam Runtime **sniper** container |
+| `desktop-debug` / `-release` | your dev box | any | `x86_64` | any | `opengl` | host GCC/Clang |
+| `desktop-software` | your dev box | any | `x86_64` | any | `software` (forced) | host GCC/Clang |
+| `steam` | Steam / Steam Deck | any | `x86_64` | any | `opengl` | Steam Runtime **sniper** container |
 | `miyoomini` | Miyoo Mini, Mini Plus | SigmaStar SSD202D | `armv7-a` | **none** | `software` **only** | `union-miyoomini-toolchain` (GCC 8.3) |
-| `rk3326` | RG351P/M/V, RG353P/M/V | Rockchip RK3326 | `aarch64` | Mali-G31 | `software` (awaiting `gles2`) | device sysroot or Debian cross |
-| `h700` | RG35XX Plus/H/SP, RG40XX | Allwinner H700 | `aarch64` | Mali-G31 MP2 | `software` (awaiting `gles2`) | device sysroot or Debian cross |
+| `rk3326` | RG351P/M/V, RG353P/M/V | Rockchip RK3326 | `aarch64` | Mali-G31 | `opengles2` | device sysroot or Debian cross |
+| `h700` | RG35XX Plus/H/SP, RG40XX | Allwinner H700 | `aarch64` | Mali-G31 MP2 | `opengles2` | device sysroot or Debian cross |
 
-`desktop-software` is how you exercise the Miyoo Mini code path without a device:
-same backend, native speed, no cross-compile.
+Every preset builds `gfx::renderer`; the driver column is what SDL selects
+underneath it. The two Mali rows were `software` until 2026-07-26, when D18 was
+fixed — they had been compiled as though they had no GPU. Those two are
+**build-verified only**: no part of this has run on hardware.
+
+`desktop-software` is how you exercise the Miyoo Mini code path without a device.
+It sets `WREEL_TARGET_HAS_GPU=OFF`, so SDL is built with no GL at all and the
+software driver is the only one available — the same situation as the SSD202D,
+at native speed and without a cross-compiler.
 
 ### Out of scope
 
@@ -56,9 +63,11 @@ Integer `std::from_chars` **is** available in GCC 8. `std::optional`,
 `std::not_fn`, and fold expressions are all fine. Inline variables are available,
 which is what lets `util/ascii.hpp` expose `inline constexpr` predicate objects.
 
-> This is why [loaders/obj.cc](../loaders/obj.cc) keeps using `strtod`/`strtol`
-> rather than moving to `<charconv>` — floating-point `from_chars` simply is not
-> there.
+> This is why [util/number.hpp](../include/util/number.hpp) dispatches on type:
+> integers go through `std::from_chars`, which GCC 8 has and which is
+> locale-independent, while floating point falls back to the `strtod` family. It is
+> the one place in the tree that has to care, and `util::from_string` is what
+> everything else — the OBJ loader, `util::xml`, TMX — calls instead.
 
 > **Do not use `<cctype>` for parsing.** `::isspace` and friends are
 > locale-dependent, take `int`, and are undefined for negative `char` — and `char`
@@ -143,56 +152,90 @@ GLES, no EGL. Everything is CPU blitting through `SDL_Renderer`'s software path
 
 Consequences:
 
-- The `software` backend is not a fallback, it is the **only** backend on this
-  device, so it has to be good enough to be the baseline everywhere.
-- The existing [gfx/](../gfx/) code — `glBegin`/`glEnd`, `glMatrixMode`,
-  `gluPerspective`, GLEW — cannot compile for this target at all. It is gated
-  behind the desktop-only `gl_legacy` backend.
+- `gfx::renderer` with its software driver is not a fallback here, it is the
+  **only** thing that runs, so it has to be good enough to be the baseline
+  everywhere. `WREEL_ENABLE_GLES2` is rejected outright on this target.
+- `WREEL_ENABLE_GLES2` is **rejected** here rather than silently downgraded, and
+  `WREEL_BUILD_DEMOS` turns itself off because `skratch` needs that renderer. The
+  2016 fixed-function code that could never compile for this target is gone
+  entirely.
 - RAM is **128 MB total**, shared with the OS. Asset budgets are tight and
   unbounded caches are not an option.
 
-## Graphics backends
+## Graphics renderers
 
-Selected at configure time with `-DWREEL_GFX_BACKEND=<name>`.
+**Renderers are capabilities, not alternatives.** There is no
+`-DWREEL_GFX_BACKEND=<name>` any more: it selected one of two mutually exclusive
+implementations of one interface, which was the right model while both were ways
+to put pixels on the same screen. The two that survive are not interchangeable, so
+a build compiles both and each executable chooses. Full reasoning in
+[planning/2026-07-26-gfx-renderer-and-gles2](../planning/2026-07-26-gfx-renderer-and-gles2/).
 
-**The option currently accepts `software` and `gl_legacy` only.** Anything else
-is rejected at configure time rather than failing later in the build.
+| Renderer | Built | API | Draws | Status |
+|---|---|---|---|---|
+| `gfx::renderer` | **always** | `SDL_Renderer` | textures, atlases, tilemaps, text — the game | **implemented** — the baseline |
+| `gfx::gles2` | `WREEL_ENABLE_GLES2` | GLES 2.0 context we own | anything a shader can express; 3D | **implemented**, and `skratch` renders through it. Never run on a device |
+| `gl33` | — | GL 3.3 core | — | only if Steam needs something `gles2` cannot give |
 
-| Backend | API | Runs on | Status |
-|---|---|---|---|
-| `software` | `SDL_Renderer` software | everything, incl. Miyoo Mini | **implemented** — the baseline |
-| `gl_legacy` | fixed-function GL + GLU + GLEW | desktop only | **implemented** — the 2016 code, kept so [skratch](../skratch/) keeps running during the port; will be retired |
-| `gles2` | OpenGL ES 2.0 | Mali handhelds, desktop via Mesa | **not written yet** |
-| `gl33` | OpenGL 3.3 core | desktop, Steam | **not written yet** |
+A window is driven by one renderer or the other. `SDL_Renderer` owns its window's
+GL context internally, and mixing our own GL calls into it is possible in
+SDL ≥ 2.0.10 but not worth the state-restoration discipline.
 
-Until `gles2` exists, the `rk3326` and `h700` presets build with the `software`
-backend. Those devices do have Mali GPUs — `WREEL_TARGET_HAS_GPU` records device
-capability, not backend readiness.
+### `gfx::renderer`'s driver is not always software
 
-`gl_legacy` cannot be ported forward: GL 3.3 core removed the entire
-fixed-function pipeline it is built on. The `gl33` backend is a rewrite, not a
-migration.
+This is the point the old `software` name obscured, and why the namespace was
+renamed. SDL picks a **render driver** underneath `SDL_Renderer`:
 
-### What each backend actually builds
+| Target | Driver | Consequence |
+|---|---|---|
+| Miyoo Mini | `software` | two Cortex-A7 cores doing the blitting |
+| RK3326, H700 | `opengles2` | **hardware accelerated**, same source |
+| desktop | `opengl` | whatever Mesa offers |
 
-The gate is in [gfx/CMakeLists.txt](../gfx/CMakeLists.txt), and it reaches
+So the 2D game path is GPU-accelerated on the Mali handhelds without a line of GL
+in this project. `gfx::renderer::Driver` selects among `PreferAccelerated` (the
+default), `Accelerated` and `Software`; `Context::driver_name()` and
+`accelerated()` report what SDL actually gave, and `tests/test_renderer.cc`
+asserts the resolution rather than trusting the log line.
+
+`PreferAccelerated` degrades to software rather than failing, for the same reason
+`audio::Device` tolerates a missing audio device: a firmware with broken vendor
+blobs should still boot into a playable game.
+
+**`WREEL_TARGET_HAS_GPU` means device capability and nothing else.** It is consumed
+by [Dependencies.cmake](../cmake/Dependencies.cmake) to decide whether SDL2 is
+built with GL/GLES/EGL at all, so using it to record which *renderer* is ready
+silently disables the accelerated driver — which is exactly what had happened to
+`rk3326` and `h700` (D18). Renderer readiness is `WREEL_ENABLE_GLES2`.
+
+**The 2016 backend was not ported forward, and could not have been.** GL 3.3 core
+removed the entire fixed-function pipeline it was built on, so `skratch` was
+rewritten against `gfx::gles2` rather than migrated: explicit matrices instead of
+`glRotatef` on a driver-side stack, `glm::perspective` instead of `gluPerspective`,
+shaders instead of immediate-mode state. It is kept deliberately as the worked
+example of that difference. A `gl33` renderer, if Steam ever needs something
+`gles2` cannot give, would be a rewrite for the same reason.
+
+### What actually gets built
+
+The gates are in [gfx/CMakeLists.txt](../gfx/CMakeLists.txt), and they reach
 further than `gfx` itself:
 
-| | `software` | `gl_legacy` |
+| | always | `+ WREEL_ENABLE_GLES2` |
 |---|---|---|
-| `gfx` | `spritesheet.cc` + `software/` | `spritesheet.cc` + the 2016 GL sources |
-| `loaders` | `image.cc`, `sparrow.cc` | plus `obj.cc` |
+| `gfx` | `spritesheet.cc`, `system.cc`, `renderer/` | plus `gles2/` |
+| `loaders` | `image.cc`, `obj.cc`, `sparrow.cc` | — |
 | `skratch` demo | **not built** | built |
 | `wreel-probe` | built | built |
 | tests | built | built |
 
-`loaders/obj.cc` is excluded under `software` because it populates
-`gfx::ObjModel`, which holds `GLuint` buffer handles and is therefore inherently
-OpenGL. `skratch` is excluded because
-[skratch/application.cc](../skratch/application.cc) calls `glClear`, `glRotatef`
-and `glTranslatef` directly. Decoupling model data from GPU buffers is part of
-the `gles2` work; the configure step disables the demo automatically rather than
-failing.
+Nothing in `loaders` is gated any more. `obj.cc` used to be, because it filled a
+`gfx::ObjModel` holding `GLuint` buffer handles — a text parser that transitively
+included `SDL_opengl.h`. It produces `gfx::Mesh` now, so it builds and is tested on
+every target including the GPU-less one.
+
+`skratch` needs `gfx::gles2`, so the configure step disables the demo on a target
+without a GPU rather than failing.
 
 ## Audio
 
@@ -298,6 +341,7 @@ library versions. Tags verified upstream.
 | SDL2_mixer | `release-2.8.2` | codec set per `WREEL_AUDIO_CODECS`; vendored libxmp, no external deps |
 | nlohmann/json | `v3.12.0` | JSON config and data; replaces RapidJSON |
 | pugixml | `v1.16` | Sparrow texture atlases and Tiled TMX maps |
+| glm | `1.0.3` | vector and matrix maths; replaces `include/math/vector.hpp`. Debian 12 ships `0.9.9.8` |
 | doctest | `v2.5.3` | test framework; single header, no per-target build |
 
 Three things about this that are easy to get wrong, and are settled here:

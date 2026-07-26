@@ -1,4 +1,4 @@
-#include <gfx/software/context.hpp>
+#include <gfx/renderer/context.hpp>
 
 #include <SDL.h>
 #include <SDL_ttf.h>
@@ -8,7 +8,7 @@
 
 namespace gfx
 {
-namespace software
+namespace renderer
 {
 
 namespace
@@ -24,10 +24,29 @@ SDL_Color to_sdl(const Color& c)
     return out;
 }
 
+Uint32 to_sdl(Driver driver)
+{
+    switch (driver) {
+    case Driver::Accelerated:
+        return SDL_RENDERER_ACCELERATED;
+    case Driver::Software:
+        return SDL_RENDERER_SOFTWARE;
+    case Driver::PreferAccelerated:
+        // Deliberately 0 rather than SDL_RENDERER_ACCELERATED. SDL walks its
+        // driver list in preference order and takes the first that satisfies
+        // the flags, with the accelerated drivers ahead of software -- so 0
+        // already means "accelerated if you can, software if you cannot".
+        // Passing SDL_RENDERER_ACCELERATED here would turn the fallback into a
+        // failure.
+        break;
+    }
+    return 0;
+}
+
 } // namespace
 
 Context::Context(const std::string& title, int width, int height,
-                 bool fullscreen)
+                 bool fullscreen, Driver driver)
     : _window(nullptr)
     , _renderer(nullptr)
     , _width(0)
@@ -49,16 +68,15 @@ Context::Context(const std::string& title, int width, int height,
                                  SDL_GetError());
     }
 
-    // -1 lets SDL pick the first driver satisfying the flags. On a GPU-less
-    // device that resolves to the software renderer; asking for
-    // SDL_RENDERER_SOFTWARE explicitly would refuse acceleration where it does
-    // exist, which is not what we want on desktop.
-    _renderer = SDL_CreateRenderer(_window, -1, 0);
+    // -1 lets SDL pick the first driver in its own preference order that
+    // satisfies the flags; see to_sdl(Driver) for why PreferAccelerated passes
+    // 0.
+    _renderer = SDL_CreateRenderer(_window, -1, to_sdl(driver));
     if (!_renderer) {
+        const std::string error = SDL_GetError();
         SDL_DestroyWindow(_window);
         _window = nullptr;
-        throw std::runtime_error(std::string("could not create renderer: ") +
-                                 SDL_GetError());
+        throw std::runtime_error("could not create renderer: " + error);
     }
 
     SDL_GetRendererOutputSize(_renderer, &_width, &_height);
@@ -66,8 +84,12 @@ Context::Context(const std::string& title, int width, int height,
     // Blend so text and sprites composite rather than punching holes.
     SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_BLEND);
 
-    util::log_info("software context %dx%d via %s", _width, _height,
-                   driver_name().c_str());
+    // Which driver was selected decides whether this is a GPU or two Cortex-A7
+    // cores doing the blitting, so it is worth a line at info rather than
+    // debug.
+    util::log_info("renderer context %dx%d via %s (%s)", _width, _height,
+                   driver_name().c_str(),
+                   accelerated() ? "accelerated" : "software");
 }
 
 Context::~Context()
@@ -87,6 +109,18 @@ std::string Context::driver_name() const
         return "(unknown)";
     }
     return info.name ? info.name : "(unnamed)";
+}
+
+bool Context::accelerated() const
+{
+    SDL_RendererInfo info;
+    if (!_renderer || SDL_GetRendererInfo(_renderer, &info) != 0) {
+        return false;
+    }
+    // Read back from SDL rather than inferred from the requested Driver: a
+    // PreferAccelerated request can resolve either way, and that is the whole
+    // question this answers.
+    return (info.flags & SDL_RENDERER_ACCELERATED) != 0;
 }
 
 void Context::clear(const Color& color)
@@ -148,5 +182,5 @@ void Context::draw_text(const std::string& text, TTF_Font* font,
     SDL_FreeSurface(rendered);
 }
 
-} // namespace software
+} // namespace renderer
 } // namespace gfx

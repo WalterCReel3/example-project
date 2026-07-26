@@ -23,13 +23,17 @@ iteration and expressive rendering. Keeping both honest is the point.
 
 ## Targets
 
-| Preset | Devices | Graphics |
-|---|---|---|
-| `desktop` | your dev box | GL 3.3 / software |
-| `steam` | Steam, Steam Deck | GL 3.3 core |
-| `miyoomini` | Miyoo Mini, Mini Plus | **software only** — no GPU |
-| `rk3326` | RG351, RG353 | GLES 2.0 |
-| `h700` | RG35XX Plus/H/SP, RG40XX | GLES 2.0 |
+| Preset | Devices | `gfx::renderer` driver | `gfx::gles2` |
+|---|---|---|---|
+| `desktop` | your dev box | `opengl` | yes |
+| `steam` | Steam, Steam Deck | `opengl` | yes |
+| `miyoomini` | Miyoo Mini, Mini Plus | `software` — **no GPU at all** | never |
+| `rk3326` | RG351, RG353 | `opengles2` | yes |
+| `h700` | RG35XX Plus/H/SP, RG40XX | `opengles2` | yes |
+
+Two renderers, both compiled where the hardware allows: `gfx::renderer` over
+`SDL_Renderer` draws the game on every target, hardware-accelerated wherever a GPU
+exists, and `gfx::gles2` owns a GL context for shaders and 3D.
 
 Full detail, and the three constraints that drive every design decision here, in
 [docs/TARGETS.md](docs/TARGETS.md).
@@ -55,7 +59,7 @@ one way: `skratch` → `loaders` → `util` → `posix`.
 | [gfx/](gfx/) | `libgfx` | SDL2 windowing and rendering |
 | [audio/](audio/) | `libaudio` | sound effects and music — SDL2_mixer |
 | [loaders/](loaders/) | `libloaders` | OBJ models, images, texture atlases |
-| [skratch/](skratch/) | executable | demo app — free camera over a model grid |
+| [skratch/](skratch/) | executable | demo app — free camera over a model grid, and the worked example of modern GL structuring |
 | `probe/` | executable | `wreel-probe` — device capability diagnostic |
 | [tests/](tests/) | CTest suite | doctest, run from repo root against `data/` |
 
@@ -90,25 +94,34 @@ Full detail in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Status
 
-Revival in progress. The build system works and the software renderer runs;
-shader backends and the C++17 source cleanup are next.
+Revival in progress. The 2016 code is now fully modernized: both renderers work,
+the fixed-function backend is gone, and the tree builds warning-free under
+`-Werror` on all five configured presets. What is missing is hardware — none of
+this has run on a device — and the 2D sprite path the handheld game needs.
 
 - [x] Debian dev environment, scripted and documented
 - [x] Target matrix, toolchain, and constraint research
 - [x] Editor/format configuration
-- [x] Dependencies settled — SDL2, nlohmann/json, doctest ([why](docs/TARGETS.md#pinned-dependencies))
+- [x] Dependencies settled — SDL2, nlohmann/json, pugixml, glm, doctest ([why](docs/TARGETS.md#pinned-dependencies))
 - [x] Modern CMake build with pinned `FetchContent` dependencies
 - [x] Cross-compile toolchain files and `CMakePresets.json` (7 presets)
 - [x] `probe/` → `wreel-probe`, replacing `project1/`
-- [x] `software` graphics backend (required for the Miyoo Mini floor)
-- [x] doctest suite — 36 cases, 99 assertions, incl. the `util/string.hpp` tokenizers
+- [x] `gfx::renderer` — the SDL_Renderer path, on every target. Software driver on
+      the Miyoo Mini, `opengles2` on the Mali handhelds
+- [x] doctest suite — 10 executables, 114 cases, 1482 assertions, passing on all five presets
 - [x] Audio as a base requirement — SDL2_mixer, tiered codecs, tracker-first ([why](docs/TARGETS.md#audio))
 - [ ] Verify the cross and Steam presets on real toolchains and hardware
-- [ ] C++17 cleanup of the 2016 sources, then `WREEL_WERROR=ON`
-- [ ] `gles2` and `gl33` backends
+- [x] C++17 cleanup of the 2016 sources — **167 warnings to zero**, `WREEL_WERROR=ON`
+- [x] `util::xml` — pugixml behind a facade, so Sparrow atlases and TMX are read as
+      authored
+- [x] `gfx::gles2` for shaders and 3D; the 2016 fixed-function backend retired, with
+      `skratch` ported onto it as the modern-GL reference
 - [ ] Packaging: handheld bundles and a Steam depot layout
 
-Only `desktop-software` has actually been built and run — see
+Five of the seven presets are built and tested — both desktop ones natively, and
+`rk3326`, `h700` and `miyoomini` cross-built with their tests run under qemu. **No
+part of this has run on real hardware**, and neither the Miyoo Mini device
+toolchain nor the Steam runtime container has been tried. See
 [docs/DEVELOPMENT.md § Status](docs/DEVELOPMENT.md#status) for exactly what is
 verified and what isn't.
 

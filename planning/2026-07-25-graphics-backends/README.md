@@ -1,8 +1,26 @@
 # Graphics backends: `gles2`, `gl33`, and retiring `gl_legacy`
 
-**Status:** `snapshot`
+**Status:** `superseded`
 **Written:** 2026-07-25
+**Superseded by:** [2026-07-26-gfx-renderer-and-gles2](../2026-07-26-gfx-renderer-and-gles2/)
 **Blocked by:** [cxx17-modernization](../2026-07-25-cxx17-modernization/)
+
+> **Superseded 2026-07-26.** The plan below — write `gles2`, then retire
+> `gl_legacy` — treats a hand-written GLES2 backend as what the Mali handhelds
+> need. Applying this document's *own* 2D-only decision to that ordering shows it
+> is not: SDL_Renderer has a `GLES2_RenderDriver`, so the Mali devices get
+> hardware-accelerated 2D from the existing `software` backend with no new
+> rendering code. Accelerating the handhelds and writing GLES2 are separate jobs
+> with separate consumers. Both are being done, in that order, and the mutually
+> exclusive `WREEL_GFX_BACKEND` switch is retired because the two renderers
+> coexist.
+>
+> Measured while working that out: `rk3326` and `h700` currently build SDL2 with
+> GL, GLES and EGL all disabled, so both Mali devices are compiled as though they
+> had no GPU. Recorded as D18.
+>
+> This document is kept for the structural analysis in *The structural problem*,
+> which still holds, and for the 2D-only decision, which is unchanged.
 
 ## Where things stand
 

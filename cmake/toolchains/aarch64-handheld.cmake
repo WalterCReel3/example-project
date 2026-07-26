@@ -23,10 +23,15 @@ set(CMAKE_SYSTEM_PROCESSOR aarch64)
 
 set(WREEL_TARGET_IS_HANDHELD ON)
 
-# Mali GPUs: GLES 2.0 / 3.x is available. The gles2 backend is not written yet,
-# so these presets currently build with the software backend; the flag records
-# device capability, not backend readiness.
-set(WREEL_TARGET_HAS_GPU OFF)
+# Device capability, which is what this flag means and all it means. Both SoCs
+# carry a Mali GPU exposing GLES 2.0 and above.
+#
+# cmake/Dependencies.cmake consumes this to decide whether SDL2 is built with
+# GL/GLES/EGL at all, so it must not be used to say which of our renderers is
+# ready — that is WREEL_ENABLE_GLES2. Setting it from readiness is what left both
+# Mali devices compiled as though they had no GPU, with SDL's GLES2 render driver
+# compiled out and no diagnostic (D18).
+set(WREEL_TARGET_HAS_GPU ON)
 
 if(NOT WREEL_SOC_TUNE)
     message(FATAL_ERROR "WREEL_SOC_TUNE must be set before including this file")

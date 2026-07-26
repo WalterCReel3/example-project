@@ -1,9 +1,10 @@
-# skratch — the demo application.
+# skratch — the demo application, and the worked example of how GL is structured
+# now versus in 2016.
 #
-# Only buildable under the gl_legacy backend: application.cc calls glClear,
-# glRotatef, glTranslatef and glLoadIdentity directly, so it is welded to the
-# fixed-function pipeline. ProjectOptions.cmake disables WREEL_BUILD_DEMOS
-# automatically for other backends rather than failing the configure.
+# Needs gfx::gles2, so ProjectOptions.cmake disables WREEL_BUILD_DEMOS on a target
+# with no GPU rather than failing the configure. It contains no gl* calls of its
+# own any more: everything goes through gfx::gles2, which is what lets the demo
+# follow the renderer instead of being welded to one pipeline.
 
 add_executable(skratch
     main.cc
@@ -18,8 +19,9 @@ target_link_libraries(skratch PRIVATE
     wreel::util
     wreel::posix)
 
-# main.cc writes runlog.txt and loads data/ico.obj by relative path, so it must
-# run from a directory containing data/.
+# Loads data/ico.obj and data/Speedy.fon by relative path, so it must run from a
+# directory containing data/. The log no longer lands in the working directory —
+# main.cc writes it under SDL_GetPrefPath.
 set_target_properties(skratch PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${WREEL_RUNTIME_OUTPUT_DIRECTORY}")
 

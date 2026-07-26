@@ -190,6 +190,14 @@ in the tree used `#pragma once` when this was written.
 favour of the modern spelling over matching the `WREEL_*` guards the other
 authored headers happen to use.
 
+**Mostly resolved by attrition** rather than by a sweep. Of the 20 reserved-name
+guards, the renderer rework deleted 8 outright — `gfx/context.hpp`,
+`gfx/obj.hpp`, `gfx/system.hpp`, `gfx/utils.hpp`, `gfx/primitives.hpp`,
+`math/vector.hpp`, `skratch/globals.hpp`, and `loaders/obj.hpp` was rewritten with
+`#pragma once`. Both of the wrong-module guards this entry called out went with
+them: `gfx/context.hpp`'s `__GFX_VIEW_HPP__` and `gfx/primitives.hpp`'s
+`__MATH_PRIMITIVES_HPP`. Every header authored since uses `#pragma once`.
+
 Three of the 2016 guards are also simply wrong about their own file, which is
 worth fixing in the same pass: `gfx/context.hpp` declares `__GFX_VIEW_HPP__`
 (leftover from a rename) and `gfx/primitives.hpp` declares
@@ -243,10 +251,18 @@ expressions do something nobody intends.
 Not currently exercised — `skratch` assigns components directly rather than using
 the operators.
 
-**Fix:** free `operator+` returning by value, plus member `operator+=` returning
-`Vector3&`. Also add `operator-`, `dot`, `cross`, `length` and `normalize`, which
-a renderer will need shortly. Consider whether `glm` (already in the bootstrap
-script's `math` group) should replace this header entirely.
+**Fixed** 2026-07-26 **by deletion.** `include/math/vector.hpp` is gone and glm
+`1.0.3` is pinned in its place, so the operators are not repaired — they no longer
+exist. The alternative was writing `operator+`/`operator+=` correctly plus
+`operator-`, `dot`, `cross`, `length`, `normalize` and a `Matrix4`, and the tests
+to trust all of it.
+
+It cost five lines outside the OBJ loader, because every consumer —
+`gfx/obj.hpp`, `gfx/utils.hpp`, `gfx/types.hpp`, `skratch/application.cc` — was
+already a file the renderer rework deleted or rewrote. Reasoning for taking a
+vendor type into module signatures is in
+[2026-07-26-gfx-renderer-and-gles2](../2026-07-26-gfx-renderer-and-gles2/) and
+docs/TARGETS.md.
 
 ---
 
@@ -263,9 +279,19 @@ class's destructor, which is why the ordering works only by accident.
 The new `gfx::software::System` (`include/gfx/software/system.hpp`) deliberately
 does not do this: it is a plain object with explicit ownership.
 
-**Fix:** covered by the `gl_legacy` retirement in
-[graphics-backends](../2026-07-25-graphics-backends/). Not worth fixing in code
-that is being deleted.
+**Fixed** 2026-07-26 **by deletion**, as predicted. `gfx/system.cc` and its static
+`_instance` are gone with the rest of the 2016 backend.
+
+There is a `gfx::System` again, and it is a different thing: RAII over
+SDL_Init/TTF_Init/IMG_Init with no singleton, no factory and no context ownership.
+The old one also heap-allocated contexts into a vector and deleted them in its
+destructor — a raw owning pointer plus a lifetime split across two classes. A
+context is now owned by whatever created it, which for `skratch` is a
+`unique_ptr` member.
+
+Note that `gfx::renderer::System` briefly carried the same context-owning vector
+before being promoted to the renderer-neutral `gfx::System`; nothing ever called its
+`create_context`, so it went with the promotion.
 
 ---
 
@@ -582,6 +608,65 @@ applies only when the attribute is *absent* — a present but non-numeric value
 yields `0`, and `"12px"` yields `12`. `util::xml`'s defaulted accessors therefore
 route through `util::from_string` rather than re-exporting that behaviour, so
 malformed and absent both mean "fallback". Asserted in `tests/test_xml.cc`.
+
+---
+
+## D18 — both Mali handhelds are built as though they had no GPU
+
+**WRONG.** `cmake/toolchains/aarch64-handheld.cmake:29`
+
+```cmake
+# Mali GPUs: GLES 2.0 / 3.x is available. The gles2 backend is not written yet,
+# so these presets currently build with the software backend; the flag records
+# device capability, not backend readiness.
+set(WREEL_TARGET_HAS_GPU OFF)
+```
+
+The comment states the intent precisely and the code does the opposite: the flag
+is set from backend readiness, which is the one thing it says it does not record.
+
+It matters because `WREEL_TARGET_HAS_GPU` is not confined to backend selection.
+[`cmake/Dependencies.cmake`](../../cmake/Dependencies.cmake) consumes it to decide
+whether SDL2 is built with GL, GLES and EGL at all, so a flag meant to say "which
+of our backends is ready" silently configures the *dependency*. Read out of each
+preset's generated `SDL_config.h` on 2026-07-26:
+
+| Preset | `OPENGL` | `OPENGL_ES2` | `OPENGL_EGL` | `RENDER_OGL_ES2` |
+|---|---|---|---|---|
+| `desktop-software` | off | off | off | off |
+| `desktop-debug` | on | on | on | on |
+| `rk3326` | off | off | off | off |
+| `h700` | off | off | off | off |
+| `miyoomini` | off | off | off | off |
+
+`miyoomini` and `desktop-software` are correct. `rk3326` and `h700` are not: SDL's
+`GLES2_RenderDriver` is compiled out, so even the accelerated 2D path that needs
+no code of ours is unavailable on both Mali devices. The build succeeds and
+produces a CPU-blitting binary for hardware with a GPU, with no diagnostic.
+
+Invisible because nothing has run on the devices and because the software driver
+is a correct fallback — the failure mode is a performance one, on the targets
+whose fill rate is already the main risk in
+[software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/).
+
+**Fixed** 2026-07-26: the flag is set from device capability, per its own comment,
+and renderer *readiness* is gated separately by `WREEL_ENABLE_GLES2` —
+[2026-07-26-gfx-renderer-and-gles2](../2026-07-26-gfx-renderer-and-gles2/)
+decision 1. All five presets now report the intended GL support:
+`rk3326`/`h700` on, `miyoomini`/`desktop-software` off, and both aarch64 presets
+still pass 8/8 under qemu.
+
+A second defect in the same area, found by the fix not taking effect at first:
+`Dependencies.cmake` forced `SDL_OPENGL`/`SDL_OPENGLES` **off** for a GPU-less
+target but left the GPU case at whatever the cache already held. So a build
+directory configured while a target was believed to have no GPU kept GL disabled
+after that belief was corrected — the flag changed and nothing happened. Both
+directions are now forced, so a reconfigure does not depend on cache history.
+
+Expected to be needed and was not: `libgles-dev:arm64`. The GLES/EGL headers are
+architecture-independent and already installed for the host, and SDL `dlopen`s
+`libEGL.so`/`libGLESv2.so` rather than linking them — every cross-built binary
+still lists only `libm.so.6` and `libc.so.6` as `NEEDED`. No bootstrap change.
 
 ---
 

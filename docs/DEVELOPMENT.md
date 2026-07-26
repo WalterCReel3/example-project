@@ -90,28 +90,6 @@ copies builds faster.
 `clang-format` 14 on bookworm, which is what [.clang-format](../.clang-format)
 targets.
 
-#### `legacy` — GLEW and GLU, for `gl_legacy` only
-
-`libglew-dev libglu1-mesa-dev`
-
-**Not in the default set.** These are needed by exactly one thing: the
-`gl_legacy` backend, where `gfx/context.cc` calls `glewInit()` and
-`gluPerspective()`. SDL2's own CMakeLists references neither, the `software`
-backend needs neither, and no handheld target can use `gl_legacy` at all — the
-Miyoo Mini has no GPU.
-
-Kept as its own group so that when `gl_legacy` is retired, the packages go with
-it. Buried among twenty GL entries in the `sdl` group they would quietly outlive
-the code that needed them, and the next person would have no way to tell which
-were still load-bearing.
-
-```sh
-./scripts/bootstrap-debian.sh --legacy   # just these two
-```
-
-`desktop-software` — the working preset — needs none of it, and if you do want
-`gl_legacy` the configure error names the package.
-
 #### `cross` — cross compilers
 
 `crossbuild-essential-armhf crossbuild-essential-arm64 qemu-user-static binfmt-support patchelf`
@@ -233,7 +211,7 @@ cmake --preset desktop-software
 cmake --build --preset desktop-software
 ctest --preset desktop-software
 
-# Native build with the legacy GL renderer (needs GLEW + GLU installed)
+# Native build with both renderers, so the skratch demo builds
 cmake --preset desktop-debug
 cmake --build --preset desktop-debug
 
@@ -257,12 +235,12 @@ building the same dependencies for several targets.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `WREEL_GFX_BACKEND` | per-target | `software` or `gl_legacy`. Invalid values are rejected at configure time |
+| `WREEL_ENABLE_GLES2` | follows `WREEL_TARGET_HAS_GPU` | build `gfx::gles2`. Rejected on a target with no GPU. Empty means auto; set `ON`/`OFF` to override |
 | `WREEL_USE_SYSTEM_SDL2` | `OFF` | link the sysroot's SDL2 instead of building the pinned copy |
 | `WREEL_BUILD_TESTS` | `ON` | build the doctest suite |
-| `WREEL_BUILD_DEMOS` | `ON` | build `skratch` — forced `OFF` unless the backend is `gl_legacy` |
+| `WREEL_BUILD_DEMOS` | `ON` | build `skratch` — forced `OFF` where `gfx::gles2` is unavailable, i.e. on a target with no GPU |
 | `WREEL_BUILD_PROBE` | `ON` | build `wreel-probe` |
-| `WREEL_WERROR` | `OFF` | treat warnings as errors. Off because the 2016 GL sources do not survive the full warning set yet — 33 remain on `desktop-debug`, down from 167. `desktop-software` is already clean and could be gated today. See [planning/2026-07-25-cxx17-modernization](../planning/2026-07-25-cxx17-modernization/) |
+| `WREEL_WERROR` | `ON` | treat warnings as errors. On since 2026-07-26: the tree is at zero warnings on all five configured presets. It was off while the 2016 fixed-function sources were in it |
 | `WREEL_STATIC_CXX` | `OFF` | static-link libstdc++/libgcc. Forced `ON` by every device toolchain |
 | `WREEL_AUDIO_CODECS` | per-target | `minimal` \| `standard` \| `full`. Affects **binary size only** — see below |
 | `WREEL_AUDIO_RATE` | 44100 / 22050 | mixer sample rate. Affects **per-frame CPU** |
@@ -464,24 +442,26 @@ Two inherited quirks these files intentionally settle:
 | `scripts/bootstrap-debian.sh` | **verified** — full `--all` install on Debian 12, 50/50 packages, shellcheck clean |
 | `.clang-format` | **verified** — config parses under clang-format 14; all authored files conform |
 | [TARGETS.md](TARGETS.md) constraints | researched and verified upstream |
-| Dependency choices | settled — SDL2, nlohmann/json, pugixml, doctest |
+| Dependency choices | settled — SDL2, nlohmann/json, pugixml, glm, doctest |
 | Modern CMake build | **verified** on system CMake 3.25 |
 | `CMakePresets.json` | **verified** — 7 presets enumerate and configure |
-| `software` graphics backend | **verified** — builds on x86_64, aarch64 |
+| `gfx::renderer` (SDL_Renderer) | **verified** — builds on x86_64, aarch64 and armv7. `test_renderer` pins driver selection: `PreferAccelerated` degrades to software, `Accelerated` refuses to |
+| Accelerated 2D on Mali | **build verified only** — `rk3326`/`h700` now compile SDL with the `opengles2` render driver (D18). Whether the vendor blobs expose it is a hardware question |
 | `audio` module | **verified** — opens on pulseaudio and dummy; 3 codec tiers build |
 | `wreel-probe` | **verified** — runs on x86_64 and as an aarch64 binary under qemu; reports audio |
-| doctest suite | **verified** — 8 executables, 8/8 on all five configured presets: both desktop, plus `rk3326`, `h700` and `miyoomini` under qemu |
+| doctest suite | **verified** — 10 executables, 114 cases / 1482 assertions, 10/10 on all five configured presets: both desktop, plus `rk3326`, `h700` and `miyoomini` under qemu |
 | `util::ascii` predicates | **verified** — `test_ascii`, 12 cases / 1017 assertions; replaces the `<ctype.h>` predicates in `string.hpp` |
 | `util::logging` | **verified** — `test_logging`, 11 cases / 38 assertions. printf-style, no iostreams; armv7 `wreel-probe` dropped 865 KB (28%) |
 | `util::xml` | **verified** — `test_xml`, 19 cases / 116 assertions against the real Sparrow atlas in `data/`. pugixml `v1.16`, XPath compiled out, and confirmed private to `util/xml.cc`: no consumer of `wreel::util` gets pugixml's include path |
 | `util::from_string` | **verified** — `test_number`, 11 cases / 77 assertions. Strict whole-string conversion; `include/util/number.hpp` |
 | `rk3326` / `h700` toolchains | **verified** — cross-build plus `ctest` under qemu |
 | `miyoomini` toolchain | **verified in compile-check mode** — armv7 build + `ctest` under qemu-arm. Device toolchain (GCC 8.3) still untried |
-| `gl_legacy` backend | **verified** — `desktop-debug` builds and links, `skratch` included, 6/6 tests |
+| `gfx::gles2` | **verified on the dev box** — `skratch` renders a 20×20 grid through it, confirmed with `--screenshot`. ES 2.0 profile from Mesa. No GL library linked; entry points come from `SDL_GL_GetProcAddress`. Never run on a device |
+| 2016 fixed-function backend | **deleted** 2026-07-26 with GLEW and GLU, once `skratch` was ported |
 | `steam` preset | not run — needs the sniper container |
 | `docker/miyoomini.Dockerfile` | not built — needs Docker plus the upstream base image |
-| `gles2` / `gl33` backends | not started |
-| C++17 cleanup of 2016 sources | **in progress.** `string.hpp` done — the `ptr_fun`/`not1`/`unary_function` cluster is gone and character classification moved to `util/ascii.hpp`. `desktop-software` is at **zero warnings**; `desktop-debug` is at 33, down from 167, all in `gl_legacy`/`skratch` files that `graphics-backends` deletes or rewrites. `WREEL_WERROR` stays `OFF` until those clear |
+| `gfx::gles2` | not started — stage 3 of [the renderer snapshot](../planning/2026-07-26-gfx-renderer-and-gles2/) |
+| C++17 cleanup of 2016 sources | **done.** From 167 warnings to **zero on all five configured presets**, with `WREEL_WERROR=ON` since 2026-07-26. The last 30 went with the 2016 fixed-function sources rather than being polished in place, which is what [the renderer snapshot](../planning/2026-07-26-gfx-renderer-and-gles2/) was for |
 
 ### What has actually been run
 
@@ -490,11 +470,11 @@ On Debian 12 / GCC 12.2 / CMake 3.25 / clang-format 14, after a full
 
 | Check | Result |
 |---|---|
-| `desktop-software` cold configure → build → test | pass, 8/8, zero errors, zero warnings |
-| `rk3326` cross-build → `ctest` under qemu | pass, 8/8 |
-| `h700` cross-build → `ctest` under qemu | pass, 8/8, `-mcpu=cortex-a53` confirmed |
-| `miyoomini` armv7 build → `ctest` under qemu-arm | pass, 8/8, `-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4` confirmed. `util/ascii.hpp` and the new logger compile warning-free on both ARM cross compilers, where `char` is unsigned. This preset caught a `long`-width assumption in `test_number` that both 64-bit presets accepted |
-| `desktop-debug` (`gl_legacy`) build → test | pass, 8/8; `skratch` links; probe reports Mesa 22.3.6 / AMD |
+| `desktop-software` cold configure → build → test | pass, 10/10, zero errors, zero warnings |
+| `rk3326` cross-build → `ctest` under qemu | pass, 10/10 |
+| `h700` cross-build → `ctest` under qemu | pass, 10/10, `-mcpu=cortex-a53` confirmed |
+| `miyoomini` armv7 build → `ctest` under qemu-arm | pass, 10/10, `-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4` confirmed. `util/ascii.hpp` and the new logger compile warning-free on both ARM cross compilers, where `char` is unsigned. This preset caught a `long`-width assumption in `test_number` that both 64-bit presets accepted |
+| `desktop-debug` build → test | pass, 10/10, zero warnings under `-Werror`; `skratch` renders and screenshots |
 | `wreel-probe` as an aarch64 binary under qemu | runs, reports correctly |
 | `shellcheck scripts/bootstrap-debian.sh` | clean |
 | `clang-format --dump-config` | parses; authored files conform |
@@ -511,26 +491,37 @@ without being tested:
   host, so every test failed with `Could not open`. The toolchain files now pass
   `-L <sysroot>` to qemu so it finds the target loader.
 
-### The `gl_legacy` backend
+### The `gles2` renderer
 
 ```sh
-./scripts/bootstrap-debian.sh --legacy    # GLEW + GLU
 cmake --preset desktop-debug && cmake --build --preset desktop-debug
+./build/desktop-debug/bin/wreel-probe        # what does this machine offer?
 ```
 
-**Verified working.** The 2016 fixed-function sources compile and link clean under
-C++17 with the full warning set, `skratch` links, and `wreel-probe` reports a real
-GL context (Mesa 22.3.6 / AMD Radeon, compatibility profile 4.6).
+**Verified working on the dev box.** The probe asks for an ES 2.0 profile and Mesa
+returns a real one — `OpenGL ES 3.2 Mesa 22.3.6`, GLSL ES 3.20, max texture 16384 —
+which is what makes GLES2 developable natively rather than only on a device. It
+also reports a default-profile context separately, so a driver that offers desktop
+GL but no ES profile is visible rather than silently absent.
 
-That is a better result than expected — this had been flagged as the most likely
-thing in the tree to be broken. The only failure the build surfaced was mine, not
-the 2016 code's: `wreel-probe` calls `glGetString()` directly, and
-`find_package(OpenGL)` was scoped inside the `gl_legacy` block, so probe compiled
-and then failed to link. OpenGL is now looked for whenever the target could have a
-GPU, and probe links it only when both `WREEL_TARGET_HAS_GPU` and
-`WREEL_HAVE_OPENGL` hold.
+No GL library is linked anywhere in the tree. `gfx/gles2/api.cc` resolves every
+entry point through `SDL_GL_GetProcAddress`, and `wreel-probe` does the same for
+the two it reports with. Three reasons, in
+[include/gfx/gles2/api.hpp](../include/gfx/gles2/api.hpp); the decisive one is that
+both renderers live in one library, so a `DT_NEEDED` on `libGLESv2` would stop a
+**2D-only** binary from starting on a device whose firmware has no GLES blob — the
+dynamic loader resolves that before `main()` and there is no degrading from it.
+
+`GLEW` and `GLU` are gone with the 2016 backend, and so is the `--legacy` bootstrap
+group.
 
 ### Running the `skratch` demo
+
+`skratch` is not the game. It is the worked example of how GL is structured now
+versus how it was structured in 2016 — explicit matrices instead of `glRotatef`,
+shaders instead of the fixed-function pipeline, object lifetimes instead of global
+state. The game path is `gfx::renderer`, whose own demo is scoped in
+[planning/2026-07-25-software-2d-sprites-tiling](../planning/2026-07-25-software-2d-sprites-tiling/).
 
 Read this before the first run — it goes fullscreen and takes over the display,
 which is the intended presentation, not an accident.
@@ -540,25 +531,29 @@ cd /path/to/example-project          # MUST be the repo root
 ./build/desktop-debug/bin/skratch
 ```
 
-**Four things that will bite otherwise:**
+**Or don't take over the display at all:**
+
+```sh
+./build/desktop-debug/bin/skratch --screenshot /tmp/frame.bmp
+```
+
+That renders two frames, writes the second to a BMP and exits 0. It is the only
+automated evidence that this renderer draws anything — there is no headless GL, so
+`gfx::gles2` has no unit tests, and "the process did not crash" is not the same as
+"geometry appeared". It is also how a handheld gets checked over SSH, where nobody
+can see the panel.
+
+**Three things that will bite otherwise:**
 
 - **Working directory must be the repo root.** It opens `data/Speedy.fon` and
-  `data/ico.obj` by relative path and writes `runlog.txt` to the current
-  directory. Running it from `build/` fails immediately.
+  `data/ico.obj` by relative path. Running it from `build/` fails immediately.
 - **It is fullscreen at the panel's native mode**, via
-  `SDL_WINDOW_FULLSCREEN_DESKTOP`. For debugging, pass `false` to
-  `System::create_context()` — the `fullscreen` parameter is honoured now, and a
-  windowed run gets three quarters of the desktop, centred.
-- **The cursor is hidden and the mouse is grabbed** via relative mouse mode. Both
-  are conditional on `fullscreen`, so a windowed run leaves your pointer alone.
-- **Errors go to `runlog.txt`, not stderr.** `skratch/main.cc` catches everything
-  and writes `e.what()` to that file, so a silent instant exit means *check the
-  log*, not "nothing happened".
-
-`SDL_VIDEODRIVER=x11` is no longer needed — the mode-change request that made this
-X11-shaped is gone. It is still a useful thing to try first if the window does not
-appear on your compositor, since GLEW needs GLX and Wayland reaches it through
-XWayland.
+  `SDL_WINDOW_FULLSCREEN_DESKTOP`, with the cursor hidden.
+- **The log is not in the working directory.** It goes to
+  `SDL_GetPrefPath("wreel", "skratch")` — on Linux
+  `~/.local/share/wreel/skratch/skratch.log`. A silent instant exit means *read
+  that file*. It used to be `runlog.txt` beside the binary, which fails silently on
+  a read-only mount.
 
 **Controls** (from `skratch/input.cc`):
 
@@ -582,28 +577,17 @@ unreachable. Joystick axis mapping is hardcoded for an Xbox 360 pad.
 - `pkill -x skratch` from another terminal or over SSH.
 - `Ctrl+Alt+F3` to switch VT, then `pkill`.
 
-For a first run, a watchdog costs nothing — it is fullscreen and grabs the mouse:
+**What you should see**, and what was observed 2026-07-26 via `--screenshot`: a
+20×20 grid of icosahedra receding with correct perspective on a dark blue
+background, each shaded by interpolated vertex colours, with a white HUD line at
+top-left showing camera position, orientation and joystick axis values. No
+lighting — vertex colours are faked from position by the OBJ loader — and the far
+plane is 100 units, so the far end of the grid clips out.
 
-```sh
-( sleep 30; pkill -x skratch ) &
-./build/desktop-debug/bin/skratch
-cat runlog.txt
-```
-
-**What you should see:** a 20×20 grid of icosahedra on a dark blue background,
-with a white HUD line at top-left showing camera position, orientation and
-joystick axis values. No lighting — vertex colours are faked from position — and
-the far plane is 100 units, so distant models clip out.
-
-**Already verified, so these are not the likely failure:** the assets load
-(`ico.obj` parses to 42 vertices / 240 indices, `teapot.obj` to 3644 / 18960), the
-binary links against real GLEW and GLU, and `wreel-probe` from the same build gets
-a working GL context. What is untested is whether the window actually appears on
-your compositor — no run of this demo has been observed on a real display.
-
-> A dry run under `SDL_VIDEODRIVER=offscreen` is **not** a valid substitute:
-> `glewInit()` fails there because GLEW needs GLX, and `runlog.txt` just says
-> `Unknown error`.
+The camera now starts at `(25, 25, 30)` looking into the grid. The 2016 demo
+started at the origin, which is exactly where its first instance sits, so it opened
+from *inside* an icosahedron with one model's gradient filling the screen. The port
+reproduced that faithfully before the starting position was changed.
 
 ### Still not run
 
