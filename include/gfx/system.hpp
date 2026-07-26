@@ -18,7 +18,9 @@ public:
     DISALLOW_COPY_AND_ASSIGN(System);
 
     ~System();
-    Context* create_context(const std::string& name);
+    // Fullscreen by default, matching Context. Pass false for a windowed context
+    // when debugging.
+    Context* create_context(const std::string& name, bool fullscreen = true);
 
 private:
     std::vector<Context*> _contexts;

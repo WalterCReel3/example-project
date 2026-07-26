@@ -32,8 +32,8 @@ Sound::Sound(const std::string& path)
         // Mix_LoadWAV also fails when no device is open, which is not the
         // caller's mistake. Distinguish the two so the message is useful.
         if (!Mix_QuerySpec(nullptr, nullptr, nullptr)) {
-            util::logging.warning() << "audio: no device open, '" << path
-                                    << "' will be silent" << std::endl;
+            util::log_warning("audio: no device open, '%s' will be silent",
+                              path.c_str());
             return;
         }
         throw std::runtime_error("could not load sound '" + path +

@@ -37,9 +37,7 @@ Context::Context(const std::string& title, int width, int height,
     if (fullscreen) {
         // FULLSCREEN_DESKTOP rather than FULLSCREEN: it takes the panel's
         // native mode instead of asking for a mode switch the device may not
-        // support. The original Context requested a real mode change and also
-        // OR'd in SDL_WINDOW_FULLSCREEN unconditionally, ignoring its own
-        // parameter.
+        // support.
         flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
         SDL_ShowCursor(SDL_DISABLE);
     }
@@ -68,8 +66,8 @@ Context::Context(const std::string& title, int width, int height,
     // Blend so text and sprites composite rather than punching holes.
     SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_BLEND);
 
-    util::logging.info() << "software context " << _width << "x" << _height
-                         << " via " << driver_name() << std::endl;
+    util::log_info("software context %dx%d via %s", _width, _height,
+                   driver_name().c_str());
 }
 
 Context::~Context()
@@ -110,8 +108,7 @@ void Context::draw_surface(SDL_Surface* surface, Rect* rect)
 
     SDL_Texture* texture = SDL_CreateTextureFromSurface(_renderer, surface);
     if (!texture) {
-        util::logging.error()
-            << "could not create texture: " << SDL_GetError() << std::endl;
+        util::log_error("could not create texture: %s", SDL_GetError());
         return;
     }
 
@@ -140,8 +137,7 @@ void Context::draw_text(const std::string& text, TTF_Font* font,
     SDL_Surface* rendered =
         TTF_RenderUTF8_Blended(font, text.c_str(), to_sdl(color));
     if (!rendered) {
-        util::logging.error()
-            << "could not render text: " << TTF_GetError() << std::endl;
+        util::log_error("could not render text: %s", TTF_GetError());
         return;
     }
 

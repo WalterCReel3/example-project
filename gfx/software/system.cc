@@ -33,17 +33,14 @@ System::System()
     if ((got & want) != want) {
         // Not fatal on its own — report which codec is missing and continue,
         // since a build may legitimately ship only one asset format.
-        util::logging.warning() << "IMG_Init: requested PNG|JPG, got "
-                                << ((got & IMG_INIT_PNG) ? "PNG " : "")
-                                << ((got & IMG_INIT_JPG) ? "JPG " : "") << "("
-                                << IMG_GetError() << ")" << std::endl;
+        util::log_warning("IMG_Init: requested PNG|JPG, got %s%s(%s)",
+                          (got & IMG_INIT_PNG) ? "PNG " : "",
+                          (got & IMG_INIT_JPG) ? "JPG " : "", IMG_GetError());
     }
 
-    util::logging.info() << "software system initialised, video driver "
-                         << (SDL_GetCurrentVideoDriver()
-                                 ? SDL_GetCurrentVideoDriver()
-                                 : "(none)")
-                         << std::endl;
+    const char* driver = SDL_GetCurrentVideoDriver();
+    util::log_info("software system initialised, video driver %s",
+                   driver ? driver : "(none)");
 }
 
 System::~System()

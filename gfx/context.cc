@@ -25,7 +25,10 @@ Context::Context(const std::string& title, bool fullscreen)
 {
     Uint32 flags = SDL_WINDOW_OPENGL;
     if (fullscreen) {
-        flags |= SDL_WINDOW_FULLSCREEN;
+        // FULLSCREEN_DESKTOP takes the panel's native mode rather than asking
+        // for a mode switch, which a handheld may not offer and which is not
+        // Wayland's native concept.
+        flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
         // NOTE: while full screen we will also set
         // relative mouse motion
         SDL_ShowCursor(SDL_DISABLE);
@@ -35,6 +38,12 @@ Context::Context(const std::string& title, bool fullscreen)
     SDL_DisplayMode dm;
     SDL_GetDesktopDisplayMode(0, &dm);
 
+    // Windowed runs get three quarters of the desktop so the window is usable
+    // rather than covering the screen. The viewport comes from the actual window
+    // size below, so either path is correct.
+    const int window_width = fullscreen ? dm.w : (dm.w * 3) / 4;
+    const int window_height = fullscreen ? dm.h : (dm.h * 3) / 4;
+
     SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
@@ -43,8 +52,8 @@ Context::Context(const std::string& title, bool fullscreen)
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
     _sdl_window = SDL_CreateWindow(
-                      title.c_str(), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                      dm.w, dm.h, SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);
+                      title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                      window_width, window_height, flags);
     if (_sdl_window == NULL) {
         throw std::runtime_error("Couldn't get window");
     }

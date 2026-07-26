@@ -1,27 +1,18 @@
-#ifndef __GFX_SPRITESHEET_HPP__
-#define __GFX_SPRITESHEET_HPP__
+#pragma once
 
 #include <vector>
 #include <string>
-#include <util/nocopy.hpp>
 
 class SDL_Surface;
 
 namespace gfx
 {
 
-class SpritesheetFrame
-{
-public:
-    explicit SpritesheetFrame(std::string& id, int offset_x, int offset_y,
-                              int x, int y, int width, int height);
-    SpritesheetFrame(const SpritesheetFrame& rh);
-    SpritesheetFrame& operator=(const SpritesheetFrame &rh);
-    ~SpritesheetFrame();
-
-    void assign(const SpritesheetFrame& rh);
-
-public:
+// An aggregate: all members are public, there is no invariant to maintain, and
+// copy/move/destroy are all correct by default for a string and six ints.
+//
+//     SpritesheetFrame frame {name, ox, oy, x, y, w, h};
+struct SpritesheetFrame {
     std::string id;
     // Offset coordinates: These define where to start in the source
     // for the frame.
@@ -40,14 +31,13 @@ public:
     typedef std::vector<SpritesheetFrame> Frames;
     typedef Frames::const_iterator FrameIterator;
 
-    Spritesheet(SDL_Surface* source_image);
+    explicit Spritesheet(SDL_Surface* source_image);
     ~Spritesheet();
 
-private:
-    DISALLOW_COPY_AND_ASSIGN(Spritesheet);
+    Spritesheet(const Spritesheet&) = delete;
+    Spritesheet& operator=(const Spritesheet&) = delete;
 
-public:
-    void add_frame(const SpritesheetFrame &frame);
+    void add_frame(const SpritesheetFrame& frame);
     FrameIterator begin();
     FrameIterator end();
     void set_surface(SDL_Surface* source_image);
@@ -59,5 +49,3 @@ private:
 };
 
 } // namespace gfx
-
-#endif

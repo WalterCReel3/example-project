@@ -1,69 +1,64 @@
-#ifndef __UTIL_LOGGING_HPP
-#define __UTIL_LOGGING_HPP
+#pragma once
 
-#include <map>
-#include <string>
-#include <fstream>
+#include <cstdarg>
 
+//============================================================================
+//
+// Logging
+//
+// printf-style rather than stream-style, and deliberately free of <iostream>.
+// On armv7 the iostream machinery costs about 596 KB statically, which is 1.6x
+// the entire <cstdio>-only C++ runtime floor. Nothing that ships may include
+// it. See docs/TARGETS.md § "No iostreams in shipped code".
+//
+// Format strings are checked at compile time: each function carries
+// __attribute__((format(printf, ...))) and the project builds with -Wformat=2,
+// so a mismatched conversion is a diagnostic rather than undefined behaviour.
+// That is what makes printf-style acceptable here rather than a downgrade.
+//
+//     util::log_debug("loaded %s: %dx%d", path, w, h);
+//     util::log_error("could not open %s: %s", path, SDL_GetError());
+//
+// Each function tests the level before formatting, so a suppressed message
+// costs a call and a comparison. Its *arguments* are still evaluated, because
+// they are function arguments — so avoid putting real work in them:
+//
+//     util::log_debug("%s", expensive().c_str());   // runs even when silent
+//
+// Threading: a message is assembled in full and written with one fwrite, and C
+// and POSIX stdio lock the FILE per call, so concurrent writers cannot splice
+// one message into another. Nothing in this project creates a thread today; the
+// guarantee is here because an SDL_mixer or RtMidi callback is a plausible
+// future caller and spliced log lines are miserable to diagnose.
+//
+// Not covered: log_set_level(), log_open_file() and log_close_file() race with
+// concurrent logging. Configure at startup, before any thread exists. A message
+// longer than 1024 bytes including its prefix is truncated and marked "...".
+//
+//============================================================================
 namespace util
 {
 
-typedef std::ostream LoggingStream;
+enum LogLevel { LogError = 0, LogWarning = 1, LogInfo = 2, LogDebug = 3 };
 
-enum LoggingLevel {
-    LOG_LEVEL_ERROR = 0,
-    LOG_LEVEL_WARNING = 1,
-    LOG_LEVEL_INFO = 2,
-    LOG_LEVEL_DEBUG = 3
-};
+// Messages at or below the current level are emitted. Defaults to LogError.
+void log_set_level(LogLevel level);
+LogLevel log_level();
+bool log_enabled(LogLevel level);
 
-class LoggingManager
-{
-public:
-    typedef std::map<std::string, LoggingStream*> LoggerMap;
+// Output goes to stderr until a file is opened, and returns there when it is
+// closed. Returns false if the file could not be opened, in which case stderr
+// remains the sink — logging never becomes a source of errors itself.
+bool log_open_file(const char* path);
+void log_close_file();
 
-public:
-    LoggingManager();
-    ~LoggingManager();
+void log_error(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+void log_warning(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+void log_info(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+void log_debug(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 
-private:
-    LoggingStream& _lookup_logger(const std::string& key);
+// For forwarding an already-collected va_list; the four above are the interface
+// to use directly.
+void log_write_v(LogLevel level, const char* fmt, va_list args);
 
-public:
-    LoggingStream& log();
-    LoggingStream& log(const char* key);
-    LoggingStream& log(const std::string& key);
-    LoggingStream& error();
-    LoggingStream& error(const char* key);
-    LoggingStream& error(const std::string& key);
-    LoggingStream& warning();
-    LoggingStream& warning(const char* key);
-    LoggingStream& warning(const std::string& key);
-    LoggingStream& info();
-    LoggingStream& info(const char* key);
-    LoggingStream& info(const std::string& key);
-    LoggingStream& debug();
-    LoggingStream& debug(const char* key);
-    LoggingStream& debug(const std::string& key);
-    void make_logger(const char* key, const char* path);
-    void make_logger(const std::string& key, const std::string& path);
-    void make_default(const char* key);
-    void make_default(const std::string& key);
-    void make_cout_default();
-    void make_cerr_default();
-    void make_null_default();
-    void set_logging_level(LoggingLevel lvl);
-
-private:
-    LoggerMap _loggers;
-    LoggingStream* _default_logger;
-    LoggingStream _null_logger;
-    LoggingLevel _logging_level;
-};
-
-extern LoggingManager logging;
-
-}
-
-// vim: set sts=2 sw=2 expandtab:
-#endif
+} // namespace util

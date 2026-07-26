@@ -1,8 +1,18 @@
 # Target validation
 
-**Status:** `snapshot`
+**Status:** `in-progress`
 **Written:** 2026-07-25
 **Blocks:** [packaging-distribution](../2026-07-25-packaging-distribution/)
+
+> **Steps 1 and 2 below are already done.** This document was written before the
+> validation pass recorded in
+> [docs/DEVELOPMENT.md § Status](../../docs/DEVELOPMENT.md#status), and its
+> "what is not verified" table is stale. Re-checked 2026-07-25: `libglew-dev`,
+> `libglu1-mesa-dev`, `aarch64-linux-gnu-g++` and `arm-linux-gnueabihf-g++` are
+> all installed, and the `desktop-debug`, `rk3326`, `h700` and `miyoomini` build
+> directories are configured. `desktop-debug` builds and links with **zero
+> errors** and 4/4 tests. What remains is genuinely container- and
+> hardware-dependent: steps 3, 4 and 5.
 
 ## Motivation
 
@@ -16,10 +26,19 @@ from the foundation the rest of the project sits on.
 
 ## What is verified today
 
-On Debian 12 / GCC 12.2:
+On Debian 12 / GCC 12.2. Superseded by
+[docs/DEVELOPMENT.md § Status](../../docs/DEVELOPMENT.md#status), which is the
+authoritative record — this list is kept for the reasoning, not the checklist.
 
-- `desktop-software` — cold configure, build, and `ctest` (3/3, 71 assertions)
-- `wreel-probe` — runs headless under `SDL_VIDEODRIVER=dummy`
+- `desktop-software` — cold configure, build, and `ctest` (4/4, not 3/3 as
+  originally written here)
+- `desktop-debug` — builds and links clean, `skratch` included, 4/4 tests
+- `rk3326` / `h700` — cross-build plus `ctest` under qemu
+- `miyoomini` — armv7 compile-check build plus `ctest` under qemu-arm. The
+  **device** toolchain (GCC 8.3) is still untried, which is the distinction that
+  matters
+- `wreel-probe` — runs headless under `SDL_VIDEODRIVER=dummy`, and as an aarch64
+  binary under qemu
 - Configure-time guards — unknown backend rejected; `gl_legacy` on a GPU-less
   target rejected; both missing-cross-toolchain messages fire correctly
 
@@ -27,29 +46,41 @@ On Debian 12 / GCC 12.2:
 
 | Preset | Blocker | Risk if wrong |
 |---|---|---|
-| `desktop-debug` / `-release` | no GLEW/GLU on the dev box | **highest.** `find_package(GLEW)` never ran, and the 2016 GL sources have never compiled under the new build |
-| `miyoomini` | needs the toolchain container | toolchain paths, GCC 8.3 C++17 gaps, `-Os` codegen |
-| `rk3326` / `h700` | needs `crossbuild-essential-arm64` | cross flags, qemu test execution |
+| `miyoomini` **device** toolchain | needs the toolchain container | **highest remaining.** GCC 8.3 C++17 library gaps, `-Os` codegen. The armv7 compile-check pass proves the flags, not the compiler |
 | `steam` | needs the sniper container | glibc targeting, static libstdc++ |
 | `docker/miyoomini.Dockerfile` | needs Docker + upstream base image | CMake/Ninja layering |
+| any real hardware | needs a device | display path, SDL video driver, gamepad enumeration |
+
+Resolved since this was written:
+
+| Preset | Was | Now |
+|---|---|---|
+| `desktop-debug` / `-release` | "**highest** risk — `find_package(GLEW)` never ran" | **verified.** Builds, links, 4/4. The 2016 GL sources compile clean under C++17/GCC 12.2 |
+| `rk3326` / `h700` | "needs `crossbuild-essential-arm64`" | **verified.** Cross-build plus qemu `ctest`; `WREEL_TEST_EMULATOR` wiring confirmed |
+| `miyoomini` (compile-check) | "needs the toolchain container" | **verified** in armv7 compile-check mode under qemu-arm |
 
 ## Order of attack
 
 Cheapest and most informative first.
 
-### 1. `gl_legacy` on the dev box
+### 1. `gl_legacy` on the dev box — **done**
 
 ```sh
 sudo apt install libglew-dev libglu1-mesa-dev
 cmake --preset desktop-debug && cmake --build --preset desktop-debug
 ```
 
-This is first because it is one `apt install` away and it is the most likely
-thing to be broken — it is the only path that exercises `find_package(GLEW)`,
-`OpenGL::GLU`, and the 2016 renderer under C++17. Expect `-Wold-style-cast` noise
-from `gfx/obj.cc` and `gfx/utils.cc`; expect possible real errors.
+Predicted here as "the most likely thing to be broken". It was not: zero errors,
+`skratch` links, `wreel-probe` reports a real GL context. The only failure was in
+the new build glue, not the 2016 code — see
+[docs/DEVELOPMENT.md § The `gl_legacy` backend](../../docs/DEVELOPMENT.md#the-gl_legacy-backend).
 
-### 2. aarch64 compile-check + qemu
+The `-Wold-style-cast` prediction was also wrong, and measurably so: `gfx/obj.cc`
+and `gfx/utils.cc` produce **one** old-style-cast warning between them, not the
+expected noise. See
+[cxx17-modernization § Measured warning inventory](../2026-07-25-cxx17-modernization/README.md).
+
+### 2. aarch64 compile-check + qemu — **done**
 
 ```sh
 sudo apt install crossbuild-essential-arm64 qemu-user-static binfmt-support
@@ -57,10 +88,14 @@ cmake --preset rk3326 && cmake --build --preset rk3326
 ctest --preset rk3326
 ```
 
-Validates the shared `aarch64-handheld.cmake` base, `-mcpu` flags, and — most
-interestingly — whether `WREEL_TEST_EMULATOR` actually wires qemu into ctest
-correctly. This produces unshippable binaries by design; the point is the
-toolchain plumbing.
+Validated the shared `aarch64-handheld.cmake` base, the `-mcpu` flags, and
+`WREEL_TEST_EMULATOR`'s qemu wiring. 4/4 under qemu on both `rk3326` and `h700`.
+The one real defect it surfaced: cross-built tests could not run at all until the
+toolchain files passed `-L <sysroot>` to qemu so it could find the target loader.
+
+Also useful for the C++17 work: `char` is **unsigned** on both
+`aarch64-linux-gnu-g++` and `arm-linux-gnueabihf-g++`, and signed on the host.
+That divergence is defect D10.
 
 ### 3. The Miyoo Mini container — **the real test**
 
@@ -109,8 +144,9 @@ glibc symbol versioning, which `objdump -T | grep GLIBC_` can confirm directly.
 
 - [ ] A `results.md` in this directory recording what happened per preset, with
       real command output rather than a summary
-- [ ] `docs/DEVELOPMENT.md § Status` updated to move rows from "not run" to
-      verified
+- [x] `docs/DEVELOPMENT.md § Status` updated to move rows from "not run" to
+      verified — done for steps 1 and 2; that table is now the authoritative
+      record and this document defers to it
 - [ ] `wreel-probe` output from at least one real handheld, committed as a
       reference for what these devices report
 - [ ] Fixes for whatever breaks, ideally as separate commits from this snapshot

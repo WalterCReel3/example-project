@@ -52,6 +52,14 @@ gfx::<backend>::MeshBuffer(const Mesh&)     // per-backend GPU residency
 exists, `loaders` drops its `gfx` dependency to a data-only one and `obj.cc`
 builds on every target.
 
+> **Still worth doing, for a narrower reason than originally written.** With the
+> software backend now 2D only, nothing on a handheld will *render* an OBJ. The
+> case for the seam is that `loaders/obj.cc` is a text parser and has no business
+> including `SDL_opengl.h`, and that decoupling lets `test_obj.cc` run on every
+> preset — including the cross builds under qemu — instead of only where a GL
+> backend is configured. That is real but modest, so it is no longer urgent. If it
+> is cut, `obj.cc` simply stays GL-gated and untested on software builds.
+
 Then unify the context types. `gfx::Context` (gl_legacy) and
 `gfx::software::Context` should converge on one interface. Follow the pattern the
 codebase already uses twice — `util::File` over `posix`/`mswin`, selected at
@@ -81,27 +89,48 @@ rather than assuming core profile.
 
 ## Tasks
 
-- [ ] Introduce `gfx::Mesh` as backend-neutral model data
-- [ ] Rewrite `loaders::load_obj_model` to produce `gfx::Mesh`; drop the GL dep
-- [ ] Re-enable `loaders/obj.cc` on all backends in `loaders/CMakeLists.txt`
-- [ ] Add `test_obj.cc` against `data/cube.obj`, `ico.obj`, `teapot.obj`
+- [x] Decide whether the software backend needs 3D — **no**, see above
 - [ ] Unify `Context` behind a compile-time-selected header
-- [ ] Software `MeshBuffer` — a CPU rasteriser, or triangle-free 2D fallback
 - [ ] `gles2` backend: context creation, shader loading, `MeshBuffer`, text
 - [ ] Port `skratch` off direct GL calls onto the unified interface
 - [ ] Add `gles2` to `WREEL_GFX_BACKEND_VALUES`; point `rk3326`/`h700` at it
 - [ ] `gl33` only if Steam actually needs something `gles2` cannot give
 - [ ] Delete `gl_legacy`, `gfx/context.cc`, `gfx/obj.cc`, `gfx/utils.cc`, GLEW/GLU
 
-## Open questions
+Optional, and no longer on the critical path:
 
-- **Does the software backend need 3D at all?** A CPU triangle rasteriser on two
-  Cortex-A7 cores at 128 MB is a real project. If the handheld target is 2D
-  sprite games — which is what these devices are actually used for — then
-  `software` should expose sprites and text only, `gfx::Mesh` stays a GL-side
-  concern, and `skratch`'s spinning-model demo simply stays desktop-only. **This
-  decision should be made before any rasteriser work starts**, because it changes
-  the scope by an order of magnitude.
+- [ ] Introduce `gfx::Mesh` as backend-neutral model data
+- [ ] Rewrite `loaders::load_obj_model` to produce `gfx::Mesh`; drop the GL dep
+- [ ] Build `loaders/obj.cc` on all backends in `loaders/CMakeLists.txt`
+- [ ] Add `test_obj.cc` against `data/cube.obj`, `ico.obj`, `teapot.obj`
+
+~~Software `MeshBuffer` — a CPU rasteriser, or triangle-free 2D fallback~~ —
+dropped by the 2D-only decision.
+
+## Decided: the software backend is 2D only
+
+**Settled 2026-07-25.** `software` exposes sprites, tiling and text. No CPU
+triangle rasteriser.
+
+A basic handheld game here will be 2D, or mocked/basic 3D with bespoke rendering.
+Software-rendered 3D is a much larger lift and is deferred to its own snapshot —
+see [software-3d-rasteriser](../2026-07-25-software-3d-rasteriser/). A CPU
+rasteriser on two Cortex-A7 cores inside 128 MB is a project in its own right, and
+committing to it would have set the scope of this one an order of magnitude higher.
+
+Consequences, which are what shrink this snapshot:
+
+- **No software `MeshBuffer`.** Dropped from the task list entirely.
+- **`skratch`'s spinning-model demo stays desktop-only.** It is a GL demo; it does
+  not need to follow the software backend.
+- **`loaders/obj.cc` stays gated to the GL backends** as far as *rendering* goes.
+  The `gfx::Mesh` seam below is still worth doing, but for a different reason than
+  originally written — see the note there.
+- The real content of the software backend becomes sprite and tile rendering,
+  which is scoped separately in
+  [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/).
+
+## Open questions
 - Is `glm` worth taking as a dependency for matrix maths, versus extending
   `include/math/vector.hpp` (see defect D7)? `libglm-dev` is header-only and
   already in the bootstrap script's `math` group.

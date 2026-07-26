@@ -42,8 +42,8 @@ Music::Music(const std::string& path)
     _music = Mix_LoadMUS(path.c_str());
     if (!_music) {
         if (!Mix_QuerySpec(nullptr, nullptr, nullptr)) {
-            util::logging.warning() << "audio: no device open, '" << path
-                                    << "' will be silent" << std::endl;
+            util::log_warning("audio: no device open, '%s' will be silent",
+                              path.c_str());
             return;
         }
         throw std::runtime_error("could not load music '" + path +
@@ -68,8 +68,8 @@ void Music::play(int loops)
         return;
     }
     if (Mix_PlayMusic(_music, loops) != 0) {
-        util::logging.error() << "audio: could not play '" << _path
-                              << "': " << Mix_GetError() << std::endl;
+        util::log_error("audio: could not play '%s': %s", _path.c_str(),
+                        Mix_GetError());
     }
 }
 

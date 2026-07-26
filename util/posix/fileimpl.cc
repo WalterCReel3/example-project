@@ -61,8 +61,7 @@ ssize_t FileImpl::read(void* buf, size_t count)
 
 off_t FileImpl::seek(off_t offset, Whence whence)
 {
-    off_t res = posix::wrap(::lseek(_fd, 0, make_posix_whence(whence)));
-    return res;
+    return posix::wrap(::lseek(_fd, offset, make_posix_whence(whence)));
 }
 
 } // namespace util

@@ -17,7 +17,7 @@ System* System::_instance;
 
 System::System()
 {
-    util::logging.log() << "Inside System::System()" << endl;
+    util::log_debug("gfx::System initialising");
     if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_JOYSTICK) != 0) {
         string message = string(SDL_GetError());
         throw runtime_error(message);
@@ -35,7 +35,7 @@ System::System()
 
 System::~System()
 {
-    util::logging.log() << "Inside System::~System()" << endl;
+    util::log_debug("gfx::System shutting down");
     for_each(_contexts.begin(), _contexts.end(), util::deleter<Context>);
     _contexts.clear();
     TTF_Quit();
@@ -44,9 +44,9 @@ System::~System()
     System::_instance = NULL;
 }
 
-Context* System::create_context(const string& name)
+Context* System::create_context(const string& name, bool fullscreen)
 {
-    Context* context = new Context(name);
+    Context* context = new Context(name, fullscreen);
     _contexts.push_back(context);
     return context;
 }

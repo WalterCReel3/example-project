@@ -2,7 +2,6 @@
 #define __UTIL_STR_HPP__
 
 #include <wchar.h>
-#include <ctype.h>
 #include <stdlib.h> // strtol(3)
 #include <string.h>
 #include <limits.h>
@@ -12,7 +11,7 @@
 #include <stdexcept>
 #include <vector>
 #include <utility>
-#include <util/logging.hpp>
+#include <util/ascii.hpp>
 
 //============================================================================
 //
@@ -23,19 +22,8 @@ namespace util
 {
 using namespace std;
 
-static pointer_to_unary_function<int, int> is_alnum = ptr_fun(::isalnum);
-static pointer_to_unary_function<int, int> is_alpha = ptr_fun(::isalpha);
-static pointer_to_unary_function<int, int> is_ascii = ptr_fun(::isascii);
-static pointer_to_unary_function<int, int> is_blank = ptr_fun(::isblank);
-static pointer_to_unary_function<int, int> is_cntrl = ptr_fun(::iscntrl);
-static pointer_to_unary_function<int, int> is_digit = ptr_fun(::isdigit);
-static pointer_to_unary_function<int, int> is_graph = ptr_fun(::isgraph);
-static pointer_to_unary_function<int, int> is_lower = ptr_fun(::islower);
-static pointer_to_unary_function<int, int> is_print = ptr_fun(::isprint);
-static pointer_to_unary_function<int, int> is_punct = ptr_fun(::ispunct);
-static pointer_to_unary_function<int, int> is_space = ptr_fun(::isspace);
-static pointer_to_unary_function<int, int> is_upper = ptr_fun(::isupper);
-static pointer_to_unary_function<int, int> is_xdigit = ptr_fun(::isxdigit);
+// Character classification comes from util/ascii.hpp, not <ctype.h> — see the
+// rationale in that header.
 
 struct whitespace_tokenizer {
     template<typename InputIterator, typename Container>
@@ -43,11 +31,11 @@ struct whitespace_tokenizer {
                              Container &result)
     {
         using namespace std;
-        first = find_if(first, last, not1(is_space));
+        first = find_if(first, last, std::not_fn(ascii_is_whitespace));
         if (first == last) {
             return last;
         }
-        InputIterator stop = find_if(first + 1, last, is_space);
+        InputIterator stop = find_if(first + 1, last, ascii_is_whitespace);
         copy(first, stop, back_inserter(result));
         return stop;
     }
@@ -76,8 +64,11 @@ template<typename EqualityComparable>
 struct escaped_find {
     escaped_find(const EqualityComparable &quote_marker,
                  const EqualityComparable &escape)
-        : quote_marker_(quote_marker),
-          escape_(escape) {}
+        : quote_marker_(quote_marker)
+        , escape_(escape)
+        , escaped_character_(false)
+    {
+    }
     bool operator()(const EqualityComparable &value)
     {
         if (escaped_character_) {
@@ -103,7 +94,8 @@ struct token_break {
     template<typename EqualityComparable>
     bool operator()(const EqualityComparable &value)
     {
-        return (value == '\'') || (value == '"') || util::is_space(value);
+        return (value == '\'') || (value == '"')
+               || util::ascii_is_whitespace(value);
     }
 };
 
@@ -120,7 +112,7 @@ struct quoted_whitespace_tokenizer {
         static const value_t double_quote = '"';
         static const value_t escape_marker = '\\';
 
-        first = find_if(first, last, not1(is_space));
+        first = find_if(first, last, std::not_fn(ascii_is_whitespace));
         if (first == last) {
             return last;
         }
@@ -187,9 +179,7 @@ parse(InputIterator first, InputIterator last,
 }
 
 template<typename InputIterator, typename Tokenizer>
-struct token_generator
-        : public std::unary_function<typename tokenizer_traits<Tokenizer>::token_type,
-          void> {
+struct token_generator {
 public:
     // using Concept PushbackToken
     typedef typename tokenizer_traits<Tokenizer>::token_type token_type;
@@ -374,8 +364,8 @@ public:
     {
         using namespace std;
         string::value_type conv_buf[MB_LEN_MAX];
-        size_t n = ::wcrtomb(conv_buf, value, &ps_);
-        if (n == (size_t)-1) {
+        const size_t n = ::wcrtomb(conv_buf, value, &ps_);
+        if (n == static_cast<size_t>(-1)) {
             throw runtime_error("Can't convert wide character");
         }
         copy(conv_buf, conv_buf + n, back_inserter(*container_));
@@ -440,9 +430,10 @@ strip(const basic_string<CharT> &input, Predicate pred)
         return basic_string<CharT>();
     }
     typename basic_string<CharT>::const_iterator p1
-        = find_if(input.begin(), input.end(), not1(pred));
+        = find_if(input.begin(), input.end(), std::not_fn(pred));
     typename basic_string<CharT>::const_iterator p2
-        = (find_if(input.rbegin(), reverse_iterator(p1), not1(pred))).base();
+        = (find_if(input.rbegin(), reverse_iterator(p1), std::not_fn(pred)))
+              .base();
 
     return basic_string<CharT>(p1, p2);
 }
@@ -457,9 +448,9 @@ strip(RandomAccessIterator first, RandomAccessIterator last, Predicate pred)
     if (first == last) {
         return basic_string<char_t>();
     }
-    RandomAccessIterator p1 = find_if(first, last, not1(pred));
+    RandomAccessIterator p1 = find_if(first, last, std::not_fn(pred));
     RandomAccessIterator p2
-        = (find_if(riterator(last), riterator(p1), not1(pred))).base();
+        = (find_if(riterator(last), riterator(p1), std::not_fn(pred))).base();
 
     return basic_string<char_t>(p1, p2);
 }
@@ -473,11 +464,14 @@ to_wstring(const std::string &s)
     const string::value_type *base = s.c_str();
     mbstate_t ps;
     ::memset(&ps, 0, sizeof ps);
-    size_t n = ::mbsrtowcs(0, &base, 0, &ps) + 1;
-    if (n == (size_t)-1) {
+    // mbsrtowcs(3) reports failure as (size_t)-1, so this must be tested before
+    // the terminator slot is added.
+    const size_t required = ::mbsrtowcs(0, &base, 0, &ps);
+    if (required == static_cast<size_t>(-1)) {
         throw runtime_error("Invalid multi-byte sequence");
     }
-    // allocate the string buffer for that size
+    // allocate the string buffer for that size, plus the terminator
+    const size_t n = required + 1;
     vector<wstring::value_type> buffer(n);
     // convert to multi-byte
     ::mbsrtowcs(&(*buffer.begin()), &base, n, &ps);
@@ -485,8 +479,7 @@ to_wstring(const std::string &s)
     return wstring(buffer.begin(), buffer.end() - 1);
 }
 
-struct wstring_to_string
-        : public std::unary_function<std::string, const std::wstring&> {
+struct wstring_to_string {
     std::string operator()(const std::wstring &s)
     {
         return to_string(s);
@@ -601,20 +594,10 @@ public:
     {
         _next();
     }
-    line_iterator(const line_iterator & rh)
-        : _stride(rh._stride)
-    {
-    }
-    line_iterator& operator=(const line_iterator & rh)
-    {
-        _valid = rh._valid;
-        _cur = rh._cur;
-        _end = rh._end;
-        _stride = rh._stride;
-        return *this;
-    }
+    // Copy, move and destroy are all correct by default: a StringType, a bool,
+    // two iterators and a pair of them. Nothing here owns a resource.
 
-    bool operator==(const line_iterator & rh)
+    bool operator==(const line_iterator & rh) const
     {
         if (_valid && rh._valid) {
             return (_stride.first == rh._stride.first &&
@@ -626,7 +609,7 @@ public:
             return false;
         }
     }
-    bool operator!=(const line_iterator & rh)
+    bool operator!=(const line_iterator & rh) const
     {
         return !(*this == rh);
     }
@@ -644,7 +627,7 @@ public:
         _next();
         return *this;
     }
-    line_iterator& operator++(int)
+    line_iterator operator++(int)
     {
         line_iterator tmp(*this);
         _next();

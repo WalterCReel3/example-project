@@ -210,16 +210,103 @@ TEST_CASE("an empty input produces no lines")
     CHECK(split_lines("").empty());
 }
 
-TEST_CASE("blank lines terminate iteration")
+TEST_CASE("blank lines are yielded and do not terminate iteration")
 {
-    // A "\n\n" gives a second stride of ("\n") then an empty one, and _next()
-    // turns any empty stride into the end sentinel. So a blank line stops
-    // iteration rather than being skipped — which means an OBJ file with a
-    // blank line in the middle is silently truncated.
-    const auto lines = split_lines("a\n\nb\n");
+    // _next() ends iteration when the stride comes out empty, and a stride is
+    // empty only when pos == _cur. A blank line puts the stop sequence *at*
+    // _cur, so pos advances past it and the stride is the one-character "\n" —
+    // non-empty. The empty stride therefore happens only at _cur == _end, which
+    // is genuine exhaustion.
+    //
+    // Asserted exactly rather than loosely: a weak assertion here would hold
+    // whether or not blank lines terminate iteration, which is the property
+    // under test.
+    const std::vector<std::string> middle = split_lines("a\n\nb\n");
+    REQUIRE(middle.size() == 3);
+    CHECK(middle[0] == "a\n");
+    CHECK(middle[1] == "\n");
+    CHECK(middle[2] == "b\n");
 
-    CHECK(lines.size() >= 1);
-    CHECK(lines[0] == "a\n");
+    const std::vector<std::string> consecutive = split_lines("a\n\n\nb\n");
+    REQUIRE(consecutive.size() == 4);
+    CHECK(consecutive[1] == "\n");
+    CHECK(consecutive[2] == "\n");
+    CHECK(consecutive[3] == "b\n");
+
+    const std::vector<std::string> leading = split_lines("\na\n");
+    REQUIRE(leading.size() == 2);
+    CHECK(leading[0] == "\n");
+    CHECK(leading[1] == "a\n");
+
+    const std::vector<std::string> trailing = split_lines("a\n\n");
+    REQUIRE(trailing.size() == 2);
+    CHECK(trailing[1] == "\n");
+
+    // A final line with no terminator is still yielded.
+    const std::vector<std::string> unterminated = split_lines("a\nb");
+    REQUIRE(unterminated.size() == 2);
+    CHECK(unterminated[1] == "b");
+
+    CHECK(split_lines("").empty());
+    REQUIRE(split_lines("\n").size() == 1);
+}
+
+TEST_CASE("a copied line_iterator carries its whole state")
+{
+    // The copy has to be independently usable, which needs _cur, _end, _valid
+    // and _stop_sequence — not just the current stride. Iterating the copy all
+    // the way to the end is what exercises that.
+    const std::string text = "a\nb\nc\n";
+    util::line_iterator<std::string> it(text);
+    const util::line_iterator<std::string> end;
+
+    util::line_iterator<std::string> copy(it);
+    CHECK(copy == it);
+    CHECK(std::string(copy->first, copy->second) == "a\n");
+
+    std::vector<std::string> from_copy;
+    for (; copy != end; ++copy) {
+        from_copy.push_back(std::string(copy->first, copy->second));
+    }
+    REQUIRE(from_copy.size() == 3);
+    CHECK(from_copy[0] == "a\n");
+    CHECK(from_copy[2] == "c\n");
+
+    // The original is undisturbed by the copy's traversal.
+    CHECK(std::string(it->first, it->second) == "a\n");
+}
+
+TEST_CASE("line_iterator assignment carries its whole state")
+{
+    const std::string text = "a\nb\nc\n";
+    util::line_iterator<std::string> it(text);
+    const util::line_iterator<std::string> end;
+
+    util::line_iterator<std::string> assigned;
+    assigned = it;
+    CHECK(assigned == it);
+
+    std::vector<std::string> from_assigned;
+    for (; assigned != end; ++assigned) {
+        from_assigned.push_back(std::string(assigned->first, assigned->second));
+    }
+    CHECK(from_assigned.size() == 3);
+}
+
+TEST_CASE("post-increment returns the previous position by value")
+{
+    const std::string text = "a\nb\nc\n";
+    util::line_iterator<std::string> it(text);
+
+    auto before = it++;
+
+    CHECK(std::string(before->first, before->second) == "a\n");
+    CHECK(std::string(it->first, it->second) == "b\n");
+    CHECK(before != it);
+
+    // The returned object outlives the expression and stays usable.
+    ++before;
+    CHECK(std::string(before->first, before->second) == "b\n");
 }
 
 TEST_CASE("line and token iteration compose, as in the OBJ loader")
@@ -264,19 +351,9 @@ TEST_CASE("find_escaped returns last when the value never appears unescaped")
 }
 
 // ---------------------------------------------------------------------------
-// Known defects — documented, not asserted
+// Coverage notes
 // ---------------------------------------------------------------------------
 //
-// Deliberately not covered by assertions because the behaviour is undefined
-// rather than merely surprising. All three should be fixed during the C++17
-// refactor:
-//
-//  1. line_iterator's copy constructor initialises only _stride, leaving
-//     _valid, _cur, _end and _stop_sequence uninitialised.
-//
-//  2. line_iterator::operator++(int) constructs a local `tmp` and returns a
-//     reference to it — a dangling reference. Post-increment cannot be used.
-//     (Pre-increment, used above and by loaders/obj.cc, is fine.)
-//
-//  3. escaped_find::escaped_character_ is never initialised by the constructor,
-//     so the first call reads an indeterminate bool.
+// What is deliberately not asserted: escaped_find has no consumer — the
+// tokenizer calls the free find_escaped instead — so it is covered by
+// construction only, not by behaviour.
