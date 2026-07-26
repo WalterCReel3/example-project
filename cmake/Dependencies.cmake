@@ -72,7 +72,19 @@ else()
     # KMSDRM is how the handhelds actually reach the display.
     set(SDL_KMSDRM  ON  CACHE BOOL "" FORCE)
 
-    if(NOT WREEL_TARGET_HAS_GPU)
+    # Forced in BOTH directions, deliberately. Only forcing the OFF case left the
+    # ON case at whatever the cache already held, so a build directory configured
+    # while a target was believed to have no GPU kept GL and GLES disabled after
+    # that belief was corrected — the flag would change and nothing would happen.
+    # Reconfigures should not depend on cache history.
+    #
+    # WREEL_TARGET_HAS_GPU is device capability. It says nothing about which of
+    # our renderers is built; that is WREEL_ENABLE_GLES2. Conflating the two is
+    # D18.
+    if(WREEL_TARGET_HAS_GPU)
+        set(SDL_OPENGL   ON  CACHE BOOL "" FORCE)
+        set(SDL_OPENGLES ON  CACHE BOOL "" FORCE)
+    else()
         # No GPU: don't drag in GL/GLES/EGL detection at all.
         set(SDL_OPENGL   OFF CACHE BOOL "" FORCE)
         set(SDL_OPENGLES OFF CACHE BOOL "" FORCE)

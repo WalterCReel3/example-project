@@ -623,12 +623,24 @@ is a correct fallback — the failure mode is a performance one, on the targets
 whose fill rate is already the main risk in
 [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/).
 
-**Fix:** set the flag from device capability, per its own comment, and gate
-backend *readiness* separately —
+**Fixed** 2026-07-26: the flag is set from device capability, per its own comment,
+and renderer *readiness* is gated separately by `WREEL_ENABLE_GLES2` —
 [2026-07-26-gfx-renderer-and-gles2](../2026-07-26-gfx-renderer-and-gles2/)
-decision 1. Note that the flag alone is not enough: Debian's aarch64 cross sysroot
-carries no `GLES2/gl2.h` or `EGL/egl.h`, so SDL's configure will still disable
-them until `libgles-dev:arm64` and `libegl-dev:arm64` are installed.
+decision 1. All five presets now report the intended GL support:
+`rk3326`/`h700` on, `miyoomini`/`desktop-software` off, and both aarch64 presets
+still pass 8/8 under qemu.
+
+A second defect in the same area, found by the fix not taking effect at first:
+`Dependencies.cmake` forced `SDL_OPENGL`/`SDL_OPENGLES` **off** for a GPU-less
+target but left the GPU case at whatever the cache already held. So a build
+directory configured while a target was believed to have no GPU kept GL disabled
+after that belief was corrected — the flag changed and nothing happened. Both
+directions are now forced, so a reconfigure does not depend on cache history.
+
+Expected to be needed and was not: `libgles-dev:arm64`. The GLES/EGL headers are
+architecture-independent and already installed for the host, and SDL `dlopen`s
+`libEGL.so`/`libGLESv2.so` rather than linking them — every cross-built binary
+still lists only `libm.so.6` and `libc.so.6` as `NEEDED`. No bootstrap change.
 
 ---
 

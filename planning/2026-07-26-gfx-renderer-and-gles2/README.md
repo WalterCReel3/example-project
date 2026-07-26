@@ -65,29 +65,37 @@ to fix, and it is a one-line change with a table-shaped consequence.
 
 Recorded as **D18**.
 
-### The cross sysroot has no GLES headers
+### The cross builds need no new packages — first guess, wrong
 
-`libgles-dev` and `libegl-dev` are installed for the host, so
-`/usr/include/GLES2/gl2.h` and `/usr/include/EGL/egl.h` exist and desktop GLES2
-work is possible today. The aarch64 sysroot has neither, and `arm64` is not an
-enabled foreign architecture:
+This document originally recorded that flipping the flag would not be enough,
+because `arm64` is not an enabled foreign architecture and
+`/usr/aarch64-linux-gnu/include/GLES2/` does not exist, so `libgles-dev:arm64`
+and `libegl-dev:arm64` would be needed. **Checked, and it is not so.** The flag
+flip alone is sufficient, for two reasons:
 
-```
-$ dpkg --print-foreign-architectures      # (nothing)
-$ ls /usr/aarch64-linux-gnu/include/GLES2/
-ls: cannot access ...: No such file or directory
-```
+- The GLES and EGL headers are **architecture-independent**. `libgles-dev` and
+  `libegl-dev` are already installed for the host and put `GLES2/gl2.h` and
+  `EGL/egl.h` in `/usr/include`, which Debian's cross compiler searches — there is
+  no separate sysroot in compile-check mode.
+- **SDL never links EGL or GLESv2.** `src/video/SDL_egl.c` `dlopen`s them by name
+  at runtime (`DEFAULT_EGL` is `"libEGL.so"`, `DEFAULT_OGL_ES2` is
+  `"libGLESv2.so"`), so enabling GL support adds no link-time dependency at all.
+  Verified on the artefacts: every cross-built binary lists exactly `libm.so.6`
+  and `libc.so.6` in its `NEEDED` entries, GL enabled or not.
 
-So flipping `WREEL_TARGET_HAS_GPU ON` for the aarch64 presets is necessary but
-not sufficient: SDL's configure will still find no EGL and disable it. Fixing it
-needs `dpkg --add-architecture arm64` plus `libgles-dev:arm64 libegl-dev:arm64`,
-or a device SDK sysroot that carries them. That is a
-[bootstrap-debian.sh](../../scripts/bootstrap-debian.sh) change, and it belongs
-with this work rather than with `target-validation`.
+`bootstrap-debian.sh` therefore needs no change, since `libgles-dev` and
+`libegl-dev` are already in the default `sdl` group.
 
-Worth being clear about what this does and does not prove: headers let the build
-*compile* GLES support. Whether the vendor Mali blobs on a given firmware
-actually expose a working GLES2 context is a hardware question that only
+**But be clear about what the cross builds now prove.** SDL's detection resolves
+against *host* pkg-config: the `rk3326` configure reports "Found egl, version 1.5"
+and enables `SDL_VIDEO_OPENGL_GLX`, neither of which describes a handheld — that
+device reaches its display through KMSDRM and has no X server. So "GLES2 enabled"
+on a compile-check cross build means the code compiles, not that the device stack
+is right. That is the same limitation
+[docs/TARGETS.md § 2](../../docs/TARGETS.md) already states for Debian cross-GCC
+generally, and a shippable build with `WREEL_SYSROOT` set constrains detection to
+the device sysroot via `CMAKE_FIND_ROOT_PATH`. Whether a given firmware's Mali
+blobs expose a working GLES2 context is a hardware question that only
 [target-validation](../2026-07-25-target-validation/) step 4 answers.
 
 ## Decisions
@@ -226,12 +234,17 @@ correctness fix lands before the large feature.
 
 **Stage 1 — fix what is measurably wrong, no new rendering code**
 
-- [ ] D18: `WREEL_TARGET_HAS_GPU` records device capability. `ON` for the aarch64
-      handhelds
-- [ ] `libgles-dev:arm64` / `libegl-dev:arm64` in `bootstrap-debian.sh`, plus the
-      `dpkg --add-architecture arm64` step
-- [ ] Confirm from the generated `SDL_config.h` that `rk3326`/`h700` pick up
-      `RENDER_OGL_ES2`, and that `miyoomini` still does not
+- [x] D18: `WREEL_TARGET_HAS_GPU` records device capability. `ON` for the aarch64
+      handhelds. `Dependencies.cmake` now forces `SDL_OPENGL`/`SDL_OPENGLES` in
+      *both* directions, because only forcing the OFF case meant an existing build
+      directory kept GL disabled after the flag was corrected — the flag would
+      change and nothing would happen
+- [x] ~~`libgles-dev:arm64` / `libegl-dev:arm64` in `bootstrap-debian.sh`~~ — not
+      needed, see above. The headers are architecture-independent and SDL `dlopen`s
+      EGL/GLESv2, so nothing links
+- [x] Confirm from the generated `SDL_config.h` that `rk3326`/`h700` pick up
+      `RENDER_OGL_ES2`, and that `miyoomini` still does not. Both hold; `rk3326`
+      and `h700` build and pass 8/8 under qemu with GL enabled
 - [ ] Rename `gfx::software` → `gfx::renderer`; `gfx/software/` → `gfx/renderer/`
 - [ ] Driver preference on `renderer::Context`, with `driver_name()` asserted in a
       test rather than logged and forgotten
