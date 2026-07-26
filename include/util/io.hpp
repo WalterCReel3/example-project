@@ -22,7 +22,7 @@ void read_all(File &file, Buffer& fbuffer)
     file.seek(0, SeekSet);
     total_bytes = 0;
     for (Iterator i = fbuffer.begin(); total_bytes < sz; ) {
-        bytes_read = (off_t)file.read(buf, sizeof(buf));
+        bytes_read = static_cast<off_t>(file.read(buf, sizeof(buf)));
         if (bytes_read == 0) {
             break;
         }

@@ -32,6 +32,23 @@ TEST_CASE("seek reports the file size")
     CHECK(file.seek(0, util::SeekSet) == 0);
 }
 
+// Every other seek assertion here passes offset 0, which cannot distinguish a
+// backend that honours the offset from one that ignores it.
+TEST_CASE("seek honours a non-zero offset")
+{
+    util::File file(std::string("data/testfile"), util::OpenReadOnly);
+
+    CHECK(file.seek(5, util::SeekSet) == 5);
+
+    char buf[4] = {0};
+    REQUIRE(file.read(buf, sizeof(buf)) == 4);
+    CHECK(file.seek(0, util::SeekCur) == 9);
+
+    // Relative and end-relative seeks take the offset too.
+    CHECK(file.seek(2, util::SeekCur) == 11);
+    CHECK(file.seek(-5, util::SeekEnd) == 10); // data/testfile is 15 bytes
+}
+
 TEST_CASE("read fills the buffer and advances the offset")
 {
     util::File file(std::string("data/testfile"), util::OpenReadOnly);
