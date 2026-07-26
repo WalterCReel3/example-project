@@ -167,9 +167,15 @@ come from the device SDK containers.
 
 ### 3. Miyoo Mini has no GPU
 
-The SSD202D has no 3D block at all — no GL, no GLES, no EGL. The `software`
-backend is the only option there, which makes it the baseline everywhere rather
-than a fallback. 128 MB RAM total, shared with the OS.
+The SSD202D has no 3D block at all — no GL, no GLES, no EGL. `gfx::renderer` with
+its software driver is the only option there, which makes it the baseline everywhere
+rather than a fallback, and `WREEL_ENABLE_GLES2` is rejected outright for this
+target. 128 MB RAM total, shared with the OS.
+
+Note that "software" is the *driver*, not the renderer: the same `gfx::renderer`
+code selects `opengles2` on the Mali handhelds and is hardware accelerated there.
+The namespace used to be called `gfx::software` and was renamed for exactly this
+reason.
 
 ---
 
@@ -284,21 +290,28 @@ file you are in. `SCREAMING_SNAKE` appears only for the class-scope constants in
 ## Build and test
 
 ```sh
-# The software renderer, natively — same code path as the Miyoo Mini,
-# no device or cross-compiler needed. This is the default working preset.
+# The Miyoo Mini configuration, natively: WREEL_TARGET_HAS_GPU=OFF, so SDL is
+# built without GL and gfx::renderer gets its software driver. Same code path as
+# the device, no cross-compiler needed.
 cmake --preset desktop-software
 cmake --build --preset desktop-software
 ctest --preset desktop-software
 
-# Legacy GL backend (needs libglew-dev + libglu1-mesa-dev)
+# Both renderers, so the skratch demo builds. Needs no GL packages: nothing links
+# a GL library, and gfx::gles2 resolves its entry points through SDL.
 cmake --preset desktop-debug
+./build/desktop-debug/bin/skratch --screenshot /tmp/frame.bmp   # without taking
+                                                                # over the display
 
 cmake --list-presets        # all seven
 ```
 
-First configure of any preset fetches and builds five pinned dependencies —
+First configure of any preset fetches and builds eight pinned dependencies —
 a couple of minutes. Later configures are ~2 seconds. `ccache` is used
 automatically when present.
+
+`WREEL_WERROR` is **ON**. The tree is at zero warnings on all five configured
+presets, so a new warning fails the build rather than scrolling past.
 
 Host setup: `./scripts/bootstrap-debian.sh --dry-run` then without the flag.
 Debian 12 or derivative assumed.

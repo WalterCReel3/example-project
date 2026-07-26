@@ -46,14 +46,21 @@ Each of these needs confirming against a real SD card, not documentation.
 Common requirements across all of them:
 
 - Assets resolved **relative to the executable**, not the working directory. The
-  demo currently does `TTF_OpenFontIndex("data/Speedy.fon", ...)` and
-  `load_obj_model("data/ico.obj", ...)` — both break the moment a launcher
-  `cd`s elsewhere. `SDL_GetBasePath()` is the fix, and it should land before any
-  packaging work.
-- `runlog.txt` is written to the current directory by `skratch/main.cc`. On a
-  read-only mount that fails silently. Use `SDL_GetPrefPath()`.
+  demo still does `TTF_OpenFontIndex("data/Speedy.fon", ...)` and
+  `loaders::load_obj("data/ico.obj")` — both break the moment a launcher `cd`s
+  elsewhere. `SDL_GetBasePath()` is the fix, and it should land before any packaging
+  work. **Still outstanding**, and the last item on `CLAUDE.md`'s landmine list.
+- ~~`runlog.txt` is written to the current directory by `skratch/main.cc`.~~
+  **Done 2026-07-26.** The log goes to `SDL_GetPrefPath("wreel", "skratch")`, which
+  also took `<fstream>` out of a shipped executable — it had its own
+  `std::ofstream logging` global, against docs/TARGETS.md § 1a.
 - No dynamic libraries to install — everything is static by design, which is one
-  problem packaging does *not* have here.
+  problem packaging does *not* have here. **This survived the GL work
+  deliberately**: `gfx::gles2` resolves its entry points through
+  `SDL_GL_GetProcAddress` rather than linking `libGLESv2`, so binaries still list
+  only `libm` and `libc` as `NEEDED`. Linking it would also have meant a 2D-only
+  game failing to *start* on a firmware with no GLES blob, since the loader resolves
+  `DT_NEEDED` before `main()`.
 
 ## Steam depot
 
@@ -68,12 +75,14 @@ Common requirements across all of them:
 ## Tasks
 
 - [ ] Move asset resolution to `SDL_GetBasePath()`; add a `util` helper
-- [ ] Move `runlog.txt` to `SDL_GetPrefPath()`
+- [x] Move `runlog.txt` to `SDL_GetPrefPath()` — done 2026-07-26 with the skratch port
 - [ ] Confirm one firmware's layout against a real device, and implement it
 - [ ] Flesh out `wreel_add_handheld_bundle()` per firmware
 - [ ] Add a `WREEL_TARGET_FIRMWARE` option if layouts diverge enough to need it
 - [ ] Verify the Steam build's glibc floor
-- [ ] Port input to `SDL_GameController`
+- [ ] Port input to `SDL_GameController`. `skratch/input.cc` still hard-codes Xbox
+      360 axis indices, and it survived the renderer rework untouched — the port
+      moved rendering, not input
 - [ ] Decide whether CPack is the right tool or a plain `install()` + `tar` is
       simpler for handheld bundles
 

@@ -1,4 +1,4 @@
-# Software 2D: sprites, atlases, tiling, entities
+# 2D: sprites, atlases, tiling, entities
 
 **Status:** `in-progress`
 **Written:** 2026-07-25
@@ -9,13 +9,28 @@
 > pinned, `util::xml` exists with 19 cases against the real Sparrow atlas in
 > `data/`, and the strict number conversion it needed became
 > `include/util/number.hpp`. Nothing about the rendering path has moved yet —
-> `gfx::software::Texture` is still the piece everything waits on.
+> `gfx::renderer::Texture` is still the piece everything waits on.
+>
+> **Renamed target, 2026-07-26.** This snapshot was written against
+> `gfx::software`, which is now `gfx::renderer` — the namespace was named after the
+> render driver it happened to get on the Miyoo Mini, and that stopped being true
+> when the Mali targets started selecting `opengles2`. Nothing about the plan
+> changes, but two things about its context do:
+>
+> - **This work runs on the GPU on `rk3326` and `h700`.** The same `SDL_Renderer`
+>   code CPU-blits on the Miyoo Mini and is hardware accelerated on both Mali
+>   devices, which were previously compiled as though they had no GPU (D18). The
+>   fill-rate risk below therefore applies in full to the Miyoo Mini and much less
+>   to the others.
+> - **A second renderer exists.** `gfx::gles2` is for shaders and 3D and is *not*
+>   what this uses; a window is driven by one or the other. See
+>   [2026-07-26-gfx-renderer-and-gles2](../2026-07-26-gfx-renderer-and-gles2/).
 
 ## Motivation
 
-This is where the handheld work actually goes. With the software backend settled
-as [2D only](../2026-07-25-graphics-backends/README.md), the content of that
-backend is sprite and tile rendering — and right now it cannot draw a sprite at
+This is where the handheld work actually goes. With the renderer settled as
+[2D only](../2026-07-25-graphics-backends/README.md) — no CPU triangle pipeline —
+its content is sprite and tile rendering, and right now it cannot draw a sprite at
 all.
 
 A basic handheld game here will be some form of 2D, or mocked/basic 3D done with
@@ -29,8 +44,8 @@ larger in others.
 
 | Piece | State |
 |---|---|
-| `gfx::software::Context` | window, renderer, `clear`, `present`, `draw_surface`, `draw_text` |
-| `gfx::Spritesheet` / `SpritesheetFrame` | backend-neutral frame list; `SpritesheetFrame` is a plain aggregate. **No consumers** |
+| `gfx::renderer::Context` | window, renderer, `clear`, `present`, `draw_surface`, `draw_text`, and an explicit `Driver` preference |
+| `gfx::Spritesheet` / `SpritesheetFrame` | renderer-neutral frame list; `SpritesheetFrame` is a plain aggregate. **No consumers** |
 | `loaders::load_image` | `IMG_Load` plus a convert to `ABGR8888`, returns `SDL_Surface*` |
 | `util::xml` | **done 2026-07-26** — pugixml `v1.16` behind `include/util/xml.hpp`; `test_xml`, 19 cases / 116 assertions |
 | `loaders/sparrow.cc` | **entirely commented out** — every line. No longer blocked: `util/xml.hpp` now exists |
@@ -77,7 +92,7 @@ Settled 2026-07-25, before implementation.
 ```
 util::xml                        facade over pugixml; no pugi:: in signatures
 
-gfx::software::Texture           owns an SDL_Texture, created once
+gfx::renderer::Texture          owns an SDL_Texture, created once
 Context::draw(const Texture&, const Rect* src, const Rect* dst)
 
 gfx::Atlas                       named frames over one Texture
@@ -105,7 +120,7 @@ Ordered so that something is visible on screen as early as possible.
       instead and offers `require_attribute_*` forms that throw (D17); and
       `Node` is a non-owning view, so it dangles once its `Document` goes —
       `load_sparrow` must not return `Node`s, which it was never going to
-- [ ] `gfx::software::Texture` — owning, created once, movable not copyable
+- [ ] `gfx::renderer::Texture` — owning, created once, movable not copyable
 - [ ] `Context::draw()` taking source and destination rects
 - [ ] Retire or re-express `draw_surface` in terms of `Texture` so the per-call
       upload has exactly one remaining caller (`draw_text`) rather than two
@@ -125,10 +140,13 @@ Ordered so that something is visible on screen as early as possible.
 
 ## Risks
 
-**The software renderer's fill rate is unmeasured on real hardware.** Everything
-here is affordable on a dev box and nothing about that is evidence. A full-screen
-tilemap at 320×240 on two Cortex-A7 cores through `SDL_Renderer`'s software path
-has never been timed, and the whole design assumes it is fast enough. This is the
+**The software driver's fill rate is unmeasured on real hardware, and that now
+means the Miyoo Mini specifically.** Everything here is affordable on a dev box and
+nothing about that is evidence. A full-screen tilemap at 320×240 on two Cortex-A7
+cores through `SDL_Renderer`'s software path has never been timed, and the whole
+design assumes it is fast enough. `rk3326` and `h700` now select `opengles2` for
+the same code, so the risk there is much smaller — but unverified in a different
+way: nobody has confirmed those firmwares expose a working GLES2 context. This is the
 same gap [target-validation](../2026-07-25-target-validation/) has been carrying:
 no part of this codebase has run on a device. Measure before building the tilemap
 on the assumption that per-tile blitting is viable; dirty-rectangle or
@@ -159,6 +177,9 @@ it is better answered before the API sets.
 
 - [docs/TARGETS.md § XML: why pugixml](../../docs/TARGETS.md)
 - [graphics-backends § Decided: the software backend is 2D only](../2026-07-25-graphics-backends/README.md)
+  — superseded as a plan, but that decision still stands
+- [2026-07-26-gfx-renderer-and-gles2](../2026-07-26-gfx-renderer-and-gles2/) — the
+  rename, and why there are two renderers
 - [software-3d-rasteriser](../2026-07-25-software-3d-rasteriser/) — what was deferred
-- `include/gfx/software/context.hpp`, `include/gfx/spritesheet.hpp`,
+- `include/gfx/renderer/context.hpp`, `include/gfx/spritesheet.hpp`,
   `loaders/sparrow.cc`

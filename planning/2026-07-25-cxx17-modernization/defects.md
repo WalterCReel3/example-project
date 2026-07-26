@@ -190,13 +190,33 @@ in the tree used `#pragma once` when this was written.
 favour of the modern spelling over matching the `WREEL_*` guards the other
 authored headers happen to use.
 
-**Mostly resolved by attrition** rather than by a sweep. Of the 20 reserved-name
-guards, the renderer rework deleted 8 outright — `gfx/context.hpp`,
-`gfx/obj.hpp`, `gfx/system.hpp`, `gfx/utils.hpp`, `gfx/primitives.hpp`,
-`math/vector.hpp`, `skratch/globals.hpp`, and `loaders/obj.hpp` was rewritten with
-`#pragma once`. Both of the wrong-module guards this entry called out went with
-them: `gfx/context.hpp`'s `__GFX_VIEW_HPP__` and `gfx/primitives.hpp`'s
-`__MATH_PRIMITIVES_HPP`. Every header authored since uses `#pragma once`.
+**Partly resolved by attrition** rather than by a sweep. Counted again 2026-07-26:
+**11 reserved-name guards remain of the original 20.** Seven headers were deleted
+outright by the renderer rework — `gfx/context.hpp`, `gfx/obj.hpp`,
+`gfx/system.hpp`, `gfx/utils.hpp`, `gfx/primitives.hpp`, `math/vector.hpp` and
+`skratch/globals.hpp` — and `gfx/types.hpp`, `gfx/spritesheet.hpp` and
+`loaders/obj.hpp` were rewritten with `#pragma once` as they were touched.
+
+Both wrong-module guards this entry called out went with the deletions:
+`gfx/context.hpp` declared `__GFX_VIEW_HPP__` and `gfx/primitives.hpp` declared
+`__MATH_PRIMITIVES_HPP`.
+
+What is left, all in files nothing has needed to touch yet:
+
+```
+include/loaders/image.hpp        include/util/filetypes.hpp
+include/loaders/sparrow.hpp      include/util/io.hpp
+include/posix/errors.hpp         include/util/mswin/fileimpl.hpp
+include/util/deleter.hpp         include/util/nocopy.hpp
+include/util/file.hpp            include/util/posix/fileimpl.hpp
+include/util/string.hpp
+```
+
+Two of those are D13's colliding pair — `util/posix/fileimpl.hpp` and
+`util/mswin/fileimpl.hpp` both declare `__UTIL_FILEIMPL_HPP__` — so converting
+them fixes that entry as well. `loaders/sparrow.hpp` is due a rewrite anyway when
+`load_sparrow` is revived. Every header authored since the survey uses
+`#pragma once`.
 
 Three of the 2016 guards are also simply wrong about their own file, which is
 worth fixing in the same pass: `gfx/context.hpp` declares `__GFX_VIEW_HPP__`

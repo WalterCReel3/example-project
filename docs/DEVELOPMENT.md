@@ -226,7 +226,7 @@ Each preset gets its own build tree under `build/<preset>/` and its own install
 prefix under `dist/<preset>/`, so switching targets never triggers a reconfigure
 storm. Binaries land in `build/<preset>/bin/`, static libraries in `lib/`.
 
-The first configure of any preset clones and builds five pinned dependencies
+The first configure of any preset clones and builds eight pinned dependencies
 from source and takes a couple of minutes. Subsequent configures are ~2 seconds.
 `ccache` is picked up automatically if installed, which matters a lot when
 building the same dependencies for several targets.
