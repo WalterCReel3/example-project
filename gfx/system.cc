@@ -44,9 +44,9 @@ System::~System()
     System::_instance = NULL;
 }
 
-Context* System::create_context(const string& name)
+Context* System::create_context(const string& name, bool fullscreen)
 {
-    Context* context = new Context(name);
+    Context* context = new Context(name, fullscreen);
     _contexts.push_back(context);
     return context;
 }
