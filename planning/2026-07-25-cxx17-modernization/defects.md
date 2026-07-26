@@ -525,6 +525,66 @@ using-declaration.
 
 ---
 
+## D17 — `long_of_string`'s error check can never fire
+
+**WRONG.** `include/util/string.hpp`
+
+```cpp
+long int long_of_string(const string &s)
+{
+    char *end;
+    long int result = strtol(s.c_str(), &end, 10);
+    if (end == 0) {
+        throw domain_error("Invalid integer representation");
+    }
+    return result;
+}
+```
+
+`strtol(3)` sets `end` to the first unconverted character, so it is null only if
+the input pointer was — which `c_str()` never is. The throw is unreachable, and
+the function has no way to report failure:
+
+| Input | Returns | Should |
+|---|---|---|
+| `"abc"` | `0` | throw |
+| `"12px"` | `12` | throw |
+| `""` | `0` | throw |
+| `" 12"` | `12` | throw (leading whitespace) |
+| `"99999999999999999999"` | `LONG_MAX`, `errno == ERANGE` unchecked | throw |
+
+The same shape as [D12](#d12) and the `util::format` defect: an error path that
+nobody exercised, wrong in a way that only fires once something else has already
+gone wrong. `0` is also a legitimate value, so a caller cannot distinguish
+failure by inspecting the result.
+
+Found 2026-07-26 while looking for the right home for the strict conversion
+`util::xml` needs — this is the utility that should already have been it.
+
+Unreachable today: no consumers anywhere in the tree, which is why it has never
+been noticed. It is kept and fixed rather than deleted, per the decision in
+[README.md](README.md).
+
+**Fixed** 2026-07-26 by reimplementing it on the new `util::from_string` in
+`include/util/number.hpp`, so there is one strict conversion rather than two
+spellings of it.
+
+This is a **behaviour change**, unlike the rest of this inventory — the four
+rows above now throw where they previously returned a plausible-looking number.
+Safe only because the function has no callers; had it any, this would need to be
+a separate decision rather than a fix.
+
+Worth noting what the same read turned up in the vendor library, since it is the
+identical mistake one layer down: **pugixml's `as_int(def)` does not honour its
+own documented contract.** The header says it returns the default "if conversion
+did not succeed or attribute is empty", but measured against v1.16 the default
+applies only when the attribute is *absent* — a present but non-numeric value
+yields `0`, and `"12px"` yields `12`. `util::xml`'s defaulted accessors therefore
+route through `util::from_string` rather than re-exporting that behaviour, so
+malformed and absent both mean "fallback". Asserted in `tests/test_xml.cc`.
+
+---
+
 ## Already fixed
 
 | | Where | What |

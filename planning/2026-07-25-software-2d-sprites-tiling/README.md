@@ -1,8 +1,15 @@
 # Software 2D: sprites, atlases, tiling, entities
 
-**Status:** `snapshot`
+**Status:** `in-progress`
 **Written:** 2026-07-25
 **Blocked by:** nothing
+
+> **Started 2026-07-26 with the XML dependency**, which is the first task below
+> and the one `loaders/sparrow.cc` has been blocked on since 2016. pugixml is
+> pinned, `util::xml` exists with 19 cases against the real Sparrow atlas in
+> `data/`, and the strict number conversion it needed became
+> `include/util/number.hpp`. Nothing about the rendering path has moved yet —
+> `gfx::software::Texture` is still the piece everything waits on.
 
 ## Motivation
 
@@ -25,7 +32,8 @@ larger in others.
 | `gfx::software::Context` | window, renderer, `clear`, `present`, `draw_surface`, `draw_text` |
 | `gfx::Spritesheet` / `SpritesheetFrame` | backend-neutral frame list; `SpritesheetFrame` is a plain aggregate. **No consumers** |
 | `loaders::load_image` | `IMG_Load` plus a convert to `ABGR8888`, returns `SDL_Surface*` |
-| `loaders/sparrow.cc` | **entirely commented out** — every line, blocked on a `util/xml.hpp` that was never written |
+| `util::xml` | **done 2026-07-26** — pugixml `v1.16` behind `include/util/xml.hpp`; `test_xml`, 19 cases / 116 assertions |
+| `loaders/sparrow.cc` | **entirely commented out** — every line. No longer blocked: `util/xml.hpp` now exists |
 | Tilemap | nothing. No code, no assets, no format |
 | Entities | nothing |
 
@@ -90,7 +98,13 @@ source-rect blit expressible and what stops the per-call upload.
 
 Ordered so that something is visible on screen as early as possible.
 
-- [ ] Pin pugixml in `cmake/Dependencies.cmake`; add `util::xml` facade + tests
+- [x] Pin pugixml in `cmake/Dependencies.cmake`; add `util::xml` facade + tests.
+      Done 2026-07-26. Two things worth knowing before the loaders are written:
+      pugixml's `as_int()` does not honour its documented default-on-failure
+      contract, so the facade converts through the new `util::from_string`
+      instead and offers `require_attribute_*` forms that throw (D17); and
+      `Node` is a non-owning view, so it dangles once its `Document` goes —
+      `load_sparrow` must not return `Node`s, which it was never going to
 - [ ] `gfx::software::Texture` — owning, created once, movable not copyable
 - [ ] `Context::draw()` taking source and destination rects
 - [ ] Retire or re-express `draw_surface` in terms of `Texture` so the per-call
