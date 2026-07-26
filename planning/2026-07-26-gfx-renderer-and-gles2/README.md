@@ -195,15 +195,14 @@ what finally makes `WREEL_WERROR=ON` reachable tree-wide. See
 `gfx::System`'s leaked singleton (D8) is deleted with it rather than fixed, as
 that snapshot already decided.
 
-## Open question, and it gates the `gles2` API shape
+## Decided: glm, and `math::Vector3` is retired
 
-**Matrix maths: glm, or extend `include/math/vector.hpp`?**
+**Settled 2026-07-26**, before stage 2 was implemented. It had to be answered
+first because it decides whether `MeshBuffer::draw()` takes a `glm::mat4` or a
+`math::Matrix4`, and whether `gfx::Mesh` holds `glm::vec3` or `math::Vector3`.
 
-The earlier snapshot lists this as open and it now has to be answered, because it
-decides whether `MeshBuffer::draw()` takes a `glm::mat4` or a `math::Matrix4`, and
-whether `gfx::Mesh` holds `glm::vec3` or `math::Vector3`.
-
-Recommendation: **take glm, pin `1.0.3`, and retire `math::Vector3`.**
+glm `1.0.3` is pinned via FetchContent and `include/math/vector.hpp` is deleted.
+The reasoning as it stood when the decision was taken:
 
 - `math::Vector3::operator+` and `operator*` mutate their left operand and return
   a reference (D7), so `a + b` modifies `a`. They are not exercised today, which
@@ -226,6 +225,14 @@ Recommendation: **take glm, pin `1.0.3`, and retire `math::Vector3`.**
 The alternative — extend `math::Vector3` with `Matrix4` and the missing operations
 — keeps the dependency count and the "no vendor types in signatures" rule intact,
 and costs perhaps 200 lines of maths plus the tests to trust it.
+
+**What it actually cost**, now that it is done: five lines outside the loader.
+Every consumer of `math::Vector3` — `gfx/obj.*`, `gfx/utils.hpp`,
+`skratch/application.cc`, `gfx/types.hpp` — was already a file this snapshot
+rewrites or deletes, so there was no migration to speak of. `glm::glm` links
+PUBLIC to `wreel_gfx` because `gfx::Mesh` names `glm::vec3` in its definition;
+contrast pugixml, which stays PRIVATE to `wreel_util` because `util::xml` names no
+`pugi::` type.
 
 ## Tasks
 
@@ -260,13 +267,25 @@ warnings on four, `desktop-debug` unchanged at 33.
 
 **Stage 2 — the data seam, which `gles2` needs and `loaders` wants anyway**
 
-- [ ] Decide the maths question above
-- [ ] `gfx::Mesh` — backend-neutral vertex/colour/index data, no GL
-- [ ] `loaders::load_obj` produces a `gfx::Mesh`; `loaders/obj.cc` builds on every
-      target and stops including `SDL_opengl.h`
-- [ ] `tests/test_obj.cc` — `cube.obj`, `ico.obj`, `teapot.obj`, pinning the
-      counts already recorded in `docs/DEVELOPMENT.md` (ico 42/240, teapot
-      3644/18960)
+- [x] Decide the maths question above — glm `1.0.3`, `math::Vector3` deleted (D7)
+- [x] `gfx::Mesh` — renderer-neutral vertex/colour/index data, no GL. Carries
+      `indexes_in_range()` and `triangulated()`, because an out-of-range index
+      presents as corrupt geometry or a GPU fault in a draw call rather than as a
+      load error
+- [x] `loaders::load_obj` produces a `gfx::Mesh`; `loaders/obj.cc` builds on every
+      target and no longer includes `SDL_opengl.h`. Malformed coordinates and
+      indexes are now errors rather than silently becoming `0.0`/`0`, and the
+      `f a/t/n` face form is supported deliberately rather than by accident of
+      `strtol` stopping at `/`
+- [x] `tests/test_obj.cc` — 15 cases / 81 assertions. `ico.obj` 42/240 and
+      `teapot.obj` 3644/18960 match the values recorded in `docs/DEVELOPMENT.md`
+      from before the C++17 work, so the geometry is now pinned across both
+      changes in a test rather than in a paragraph
+
+**Stage 2 landed 2026-07-26.** 10/10 tests on all five presets. `desktop-debug`
+drops from 33 warnings to **30**: `loaders/obj.cc`'s three `-Wdouble-promotion`
+are gone, since the loader parses straight to `float`, so that file leaves the
+deferred set.
 
 **Stage 3 — the GLES2 renderer**
 

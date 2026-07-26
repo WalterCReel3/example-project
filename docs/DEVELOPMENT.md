@@ -263,7 +263,7 @@ building the same dependencies for several targets.
 | `WREEL_BUILD_TESTS` | `ON` | build the doctest suite |
 | `WREEL_BUILD_DEMOS` | `ON` | build `skratch` — forced `OFF` unless `WREEL_ENABLE_GL_LEGACY` is on |
 | `WREEL_BUILD_PROBE` | `ON` | build `wreel-probe` |
-| `WREEL_WERROR` | `OFF` | treat warnings as errors. Off because the 2016 GL sources do not survive the full warning set yet — 33 remain on `desktop-debug`, down from 167. `desktop-software` is already clean and could be gated today. See [planning/2026-07-25-cxx17-modernization](../planning/2026-07-25-cxx17-modernization/) |
+| `WREEL_WERROR` | `OFF` | treat warnings as errors. Off because the 2016 GL sources do not survive the full warning set yet — 30 remain on `desktop-debug`, down from 167. `desktop-software` is already clean and could be gated today. See [planning/2026-07-25-cxx17-modernization](../planning/2026-07-25-cxx17-modernization/) |
 | `WREEL_STATIC_CXX` | `OFF` | static-link libstdc++/libgcc. Forced `ON` by every device toolchain |
 | `WREEL_AUDIO_CODECS` | per-target | `minimal` \| `standard` \| `full`. Affects **binary size only** — see below |
 | `WREEL_AUDIO_RATE` | 44100 / 22050 | mixer sample rate. Affects **per-frame CPU** |
@@ -465,14 +465,14 @@ Two inherited quirks these files intentionally settle:
 | `scripts/bootstrap-debian.sh` | **verified** — full `--all` install on Debian 12, 50/50 packages, shellcheck clean |
 | `.clang-format` | **verified** — config parses under clang-format 14; all authored files conform |
 | [TARGETS.md](TARGETS.md) constraints | researched and verified upstream |
-| Dependency choices | settled — SDL2, nlohmann/json, pugixml, doctest |
+| Dependency choices | settled — SDL2, nlohmann/json, pugixml, glm, doctest |
 | Modern CMake build | **verified** on system CMake 3.25 |
 | `CMakePresets.json` | **verified** — 7 presets enumerate and configure |
 | `gfx::renderer` (SDL_Renderer) | **verified** — builds on x86_64, aarch64 and armv7. `test_renderer` pins driver selection: `PreferAccelerated` degrades to software, `Accelerated` refuses to |
 | Accelerated 2D on Mali | **build verified only** — `rk3326`/`h700` now compile SDL with the `opengles2` render driver (D18). Whether the vendor blobs expose it is a hardware question |
 | `audio` module | **verified** — opens on pulseaudio and dummy; 3 codec tiers build |
 | `wreel-probe` | **verified** — runs on x86_64 and as an aarch64 binary under qemu; reports audio |
-| doctest suite | **verified** — 9 executables, 99 cases / 1401 assertions, 9/9 on all five configured presets: both desktop, plus `rk3326`, `h700` and `miyoomini` under qemu |
+| doctest suite | **verified** — 10 executables, 114 cases / 1482 assertions, 10/10 on all five configured presets: both desktop, plus `rk3326`, `h700` and `miyoomini` under qemu |
 | `util::ascii` predicates | **verified** — `test_ascii`, 12 cases / 1017 assertions; replaces the `<ctype.h>` predicates in `string.hpp` |
 | `util::logging` | **verified** — `test_logging`, 11 cases / 38 assertions. printf-style, no iostreams; armv7 `wreel-probe` dropped 865 KB (28%) |
 | `util::xml` | **verified** — `test_xml`, 19 cases / 116 assertions against the real Sparrow atlas in `data/`. pugixml `v1.16`, XPath compiled out, and confirmed private to `util/xml.cc`: no consumer of `wreel::util` gets pugixml's include path |
@@ -483,7 +483,7 @@ Two inherited quirks these files intentionally settle:
 | `steam` preset | not run — needs the sniper container |
 | `docker/miyoomini.Dockerfile` | not built — needs Docker plus the upstream base image |
 | `gfx::gles2` | not started — stage 3 of [the renderer snapshot](../planning/2026-07-26-gfx-renderer-and-gles2/) |
-| C++17 cleanup of 2016 sources | **in progress.** `string.hpp` done — the `ptr_fun`/`not1`/`unary_function` cluster is gone and character classification moved to `util/ascii.hpp`. `desktop-software` is at **zero warnings**; `desktop-debug` is at 33, down from 167, all in `gl_legacy`/`skratch` files that [the renderer snapshot](../planning/2026-07-26-gfx-renderer-and-gles2/) deletes or rewrites. `WREEL_WERROR` stays `OFF` until those clear |
+| C++17 cleanup of 2016 sources | **in progress.** `string.hpp` done — the `ptr_fun`/`not1`/`unary_function` cluster is gone and character classification moved to `util/ascii.hpp`. `desktop-software` is at **zero warnings**; `desktop-debug` is at 30, down from 167, all in `gl_legacy`/`skratch` files that [the renderer snapshot](../planning/2026-07-26-gfx-renderer-and-gles2/) deletes or rewrites. `WREEL_WERROR` stays `OFF` until those clear |
 
 ### What has actually been run
 
@@ -492,11 +492,11 @@ On Debian 12 / GCC 12.2 / CMake 3.25 / clang-format 14, after a full
 
 | Check | Result |
 |---|---|
-| `desktop-software` cold configure → build → test | pass, 8/8, zero errors, zero warnings |
-| `rk3326` cross-build → `ctest` under qemu | pass, 8/8 |
-| `h700` cross-build → `ctest` under qemu | pass, 8/8, `-mcpu=cortex-a53` confirmed |
-| `miyoomini` armv7 build → `ctest` under qemu-arm | pass, 8/8, `-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4` confirmed. `util/ascii.hpp` and the new logger compile warning-free on both ARM cross compilers, where `char` is unsigned. This preset caught a `long`-width assumption in `test_number` that both 64-bit presets accepted |
-| `desktop-debug` (`gl_legacy`) build → test | pass, 8/8; `skratch` links; probe reports Mesa 22.3.6 / AMD |
+| `desktop-software` cold configure → build → test | pass, 10/10, zero errors, zero warnings |
+| `rk3326` cross-build → `ctest` under qemu | pass, 10/10 |
+| `h700` cross-build → `ctest` under qemu | pass, 10/10, `-mcpu=cortex-a53` confirmed |
+| `miyoomini` armv7 build → `ctest` under qemu-arm | pass, 10/10, `-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4` confirmed. `util/ascii.hpp` and the new logger compile warning-free on both ARM cross compilers, where `char` is unsigned. This preset caught a `long`-width assumption in `test_number` that both 64-bit presets accepted |
+| `desktop-debug` (`gl_legacy`) build → test | pass, 10/10; `skratch` links; probe reports Mesa 22.3.6 / AMD |
 | `wreel-probe` as an aarch64 binary under qemu | runs, reports correctly |
 | `shellcheck scripts/bootstrap-debian.sh` | clean |
 | `clang-format --dump-config` | parses; authored files conform |

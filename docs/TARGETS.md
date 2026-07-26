@@ -7,17 +7,24 @@ elsewhere don't have to re-derive them.
 
 ## Target matrix
 
-| Preset | Devices | SoC | Arch | GPU | Backend today | Toolchain |
+| Preset | Devices | SoC | Arch | GPU | `gfx::renderer` driver | Toolchain |
 |---|---|---|---|---|---|---|
-| `desktop-debug` / `-release` | your dev box | any | `x86_64` | any | `gl_legacy` | host GCC/Clang |
-| `desktop-software` | your dev box | any | `x86_64` | any | `software` | host GCC/Clang |
-| `steam` | Steam / Steam Deck | any | `x86_64` | any | `gl_legacy` | Steam Runtime **sniper** container |
+| `desktop-debug` / `-release` | your dev box | any | `x86_64` | any | `opengl` | host GCC/Clang |
+| `desktop-software` | your dev box | any | `x86_64` | any | `software` (forced) | host GCC/Clang |
+| `steam` | Steam / Steam Deck | any | `x86_64` | any | `opengl` | Steam Runtime **sniper** container |
 | `miyoomini` | Miyoo Mini, Mini Plus | SigmaStar SSD202D | `armv7-a` | **none** | `software` **only** | `union-miyoomini-toolchain` (GCC 8.3) |
-| `rk3326` | RG351P/M/V, RG353P/M/V | Rockchip RK3326 | `aarch64` | Mali-G31 | `software` (awaiting `gles2`) | device sysroot or Debian cross |
-| `h700` | RG35XX Plus/H/SP, RG40XX | Allwinner H700 | `aarch64` | Mali-G31 MP2 | `software` (awaiting `gles2`) | device sysroot or Debian cross |
+| `rk3326` | RG351P/M/V, RG353P/M/V | Rockchip RK3326 | `aarch64` | Mali-G31 | `opengles2` | device sysroot or Debian cross |
+| `h700` | RG35XX Plus/H/SP, RG40XX | Allwinner H700 | `aarch64` | Mali-G31 MP2 | `opengles2` | device sysroot or Debian cross |
 
-`desktop-software` is how you exercise the Miyoo Mini code path without a device:
-same backend, native speed, no cross-compile.
+Every preset builds `gfx::renderer`; the driver column is what SDL selects
+underneath it. The two Mali rows were `software` until 2026-07-26, when D18 was
+fixed — they had been compiled as though they had no GPU. Those two are
+**build-verified only**: no part of this has run on hardware.
+
+`desktop-software` is how you exercise the Miyoo Mini code path without a device.
+It sets `WREEL_TARGET_HAS_GPU=OFF`, so SDL is built with no GL at all and the
+software driver is the only one available — the same situation as the SSD202D,
+at native speed and without a cross-compiler.
 
 ### Out of scope
 
@@ -56,9 +63,11 @@ Integer `std::from_chars` **is** available in GCC 8. `std::optional`,
 `std::not_fn`, and fold expressions are all fine. Inline variables are available,
 which is what lets `util/ascii.hpp` expose `inline constexpr` predicate objects.
 
-> This is why [loaders/obj.cc](../loaders/obj.cc) keeps using `strtod`/`strtol`
-> rather than moving to `<charconv>` — floating-point `from_chars` simply is not
-> there.
+> This is why [util/number.hpp](../include/util/number.hpp) dispatches on type:
+> integers go through `std::from_chars`, which GCC 8 has and which is
+> locale-independent, while floating point falls back to the `strtod` family. It is
+> the one place in the tree that has to care, and `util::from_string` is what
+> everything else — the OBJ loader, `util::xml`, TMX — calls instead.
 
 > **Do not use `<cctype>` for parsing.** `::isspace` and friends are
 > locale-dependent, take `int`, and are undefined for negative `char` — and `char`
@@ -143,11 +152,12 @@ GLES, no EGL. Everything is CPU blitting through `SDL_Renderer`'s software path
 
 Consequences:
 
-- The `software` backend is not a fallback, it is the **only** backend on this
-  device, so it has to be good enough to be the baseline everywhere.
-- The existing [gfx/](../gfx/) code — `glBegin`/`glEnd`, `glMatrixMode`,
+- `gfx::renderer` with its software driver is not a fallback here, it is the
+  **only** thing that runs, so it has to be good enough to be the baseline
+  everywhere. `WREEL_ENABLE_GLES2` is rejected outright on this target.
+- The 2016 [gfx/](../gfx/) code — `glBegin`/`glEnd`, `glMatrixMode`,
   `gluPerspective`, GLEW — cannot compile for this target at all. It is gated
-  behind the desktop-only `gl_legacy` backend.
+  behind the desktop-only `WREEL_ENABLE_GL_LEGACY`.
 - RAM is **128 MB total**, shared with the OS. Asset budgets are tight and
   unbounded caches are not an option.
 
@@ -327,6 +337,7 @@ library versions. Tags verified upstream.
 | SDL2_mixer | `release-2.8.2` | codec set per `WREEL_AUDIO_CODECS`; vendored libxmp, no external deps |
 | nlohmann/json | `v3.12.0` | JSON config and data; replaces RapidJSON |
 | pugixml | `v1.16` | Sparrow texture atlases and Tiled TMX maps |
+| glm | `1.0.3` | vector and matrix maths; replaces `include/math/vector.hpp`. Debian 12 ships `0.9.9.8` |
 | doctest | `v2.5.3` | test framework; single header, no per-target build |
 
 Three things about this that are easy to get wrong, and are settled here:
