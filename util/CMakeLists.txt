@@ -11,7 +11,8 @@
 set(WREEL_UTIL_SOURCES
     file.cc
     io.cc
-    logging.cc)
+    logging.cc
+    xml.cc)
 
 if(WIN32)
     list(APPEND WREEL_UTIL_SOURCES mswin/fileimpl.cc)
@@ -31,9 +32,14 @@ target_include_directories(wreel_util PUBLIC
 # nlohmann/json is PUBLIC only until the util::json facade exists; once JSON
 # access lives behind that facade this becomes PRIVATE and the vendor type stops
 # appearing in module signatures. See docs/TARGETS.md § "Wrap it, don't spread it".
+#
+# pugixml is PRIVATE from the outset, which is what that comment is describing:
+# include/util/xml.hpp names no pugi:: type, so no consumer of wreel::util needs
+# pugixml's headers or its include path.
 target_link_libraries(wreel_util
     PUBLIC  wreel::posix
-            nlohmann_json::nlohmann_json)
+            nlohmann_json::nlohmann_json
+    PRIVATE pugixml::pugixml)
 
 set_target_properties(wreel_util PROPERTIES
     OUTPUT_NAME util

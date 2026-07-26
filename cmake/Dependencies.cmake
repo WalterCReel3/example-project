@@ -16,6 +16,7 @@ set(WREEL_PIN_SDL2_IMAGE  "release-2.8.12")
 set(WREEL_PIN_SDL2_TTF    "release-2.24.0")
 set(WREEL_PIN_SDL2_MIXER  "release-2.8.2")
 set(WREEL_PIN_JSON        "v3.12.0")
+set(WREEL_PIN_PUGIXML     "v1.16")
 set(WREEL_PIN_DOCTEST     "v2.5.3")
 
 # Dependency sources land in the build tree by default. Cross builds must not
@@ -275,6 +276,48 @@ FetchContent_Declare(nlohmann_json
     GIT_TAG        ${WREEL_PIN_JSON}
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(nlohmann_json)
+
+# ---------------------------------------------------------------------------
+# pugixml
+# ---------------------------------------------------------------------------
+#
+# Two asset formats in the 2D pipeline are XML and are not ours to redefine:
+# Sparrow texture atlases (what TexturePacker and ShoeBox export, and what
+# data/jetpackdude.xml already is) and Tiled TMX maps. Chosen over tinyxml2 on
+# ergonomics rather than size — 24 KB apart on armv7. See docs/TARGETS.md
+# § "XML: why pugixml".
+#
+# Access goes behind the util::xml facade in include/util/xml.hpp; pugi:: does
+# not appear in any project signature, which is why this links PRIVATE to
+# wreel_util rather than PUBLIC.
+
+# XPath is roughly a third of pugixml's footprint and nothing here needs it:
+# Sparrow is one element type under one root, and TMX is addressed by walking
+# named children. Compiling it out is the difference between the 40 KB measured
+# in TARGETS.md and appreciably more.
+set(PUGIXML_NO_XPATH     ON CACHE BOOL "" FORCE)
+
+# Exceptions stay ON. util::xml reports a malformed document by throwing, in
+# keeping with posix::wrap and util::File, and pugixml's own load_* returns a
+# status object rather than throwing — so this only affects XPath, which is off.
+set(PUGIXML_NO_EXCEPTIONS OFF CACHE BOOL "" FORCE)
+
+# The handhelds are Linux and every asset here is UTF-8, so the wchar_t
+# interface is dead weight. Off explicitly rather than by default, because the
+# default differs across pugixml's build paths.
+set(PUGIXML_NO_STL       OFF CACHE BOOL "" FORCE)
+set(PUGIXML_WCHAR_MODE   OFF CACHE BOOL "" FORCE)
+
+# pugixml's install rules default ON, unlike nlohmann/json's. Left alone they
+# would add pugixml's headers and static library to this project's install
+# component and therefore to the CPack bundles.
+set(PUGIXML_INSTALL      OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(pugixml
+    GIT_REPOSITORY https://github.com/zeux/pugixml.git
+    GIT_TAG        ${WREEL_PIN_PUGIXML}
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(pugixml)
 
 # ---------------------------------------------------------------------------
 # doctest
