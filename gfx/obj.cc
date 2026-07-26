@@ -4,7 +4,7 @@
 namespace gfx
 {
 
-using math::Vector3;
+using glm::vec3;
 
 ObjModel::ObjModel()
     :  vertices(),
@@ -32,20 +32,21 @@ ObjModel::~ObjModel()
     }
 }
 
-void ObjModel::add_vertex(const Vector3& v, const Vector3& c)
+void ObjModel::add_vertex(const vec3& v, const vec3& c)
 {
     vertices.push_back(v);
     colors.push_back(c);
 }
 
-void ObjModel::add_vertex(const Vector3& v)
+void ObjModel::add_vertex(const vec3& v)
 {
-    add_vertex(v, Vector3(1.0, 1.0, 1.0));
+    add_vertex(v, vec3(1.0f, 1.0f, 1.0f));
 }
 
 void ObjModel::add_vertex(double x, double y, double z)
 {
-    add_vertex(Vector3(x, y, z));
+    add_vertex(vec3(static_cast<float>(x), static_cast<float>(y),
+                    static_cast<float>(z)));
 }
 
 void ObjModel::add_index(int i)
@@ -70,12 +71,12 @@ void ObjModel::build_vbo()
 
     glGenBuffers(1, &vertex_buffer);
     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(Vector3) * vertices.size(),
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vec3) * vertices.size(),
                  vertices.data(), usage);
 
     glGenBuffers(1, &color_buffer);
     glBindBuffer(GL_ARRAY_BUFFER, color_buffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(Vector3) * colors.size(),
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vec3) * colors.size(),
                  colors.data(), usage);
 
     glGenBuffers(1, &index_buffer);
@@ -118,11 +119,11 @@ void ObjModel::render(float x, float y, float z)
 
     // Load the vertex pointer
     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-    glVertexPointer(3, GL_FLOAT, sizeof(Vector3), 0);
+    glVertexPointer(3, GL_FLOAT, sizeof(vec3), 0);
 
     // Load the color pointer
     glBindBuffer(GL_ARRAY_BUFFER, color_buffer);
-    glColorPointer(3, GL_FLOAT, sizeof(Vector3), 0);
+    glColorPointer(3, GL_FLOAT, sizeof(vec3), 0);
 
     // glDrawArrays(GL_TRIANGLES, 0, vertices.size());
 

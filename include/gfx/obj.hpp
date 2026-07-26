@@ -17,8 +17,8 @@ public:
     ObjModel();
     ~ObjModel();
 
-    void add_vertex(const math::Vector3& v, const math::Vector3& c);
-    void add_vertex(const math::Vector3& v);
+    void add_vertex(const glm::vec3& v, const glm::vec3& c);
+    void add_vertex(const glm::vec3& v);
     void add_vertex(double x, double y, double z);
     void add_face(int v1, int v2, int v3);
     void add_index(int i);

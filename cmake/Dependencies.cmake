@@ -17,6 +17,7 @@ set(WREEL_PIN_SDL2_TTF    "release-2.24.0")
 set(WREEL_PIN_SDL2_MIXER  "release-2.8.2")
 set(WREEL_PIN_JSON        "v3.12.0")
 set(WREEL_PIN_PUGIXML     "v1.16")
+set(WREEL_PIN_GLM         "1.0.3")
 set(WREEL_PIN_DOCTEST     "v2.5.3")
 
 # Dependency sources land in the build tree by default. Cross builds must not
@@ -330,6 +331,36 @@ FetchContent_Declare(pugixml
     GIT_TAG        ${WREEL_PIN_PUGIXML}
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(pugixml)
+
+# ---------------------------------------------------------------------------
+# glm
+# ---------------------------------------------------------------------------
+#
+# Vector and matrix maths for the GLES2 renderer and for gfx::Mesh. Replaces
+# include/math/vector.hpp, whose operator+ and operator* mutated their left
+# operand and returned a reference (D7) -- so `a + b` modified `a`. Taking glm
+# deletes that defect rather than repairing it, and supplies the Matrix4,
+# dot/cross/length/normalize that a modern GL path needs and that header never
+# had.
+#
+# Header-only, so this costs a clone and no build. Pinned rather than taken from
+# libglm-dev because Debian 12 ships 0.9.9.8 and the current tag is 1.0.3, and
+# because every other dependency here is pinned for the same reason: five targets
+# should not disagree about a library version.
+#
+# This is a vendor type in module signatures, which docs/TARGETS.md § "Wrap it,
+# don't spread it" argues against. Deliberate exception: a maths vector is a value
+# type, not a subsystem, and wrapping vec3 buys indirection and nothing else.
+# See planning/2026-07-26-gfx-renderer-and-gles2/.
+
+set(GLM_BUILD_TESTS   OFF CACHE BOOL "" FORCE)
+set(GLM_BUILD_INSTALL OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG        ${WREEL_PIN_GLM}
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(glm)
 
 # ---------------------------------------------------------------------------
 # doctest

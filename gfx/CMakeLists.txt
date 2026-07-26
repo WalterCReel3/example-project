@@ -40,8 +40,13 @@ target_include_directories(wreel_gfx PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 
+# glm is PUBLIC, unlike pugixml under wreel_util: include/gfx/types.hpp names
+# glm::vec3 in gfx::Mesh, so every consumer of a Mesh needs the headers. That is
+# the deliberate exception to "wrap it, don't spread it" recorded in
+# docs/TARGETS.md — a maths vector is a value type, not a subsystem.
 target_link_libraries(wreel_gfx
     PUBLIC  wreel::util
+            glm::glm
             ${WREEL_SDL2_TARGET}
             ${WREEL_SDL2_TTF_TARGET}
             ${WREEL_SDL2_IMAGE_TARGET})

@@ -245,11 +245,18 @@ correctness fix lands before the large feature.
 - [x] Confirm from the generated `SDL_config.h` that `rk3326`/`h700` pick up
       `RENDER_OGL_ES2`, and that `miyoomini` still does not. Both hold; `rk3326`
       and `h700` build and pass 8/8 under qemu with GL enabled
-- [ ] Rename `gfx::software` → `gfx::renderer`; `gfx/software/` → `gfx/renderer/`
-- [ ] Driver preference on `renderer::Context`, with `driver_name()` asserted in a
-      test rather than logged and forgotten
-- [ ] Retire `WREEL_GFX_BACKEND`; add `WREEL_ENABLE_GLES2`. Update the seven
-      presets, the configure guards and `wreel-probe`
+- [x] Rename `gfx::software` → `gfx::renderer`; `gfx/software/` → `gfx/renderer/`
+- [x] Driver preference on `renderer::Context`, with `driver_name()` and
+      `accelerated()` asserted in `tests/test_renderer.cc` rather than logged and
+      forgotten. The fixture pins `SDL_VIDEODRIVER` itself: the first version
+      inherited it from `cmake/Testing.cmake`, which passed under `ctest` and
+      failed when the binary was run directly on a machine with a GPU
+- [x] Retire `WREEL_GFX_BACKEND`; add `WREEL_ENABLE_GLES2` (defaulting `OFF` until
+      stage 3 gives it sources) and a transitional `WREEL_ENABLE_GL_LEGACY`. Seven
+      presets, the configure guards, `wreel-probe`, and the docs updated
+
+**Stage 1 landed 2026-07-26.** 9/9 tests on all five configured presets, zero
+warnings on four, `desktop-debug` unchanged at 33.
 
 **Stage 2 — the data seam, which `gles2` needs and `loaders` wants anyway**
 

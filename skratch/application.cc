@@ -1,4 +1,5 @@
 #include <loaders/obj.hpp>
+#include <util/logging.hpp>
 #include <SDL.h>
 #include <SDL_image.h>
 #include <climits>
@@ -9,13 +10,12 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
-#include <math/vector.hpp>
 #include "application.hpp"
 #include "globals.hpp"
 
 using namespace std;
 using namespace gfx;
-using math::Vector3;
+using glm::vec3;
 
 Application::Application()
     : _last_tick(0)
@@ -36,8 +36,15 @@ Application::Application()
 
     _context = _system->create_context(string("Skratch"));
 
-    loaders::load_obj_model(string("data/ico.obj"), _obj_model);
-    logging << _obj_model.vertices.size() << std::endl;
+    // The loader produces renderer-neutral gfx::Mesh data now; ObjModel is the
+    // gl_legacy GPU wrapper it used to fill directly. Copied across here rather
+    // than given a conversion, because ObjModel goes away with the gles2 port.
+    const gfx::Mesh mesh = loaders::load_obj("data/ico.obj");
+    _obj_model.vertices = mesh.vertices;
+    _obj_model.colors = mesh.colors;
+    _obj_model.indexes = mesh.indexes;
+    util::log_info("ico.obj: %zu vertices, %zu indexes",
+                   mesh.vertices.size(), mesh.indexes.size());
     _obj_model.build_vbo();
 }
 
@@ -121,7 +128,7 @@ void Application::render_scene()
 void Application::update_state()
 {
     Orientation &orien = _pov.orientation;
-    Vector3 &pos = _pov.position;
+    vec3 &pos = _pov.position;
     float d_angle = 0.15f;
 
     InputState& input = _input.get_state();

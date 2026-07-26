@@ -15,6 +15,7 @@ wreel_add_test(test_file    LIBS wreel::util wreel::posix)
 wreel_add_test(test_logging LIBS wreel::util wreel::posix)
 wreel_add_test(test_json    LIBS wreel::util)
 wreel_add_test(test_number  LIBS wreel::util)
+wreel_add_test(test_obj     LIBS wreel::loaders wreel::posix)
 wreel_add_test(test_string  LIBS wreel::util)
 wreel_add_test(test_xml     LIBS wreel::util wreel::posix)
 wreel_add_test(test_audio   LIBS wreel::audio)
@@ -32,7 +33,8 @@ wreel_add_test(test_renderer LIBS wreel::gfx)
 # rather than a compile error. Cover it *before* that refactor.
 #
 # Still to write:
-#   test_obj      — parse data/cube.obj, ico.obj, teapot.obj; check counts
 #   test_errors   — posix::wrap() errno dispatch across the generated types
+#   test_sparrow  — loaders::load_sparrow against data/jetpackdude.xml, once the
+#                   atlas type exists
 #
 # See docs/TARGETS.md § "Where the test surface actually is".

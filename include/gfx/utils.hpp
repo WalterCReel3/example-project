@@ -6,7 +6,6 @@
 #include <vector>
 #include <SDL.h>
 #include <SDL_ttf.h>
-#include <math/vector.hpp>
 #include <gfx/types.hpp>
 
 #if SDL_BYTEORDER == SDL_BIG_ENDIAN
@@ -24,13 +23,13 @@
 namespace gfx
 {
 
-class Orientation : public math::Vector3
+class Orientation : public glm::vec3
 {
 public:
     Orientation(float f1, float f2, float f3)
-        : math::Vector3(f1, f2, f3) {}
+        : glm::vec3(f1, f2, f3) {}
     Orientation(const Orientation & rh)
-        : math::Vector3(rh) { }
+        : glm::vec3(rh) { }
 
 public:
     float yaw()   const
@@ -78,7 +77,7 @@ public:
 
 public:
     Orientation orientation;
-    math::Vector3 position;
+    glm::vec3 position;
 };
 
 void render_surface(SDL_Surface *surface, SDL_Rect *rect);
