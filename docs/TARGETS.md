@@ -406,13 +406,31 @@ armv7 rather than assumed, with iostreams already linked as they are here:
 24 KB apart on a 128 MB device, so size does not decide it. pugixml wins on
 ergonomics: its range-based `doc.child("TextureAtlas").children("SubTexture")`
 composes with range-`for` and the standard algorithms, which is the style this
-codebase already leans into, and its attribute accessors (`as_int()`, with
-defaults) read better than `QueryIntAttribute` out-parameters. XPath is compiled
-out; nothing here needs it.
+codebase already leans into, and its named-child ranges read better than
+`FirstChildElement`/`NextSiblingElement` walks. XPath is compiled out
+(`PUGIXML_NO_XPATH`); nothing here needs it, and `PUGIXML_INSTALL` is forced
+`OFF` because pugixml's install rules default on, unlike nlohmann/json's, and
+would otherwise put its headers in this project's bundles.
 
-**Wrapped, like JSON.** Access goes behind a `util::xml` facade for the same
-reason `nlohmann::json` does — see *Wrap it, don't spread it*. `pugi::xml_node`
-does not belong in a `loaders::` signature.
+**Wrapped, like JSON.** Access goes behind the
+[`util::xml`](../include/util/xml.hpp) facade for the same reason
+`nlohmann::json` does — see *Wrap it, don't spread it*. `pugi::xml_node` does not
+belong in a `loaders::` signature. Containment is verified rather than intended:
+`util/xml.cc` is the only translation unit compiled with pugixml's include path,
+which is asserted by pugixml being a `PRIVATE` link dependency of `wreel_util`.
+The header names `pugi` exactly once, forward-declaring `xml_node_struct` so a
+`Node` can hold the internal handle without pulling in `pugixml.hpp`.
+
+**One thing the facade does *not* re-export**, found while implementing it: the
+attribute accessors' documented contract is wrong. `as_int(def)` says it returns
+the default "if conversion did not succeed or attribute is empty", but measured
+against v1.16 the default applies only when the attribute is **absent** — a
+present but non-numeric value yields `0`, and `"12px"` yields `12`. For an asset
+that is the worst possible answer, because a broken dimension becomes a
+plausible-looking sprite. `util::xml` therefore converts through
+[`util::from_string`](../include/util/number.hpp), so malformed and absent both
+mean "fallback", and offers `require_attribute_*` forms that throw instead.
+Recorded as part of D17.
 
 **One TMX constraint worth knowing before authoring maps.** Tiled can write tile
 layer data as XML, CSV, or base64 with optional gzip/zlib/zstd compression. This

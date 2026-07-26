@@ -350,6 +350,24 @@ TEST_CASE("find_escaped returns last when the value never appears unescaped")
     CHECK(hit == input.end());
 }
 
+// D17: the throw here was unreachable, because strtol sets `end` to the first
+// unconverted character rather than to null. Every row below used to return a
+// plausible-looking number instead of failing.
+TEST_CASE("long_of_string rejects what is not an integer")
+{
+    CHECK(util::long_of_string("42") == 42);
+    CHECK(util::long_of_string("-42") == -42);
+    CHECK(util::long_of_string("0") == 0);
+
+    CHECK_THROWS_AS(util::long_of_string("abc"), std::domain_error);
+    CHECK_THROWS_AS(util::long_of_string("12px"), std::domain_error);
+    CHECK_THROWS_AS(util::long_of_string(""), std::domain_error);
+    CHECK_THROWS_AS(util::long_of_string(" 12"), std::domain_error);
+    // Out of range for a long on any target, so this is target-independent.
+    CHECK_THROWS_AS(util::long_of_string("99999999999999999999999999"),
+                    std::domain_error);
+}
+
 // ---------------------------------------------------------------------------
 // Coverage notes
 // ---------------------------------------------------------------------------

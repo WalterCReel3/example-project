@@ -464,15 +464,17 @@ Two inherited quirks these files intentionally settle:
 | `scripts/bootstrap-debian.sh` | **verified** — full `--all` install on Debian 12, 50/50 packages, shellcheck clean |
 | `.clang-format` | **verified** — config parses under clang-format 14; all authored files conform |
 | [TARGETS.md](TARGETS.md) constraints | researched and verified upstream |
-| Dependency choices | settled — SDL2, nlohmann/json, doctest |
+| Dependency choices | settled — SDL2, nlohmann/json, pugixml, doctest |
 | Modern CMake build | **verified** on system CMake 3.25 |
 | `CMakePresets.json` | **verified** — 7 presets enumerate and configure |
 | `software` graphics backend | **verified** — builds on x86_64, aarch64 |
 | `audio` module | **verified** — opens on pulseaudio and dummy; 3 codec tiers build |
 | `wreel-probe` | **verified** — runs on x86_64 and as an aarch64 binary under qemu; reports audio |
-| doctest suite | **verified** — 6 executables, 6/6 on all five configured presets: both desktop, plus `rk3326`, `h700` and `miyoomini` under qemu |
+| doctest suite | **verified** — 8 executables, 8/8 on all five configured presets: both desktop, plus `rk3326`, `h700` and `miyoomini` under qemu |
 | `util::ascii` predicates | **verified** — `test_ascii`, 12 cases / 1017 assertions; replaces the `<ctype.h>` predicates in `string.hpp` |
 | `util::logging` | **verified** — `test_logging`, 11 cases / 38 assertions. printf-style, no iostreams; armv7 `wreel-probe` dropped 865 KB (28%) |
+| `util::xml` | **verified** — `test_xml`, 19 cases / 116 assertions against the real Sparrow atlas in `data/`. pugixml `v1.16`, XPath compiled out, and confirmed private to `util/xml.cc`: no consumer of `wreel::util` gets pugixml's include path |
+| `util::from_string` | **verified** — `test_number`, 11 cases / 77 assertions. Strict whole-string conversion; `include/util/number.hpp` |
 | `rk3326` / `h700` toolchains | **verified** — cross-build plus `ctest` under qemu |
 | `miyoomini` toolchain | **verified in compile-check mode** — armv7 build + `ctest` under qemu-arm. Device toolchain (GCC 8.3) still untried |
 | `gl_legacy` backend | **verified** — `desktop-debug` builds and links, `skratch` included, 6/6 tests |
@@ -488,11 +490,11 @@ On Debian 12 / GCC 12.2 / CMake 3.25 / clang-format 14, after a full
 
 | Check | Result |
 |---|---|
-| `desktop-software` cold configure → build → test | pass, 6/6, zero errors, zero warnings |
-| `rk3326` cross-build → `ctest` under qemu | pass, 6/6 |
-| `h700` cross-build → `ctest` under qemu | pass, 6/6, `-mcpu=cortex-a53` confirmed |
-| `miyoomini` armv7 build → `ctest` under qemu-arm | pass, 6/6, `-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4` confirmed. `util/ascii.hpp` and the new logger compile warning-free on both ARM cross compilers, where `char` is unsigned |
-| `desktop-debug` (`gl_legacy`) build → test | pass, 6/6; `skratch` links; probe reports Mesa 22.3.6 / AMD |
+| `desktop-software` cold configure → build → test | pass, 8/8, zero errors, zero warnings |
+| `rk3326` cross-build → `ctest` under qemu | pass, 8/8 |
+| `h700` cross-build → `ctest` under qemu | pass, 8/8, `-mcpu=cortex-a53` confirmed |
+| `miyoomini` armv7 build → `ctest` under qemu-arm | pass, 8/8, `-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4` confirmed. `util/ascii.hpp` and the new logger compile warning-free on both ARM cross compilers, where `char` is unsigned. This preset caught a `long`-width assumption in `test_number` that both 64-bit presets accepted |
+| `desktop-debug` (`gl_legacy`) build → test | pass, 8/8; `skratch` links; probe reports Mesa 22.3.6 / AMD |
 | `wreel-probe` as an aarch64 binary under qemu | runs, reports correctly |
 | `shellcheck scripts/bootstrap-debian.sh` | clean |
 | `clang-format --dump-config` | parses; authored files conform |

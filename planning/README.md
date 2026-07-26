@@ -35,7 +35,7 @@ Each `README.md` opens with one of:
 |---|---|---|
 | [2026-07-25-cxx17-modernization](2026-07-25-cxx17-modernization/) | `in-progress` | Remove removed-in-C++17 constructs, fix the defects they hide, then turn on `-Werror`. Warning load measured; character-classification approach decided |
 | [2026-07-25-graphics-backends](2026-07-25-graphics-backends/) | `snapshot` | `gles2` and `gl33` backends; retire `gl_legacy`. Shrunk by the 2D-only decision |
-| [2026-07-25-software-2d-sprites-tiling](2026-07-25-software-2d-sprites-tiling/) | `snapshot` | Where the handheld work goes: textures, atlases, TMX tilemaps, a minimal entity store |
+| [2026-07-25-software-2d-sprites-tiling](2026-07-25-software-2d-sprites-tiling/) | `in-progress` | Where the handheld work goes: textures, atlases, TMX tilemaps, a minimal entity store. XML dependency landed; `Texture` is next |
 | [2026-07-25-software-3d-rasteriser](2026-07-25-software-3d-rasteriser/) | `snapshot` | Deliberately not scheduled. Records what a CPU rasteriser would cost, and the cheaper alternatives |
 | [2026-07-25-target-validation](2026-07-25-target-validation/) | `in-progress` | Prove the cross and Steam presets on real toolchains and hardware. Steps 1–2 done; the device toolchain, containers and hardware remain |
 | [2026-07-25-packaging-distribution](2026-07-25-packaging-distribution/) | `snapshot` | Handheld bundles per firmware, Steam depot layout |
