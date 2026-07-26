@@ -23,6 +23,16 @@ set(WREEL_GFX_SOURCES
     renderer/system.cc
     renderer/context.cc)
 
+if(WREEL_ENABLE_GLES2)
+    list(APPEND WREEL_GFX_SOURCES
+        gles2/api.cc
+        gles2/context.cc
+        gles2/program.cc
+        gles2/mesh_buffer.cc
+        gles2/sprite_renderer.cc
+        gles2/texture.cc)
+endif()
+
 if(WREEL_ENABLE_GL_LEGACY)
     list(APPEND WREEL_GFX_SOURCES
         system.cc
@@ -56,6 +66,14 @@ target_link_libraries(wreel_gfx
 target_compile_definitions(wreel_gfx PUBLIC
     WREEL_GFX_RENDERER=1)
 
+# No GL library is linked, deliberately. gfx/gles2/api.cc resolves every entry
+# point with SDL_GL_GetProcAddress, so nothing here gains a libGLESv2 soname
+# dependency. Three reasons, in include/gfx/gles2/api.hpp: a DT_NEEDED on GLESv2
+# would stop a 2D-only binary starting on a device with no GLES blob, since both
+# renderers live in this one library; handheld firmwares put their vendor blobs
+# where only SDL_GL_LoadLibrary knows to look; and Debian's aarch64 sysroot has no
+# libGLESv2.so at all, so linking would break the cross compile-check that is the
+# only verification available before hardware.
 if(WREEL_ENABLE_GLES2)
     target_compile_definitions(wreel_gfx PUBLIC WREEL_GFX_GLES2=1)
 endif()

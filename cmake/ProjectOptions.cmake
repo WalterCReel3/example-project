@@ -21,13 +21,17 @@ include_guard(GLOBAL)
 #
 # gfx::renderer has no option: there is nothing to gate, it works everywhere.
 #
-# WREEL_ENABLE_GLES2 defaults OFF rather than following WREEL_TARGET_HAS_GPU for
-# one reason only: gfx/gles2/ does not exist yet (stage 3 of the snapshot). The
-# default becomes device capability when there is something to build, so that the
-# Mali targets get it without being told. Declared now because the guard below —
-# ON with no GPU is an error, not a silent downgrade — is worth having in place
-# before the sources arrive.
-option(WREEL_ENABLE_GLES2 "Build the gfx::gles2 renderer (needs a GPU)" OFF)
+# WREEL_ENABLE_GLES2 follows device capability: empty means "whatever
+# WREEL_TARGET_HAS_GPU says", resolved in the validation block below once the
+# toolchain file has been read. Set it explicitly to override.
+#
+# A string with an empty default rather than an option(), because option() would
+# create the cache entry immediately and there would be no way to tell "the user
+# said OFF" from "nobody said anything".
+# Keep this docstring SHORT. CMake wraps a long help string across two `//` lines
+# when it writes the cache and then fails to parse its own file on the next
+# configure, reporting an empty "Offending entry".
+set(WREEL_ENABLE_GLES2 "" CACHE STRING "gfx::gles2: ON, OFF, or empty=auto")
 
 # Transitional, and on its way out with the skratch port. The 2016 fixed-function
 # backend is desktop-only and needs GLEW and GLU; nothing but the demo uses it.
@@ -128,6 +132,15 @@ set(WREEL_AUDIO_VOICES   "${_wreel_voices}" CACHE STRING "Simultaneous sound eff
 
 if(NOT DEFINED WREEL_TARGET_HAS_GPU)
     set(WREEL_TARGET_HAS_GPU ON)
+endif()
+
+if(WREEL_ENABLE_GLES2 STREQUAL "")
+    # Same short docstring, for the same reason as above.
+    set(WREEL_ENABLE_GLES2 ${WREEL_TARGET_HAS_GPU} CACHE STRING
+        "gfx::gles2: ON, OFF, or empty=auto" FORCE)
+    message(STATUS
+        "WREEL_ENABLE_GLES2 not set; following device capability -> "
+        "${WREEL_ENABLE_GLES2}")
 endif()
 
 # Requesting a renderer the device cannot run is an error rather than a silent

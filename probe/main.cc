@@ -17,7 +17,13 @@
 #include <audio/device.hpp>
 
 #if defined(WREEL_PROBE_GL)
-#include <SDL_opengl.h>
+// SDL's bundled Khronos headers, for the types and enums only. No GL library is
+// linked: the two entry points this needs are resolved with
+// SDL_GL_GetProcAddress, which is what lets the GL section be compiled on the
+// cross presets — Debian's aarch64 sysroot has no libGLESv2.so to link against,
+// and a device firmware need not expose the development soname either.
+#define SDL_USE_BUILTIN_OPENGL_DEFINITIONS 1
+#include <SDL_opengles2.h>
 #endif
 
 namespace
@@ -212,50 +218,116 @@ void report_audio()
     }
 }
 
-// A GL context is only attempted where SDL was built with GL support. On
-// GPU-less targets this whole function is compiled out.
-void report_gl()
-{
 #if defined(WREEL_PROBE_GL)
-    heading("OpenGL");
+
+// Reports one context configuration: what was asked for, what arrived, and the
+// strings only the driver can answer for. `profile` is an
+// SDL_GL_CONTEXT_PROFILE_* value, or 0 to let SDL choose.
+//
+// The GL entry points are resolved here rather than linked. glGetString is core
+// GL, and EGL 1.4 is not required to return core symbols from eglGetProcAddress
+// — SDL handles that by falling back to dlsym on the loaded GLES library, which
+// is why asking SDL is more reliable here than either linking or calling
+// eglGetProcAddress directly.
+void report_one_context(const char* label, int profile, int major, int minor)
+{
+    SDL_GL_ResetAttributes();
+    if (profile != 0) {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, profile);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, major);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, minor);
+    }
 
     SDL_Window* window = SDL_CreateWindow(
         "wreel-probe", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 64, 64,
         SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
     if (!window) {
-        field("context", std::string("window failed: ") + SDL_GetError());
+        field(label, std::string("window failed: ") + SDL_GetError());
         return;
     }
 
     SDL_GLContext context = SDL_GL_CreateContext(window);
     if (!context) {
-        field("context", std::string("failed: ") + SDL_GetError());
+        field(label, std::string("no context: ") + SDL_GetError());
         SDL_DestroyWindow(window);
         return;
     }
 
-    const auto* version =
-        reinterpret_cast<const char*>(glGetString(GL_VERSION));
-    const auto* vendor = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
-    const auto* renderer =
-        reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    typedef const GLubyte*(GL_APIENTRY * GetStringFn)(GLenum);
+    typedef void(GL_APIENTRY * GetIntegervFn)(GLenum, GLint*);
 
-    field("version", version ? version : "(unavailable)");
-    field("vendor", vendor ? vendor : "(unavailable)");
-    field("renderer", renderer ? renderer : "(unavailable)");
+    GetStringFn get_string =
+        reinterpret_cast<GetStringFn>(SDL_GL_GetProcAddress("glGetString"));
+    GetIntegervFn get_integerv =
+        reinterpret_cast<GetIntegervFn>(SDL_GL_GetProcAddress("glGetIntegerv"));
 
-    int major = 0;
-    int minor = 0;
-    SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &major);
-    SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &minor);
-    field("context version",
-          std::to_string(major) + "." + std::to_string(minor));
+    if (!get_string) {
+        field(label,
+              std::string("context created but glGetString not found: ") +
+                  SDL_GetError());
+        SDL_GL_DeleteContext(context);
+        SDL_DestroyWindow(window);
+        return;
+    }
+
+    const auto text = [&](GLenum name) -> std::string {
+        const GLubyte* value = get_string(name);
+        return value ? reinterpret_cast<const char*>(value) : "(unavailable)";
+    };
+
+    int got_profile = 0;
+    int got_major = 0;
+    int got_minor = 0;
+    SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &got_profile);
+    SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &got_major);
+    SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &got_minor);
+
+    const char* got_profile_name = "unknown";
+    if (got_profile == SDL_GL_CONTEXT_PROFILE_ES) {
+        got_profile_name = "ES";
+    } else if (got_profile == SDL_GL_CONTEXT_PROFILE_CORE) {
+        got_profile_name = "core";
+    } else if (got_profile == SDL_GL_CONTEXT_PROFILE_COMPATIBILITY) {
+        got_profile_name = "compatibility";
+    }
+
+    field(label, std::string(got_profile_name) + " " +
+                     std::to_string(got_major) + "." +
+                     std::to_string(got_minor));
+    field("  version", text(GL_VERSION));
+    field("  vendor", text(GL_VENDOR));
+    field("  renderer", text(GL_RENDERER));
+    field("  glsl", text(GL_SHADING_LANGUAGE_VERSION));
+
+    if (get_integerv) {
+        // Matters for atlases: a Mali blob reporting 2048 caps how much of a
+        // tilemap or sprite sheet fits in one texture.
+        GLint max_texture = 0;
+        get_integerv(GL_MAX_TEXTURE_SIZE, &max_texture);
+        field("  max texture", std::to_string(max_texture));
+    }
 
     SDL_GL_DeleteContext(context);
     SDL_DestroyWindow(window);
+}
+
+#endif // WREEL_PROBE_GL
+
+// Attempted wherever SDL was built with GL support, which now includes the
+// cross presets — nothing is linked, so there is no library to be missing.
+void report_gl()
+{
+    heading("OpenGL / GLES");
+
+#if defined(WREEL_PROBE_GL)
+    // ES first, and reported separately from the default: this is the question
+    // that decides whether gfx::gles2 can run on a given firmware, and a device
+    // that offers a desktop context but no ES profile would otherwise look
+    // fine.
+    report_one_context("es 2.0 request", SDL_GL_CONTEXT_PROFILE_ES, 2, 0);
+    report_one_context("default request", 0, 0, 0);
 #else
-    heading("OpenGL");
-    field("status", "not compiled in (target has no GPU)");
+    field("status", "not compiled in (SDL2 was built without GL/GLES support)");
 #endif
 }
 

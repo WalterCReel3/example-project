@@ -289,13 +289,51 @@ deferred set.
 
 **Stage 3 — the GLES2 renderer**
 
-- [ ] `gfx::gles2::Context` — GL context creation, `SDL_GL_SetAttribute` with
-      `CONTEXT_PROFILE_ES`, version 2.0, swap
-- [ ] `gfx::gles2::Shader` / `Program` — compile, link, uniforms, and *report* the
-      info log on failure rather than silently producing a black screen
-- [ ] `gfx::gles2::MeshBuffer` — VBO residency for a `gfx::Mesh`
-- [ ] `gfx::gles2::Texture` + textured-quad draw, so text and sprites work
-- [ ] Text: SDL_ttf surface → texture → quad
+- [x] Entry points are **loaded, not linked** — `gfx/gles2/api.cc` resolves every
+      GL function with `SDL_GL_GetProcAddress`, so nothing gains a `libGLESv2`
+      soname. Decided against `-lGLESv2` for three reasons, the first decisive:
+      both renderers live in one library, so a `DT_NEEDED` on GLESv2 would stop a
+      *2D-only* binary from starting on a device with no GLES blob — the loader
+      resolves that before `main()`, and there is no degrading from it. Handheld
+      firmwares also put vendor blobs where only `SDL_GL_LoadLibrary` knows to
+      look, and Debian's aarch64 sysroot has no `libGLESv2.so` at all, so linking
+      would break the cross compile-check
+- [x] `gfx::gles2::Context` — ES 2.0 requested via `CONTEXT_PROFILE_ES`, 16-bit
+      depth, drawable size rather than window size, and it *reports* whether an ES
+      profile actually arrived rather than assuming
+- [x] `gfx::gles2::Program` — compiles, links, and throws `ShaderError` carrying
+      the driver's info log verbatim. GL reports shader failures nowhere else, so
+      code that does not read the log renders a black screen with no other symptom
+- [x] `gfx::gles2::MeshBuffer` — VBO residency for a `gfx::Mesh`, validating the
+      mesh before upload and rejecting more than 65535 vertices, since GLES 2.0
+      core indexes with `GL_UNSIGNED_SHORT` and `GL_UNSIGNED_INT` needs
+      `OES_element_index_uint`
+- [x] `gfx::gles2::Texture` + `SpriteRenderer` — a screen-space quad with a
+      top-left pixel origin, replacing `set_ortho()`/`unset_ortho()` and the
+      fixed-function matrix stack. **No power-of-two rounding**, unlike the 2016
+      `render_text`: GLES 2.0 permits NPOT with `CLAMP_TO_EDGE` and no mipmaps,
+      which is exactly this case
+- [x] Text: SDL_ttf surface → `Texture` → quad
+- [x] `wreel-probe` reports GLES2. It resolves `glGetString`/`glGetIntegerv`
+      through SDL too, which let the GL section drop its `OpenGL::GL` link — and
+      that link was why the section had been compiled *out* on `rk3326` and `h700`,
+      the two targets it matters most for
+
+**Stage 3 landed 2026-07-26.** Zero warnings on all five presets, 10/10 tests.
+
+Verified on the dev box, which also settles the premise of choosing `gles2` over
+`gl33`: `wreel-probe` asks for an ES 2.0 profile and Mesa hands back a real one —
+`OpenGL ES 3.2 Mesa 22.3.6`, GLSL ES 3.20, max texture 16384. So the same shader
+dialect the Mali devices need is developable natively.
+
+**What is not verified, and cannot be here.** Nothing in `gfx::gles2` has drawn a
+pixel. There is no headless GL: under `SDL_VIDEODRIVER=dummy` there is no context
+at all, and under qemu the probe correctly reports "Could not initialize
+OpenGL / GLES library" because no aarch64 GL library exists to load. So stage 3's
+verification is: it compiles on every target including both cross presets, it
+links without a GL dependency, and the probe exercises context creation for real
+on the dev box. Functional proof arrives with stage 4, when `skratch` renders
+through it.
 
 **Stage 4 — port `skratch`, then delete `gl_legacy`**
 
