@@ -11,6 +11,7 @@
 # qemu-user-static for cross builds.
 
 wreel_add_test(test_file    LIBS wreel::util wreel::posix)
+wreel_add_test(test_logging LIBS wreel::util wreel::posix)
 wreel_add_test(test_json    LIBS wreel::util)
 wreel_add_test(test_string  LIBS wreel::util)
 wreel_add_test(test_audio   LIBS wreel::audio)
@@ -26,6 +27,5 @@ wreel_add_test(test_audio   LIBS wreel::audio)
 # Still to write:
 #   test_obj      — parse data/cube.obj, ico.obj, teapot.obj; check counts
 #   test_errors   — posix::wrap() errno dispatch across the generated types
-#   test_logging  — LoggingManager keyed streams and level filtering
 #
 # See docs/TARGETS.md § "Where the test surface actually is".

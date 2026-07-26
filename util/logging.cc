@@ -1,190 +1,163 @@
-#include <iostream>
 #include <util/logging.hpp>
+
+#include <cstddef>
+#include <cstdio>
 
 namespace util
 {
 
-LoggingManager logging;
-
-LoggingManager::LoggingManager()
-    : _default_logger(&std::cout)
-    , _null_logger(0)
-    , _logging_level(LOG_LEVEL_ERROR)
+namespace
 {
+
+// One message, prefix and newline included. Sized to hold a long asset path
+// plus a diagnostic from SDL comfortably; anything longer is truncated rather
+// than split across writes.
+const std::size_t message_max = 1024;
+
+LogLevel current_level = LogError;
+
+// Null means "use stderr", resolved at write time rather than stored, so no
+// static initialisation order question arises.
+std::FILE* output_file = nullptr;
+
+std::FILE* sink()
+{
+    return output_file ? output_file : stderr;
 }
 
-LoggingManager::~LoggingManager()
+const char* level_tag(LogLevel level)
 {
-    LoggerMap::iterator i;
-    for (i = _loggers.begin(); i != _loggers.end(); ++i) {
-        delete i->second;
+    switch (level) {
+    case LogError:
+        return "E";
+    case LogWarning:
+        return "W";
+    case LogInfo:
+        return "I";
+    case LogDebug:
+        return "D";
     }
-    _loggers.clear();
+    return "?";
 }
 
-LoggingStream& LoggingManager::_lookup_logger(const std::string& key)
+} // namespace
+
+void log_set_level(LogLevel level)
 {
-    LoggerMap::iterator i = _loggers.find(key);
-    if (i == _loggers.end()) {
-        return *_default_logger;
+    current_level = level;
+}
+
+LogLevel log_level()
+{
+    return current_level;
+}
+
+bool log_enabled(LogLevel level)
+{
+    return level <= current_level;
+}
+
+bool log_open_file(const char* path)
+{
+    log_close_file();
+    if (!path) {
+        return false;
     }
-    return *(i->second);
-}
-
-// Normal logging
-LoggingStream& LoggingManager::log()
-{
-    return *_default_logger;
-}
-
-LoggingStream& LoggingManager::log(const char* key)
-{
-    return log(std::string(key));
-}
-
-LoggingStream& LoggingManager::log(const std::string& key)
-{
-    return _lookup_logger(key);
-}
-
-// Error logging
-LoggingStream& LoggingManager::error()
-{
-    return *_default_logger;
-}
-
-LoggingStream& LoggingManager::error(const char* key)
-{
-    return log(std::string(key));
-}
-
-LoggingStream& LoggingManager::error(const std::string& key)
-{
-    return log(key);
-}
-
-// Warning logging
-LoggingStream& LoggingManager::warning()
-{
-    if (_logging_level < LOG_LEVEL_WARNING) {
-        return _null_logger;
+    // Deliberately not util::File: that reports failure by throwing, and a
+    // logger must not become a source of exceptions on an error path.
+    std::FILE* opened = std::fopen(path, "w");
+    if (!opened) {
+        return false;
     }
-    return *_default_logger;
+    output_file = opened;
+    return true;
 }
 
-LoggingStream& LoggingManager::warning(const char* key)
+void log_close_file()
 {
-    if (_logging_level < LOG_LEVEL_WARNING) {
-        return _null_logger;
+    if (output_file) {
+        std::fclose(output_file);
+        output_file = nullptr;
     }
-    return log(std::string(key));
 }
 
-LoggingStream& LoggingManager::warning(const std::string& key)
+void log_write_v(LogLevel level, const char* fmt, va_list args)
 {
-    if (_logging_level < LOG_LEVEL_WARNING) {
-        return _null_logger;
-    }
-    return log(key);
-}
-
-// Info logging
-LoggingStream& LoggingManager::info()
-{
-    if (_logging_level < LOG_LEVEL_INFO) {
-        return _null_logger;
-    }
-    return *_default_logger;
-}
-
-LoggingStream& LoggingManager::info(const char* key)
-{
-    if (_logging_level < LOG_LEVEL_INFO) {
-        return _null_logger;
-    }
-    return log(std::string(key));
-}
-
-LoggingStream& LoggingManager::info(const std::string& key)
-{
-    if (_logging_level < LOG_LEVEL_INFO) {
-        return _null_logger;
-    }
-    return log(key);
-}
-
-// Debug logging
-LoggingStream& LoggingManager::debug()
-{
-    if (_logging_level < LOG_LEVEL_DEBUG) {
-        return _null_logger;
-    }
-    return *_default_logger;
-}
-
-LoggingStream& LoggingManager::debug(const char* key)
-{
-    if (_logging_level < LOG_LEVEL_DEBUG) {
-        return _null_logger;
-    }
-    return log(std::string(key));
-}
-
-LoggingStream& LoggingManager::debug(const std::string& key)
-{
-    if (_logging_level < LOG_LEVEL_DEBUG) {
-        return _null_logger;
-    }
-    return log(key);
-}
-
-void LoggingManager::make_logger(const char* key, const char* path)
-{
-    make_logger(std::string(key), std::string(path));
-}
-
-void LoggingManager::make_logger(const std::string& key,
-                                 const std::string& path)
-{
-    std::ofstream* new_logger = new std::ofstream();
-    new_logger->open(path.c_str());
-    _loggers[key] = new_logger;
-}
-
-void LoggingManager::make_default(const char* key)
-{
-    make_default(std::string(key));
-}
-
-void LoggingManager::make_default(const std::string& key)
-{
-    LoggerMap::iterator i = _loggers.find(key);
-    if (i == _loggers.end()) {
+    if (!log_enabled(level)) {
         return;
     }
-    _default_logger = i->second;
+    // Assembled in full and written with a single fwrite, because C and POSIX
+    // stdio lock the FILE per call: one call per message means a message cannot
+    // interleave with another writer's. Three calls — prefix, body, newline —
+    // could, producing spliced lines. The cost of that guarantee is the fixed
+    // buffer below, hence a truncation limit.
+    char buffer[message_max];
+
+    const int prefixed =
+        std::snprintf(buffer, sizeof buffer, "[%s] ", level_tag(level));
+    if (prefixed < 0) {
+        return;
+    }
+    std::size_t used = static_cast<std::size_t>(prefixed);
+
+    const int written =
+        std::vsnprintf(buffer + used, sizeof buffer - used, fmt, args);
+    if (written < 0) {
+        return;
+    }
+    // vsnprintf reports what it *would* have written, so this can exceed the
+    // buffer.
+    used += static_cast<std::size_t>(written);
+
+    const std::size_t limit = sizeof buffer - 1; // leave room for the newline
+    if (used > limit) {
+        used = limit;
+        // Mark the cut, so a truncated line is not mistaken for a complete one.
+        buffer[used - 3] = '.';
+        buffer[used - 2] = '.';
+        buffer[used - 1] = '.';
+    }
+    buffer[used++] = '\n';
+
+    std::FILE* out = sink();
+    std::fwrite(buffer, 1, used, out);
+    // Errors are the one level worth a flush, so a crash immediately afterwards
+    // still leaves the reason on disk.
+    if (level == LogError) {
+        std::fflush(out);
+    }
 }
 
-void LoggingManager::make_cout_default()
+void log_error(const char* fmt, ...)
 {
-    _default_logger = &std::cout;
+    va_list args;
+    va_start(args, fmt);
+    log_write_v(LogError, fmt, args);
+    va_end(args);
 }
 
-void LoggingManager::make_cerr_default()
+void log_warning(const char* fmt, ...)
 {
-    _default_logger = &std::cerr;
+    va_list args;
+    va_start(args, fmt);
+    log_write_v(LogWarning, fmt, args);
+    va_end(args);
 }
 
-void LoggingManager::make_null_default()
+void log_info(const char* fmt, ...)
 {
-    _default_logger = &_null_logger;
+    va_list args;
+    va_start(args, fmt);
+    log_write_v(LogInfo, fmt, args);
+    va_end(args);
 }
 
-void LoggingManager::set_logging_level(LoggingLevel lvl)
+void log_debug(const char* fmt, ...)
 {
-    _logging_level = lvl;
+    va_list args;
+    va_start(args, fmt);
+    log_write_v(LogDebug, fmt, args);
+    va_end(args);
 }
 
-}
-
-// vim: set sts=2 sw=2 expandtab:
+} // namespace util

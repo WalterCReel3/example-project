@@ -3,14 +3,12 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 #include <GL/glew.h>
-#include <util/logging.hpp>
 #include <gfx/utils.hpp>
 
 namespace gfx
 {
 
 using namespace std;
-using util::logging;
 
 inline int make_texture_size(int x)
 {

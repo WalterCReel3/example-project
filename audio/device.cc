@@ -74,17 +74,17 @@ void Device::_open(const Spec& requested)
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
         // Deliberately not fatal. Some handheld firmwares expose no audio
         // device, and refusing to start would be worse than running silent.
-        util::logging.warning()
-            << "audio: SDL_INIT_AUDIO unavailable (" << SDL_GetError()
-            << "); continuing without sound" << std::endl;
+        util::log_warning(
+            "audio: SDL_INIT_AUDIO unavailable (%s); continuing without sound",
+            SDL_GetError());
         return;
     }
 
     if (Mix_OpenAudio(requested.frequency, MIX_DEFAULT_FORMAT,
                       requested.channels, requested.buffer) != 0) {
-        util::logging.warning()
-            << "audio: Mix_OpenAudio failed (" << Mix_GetError()
-            << "); continuing without sound" << std::endl;
+        util::log_warning(
+            "audio: Mix_OpenAudio failed (%s); continuing without sound",
+            Mix_GetError());
         SDL_QuitSubSystem(SDL_INIT_AUDIO);
         return;
     }
@@ -102,10 +102,10 @@ void Device::_open(const Spec& requested)
 
     _available = true;
 
-    util::logging.info() << "audio: " << _actual.frequency << " Hz, "
-                         << _actual.channels << " ch, " << _actual.buffer
-                         << " sample buffer, " << _actual.voices
-                         << " voices, driver " << driver_name() << std::endl;
+    util::log_info(
+        "audio: %d Hz, %d ch, %d sample buffer, %d voices, driver %s",
+        _actual.frequency, _actual.channels, _actual.buffer, _actual.voices,
+        driver_name().c_str());
 }
 
 Device::~Device()
