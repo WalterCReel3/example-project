@@ -16,7 +16,7 @@ namespace loaders
 //         int w = elem.get_attribute_int("width");
 //         int h = elem.get_attribute_int("height");
 //         std::string name = elem.get_attribute("name");
-//         gfx::SpritesheetFrame frame(name, x, y, 0, 0, w, h);
+//         gfx::SpritesheetFrame frame {name, x, y, 0, 0, w, h};
 //         spritesheet.add_frame(frame);
 //     }
 // }

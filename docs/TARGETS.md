@@ -49,14 +49,61 @@ this rules out:
 | Ranges, concepts, `<=>`, `consteval` | GCC 10+ (C++20) | — |
 | Parallel STL (`std::execution`) | needs TBB | — |
 | `std::filesystem` **without** `-lstdc++fs` | GCC 10 | link `stdc++fs` explicitly on this target |
+| `<ascii>` — ASCII character classification | C++26 ([P3688](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2026/p3688r6.html)) | `include/util/ascii.hpp`, which borrows P3688's names |
 
 Integer `std::from_chars` **is** available in GCC 8. `std::optional`,
-`std::variant`, `std::string_view`, structured bindings, `if constexpr`, and
-fold expressions are all fine.
+`std::variant`, `std::string_view`, structured bindings, `if constexpr`,
+`std::not_fn`, and fold expressions are all fine. Inline variables are available,
+which is what lets `util/ascii.hpp` expose `inline constexpr` predicate objects.
 
 > This is why [loaders/obj.cc](../loaders/obj.cc) keeps using `strtod`/`strtol`
 > rather than moving to `<charconv>` — floating-point `from_chars` simply is not
 > there.
+
+> **Do not use `<cctype>` for parsing.** `::isspace` and friends are
+> locale-dependent, take `int`, and are undefined for negative `char` — and `char`
+> is signed on the x86-64 dev box but **unsigned** on both ARM targets, so the same
+> asset byte takes a different path on the dev box than on any device. Use
+> `util::ascii_*`. `SDL_isspace` is not an alternative: SDL forwards it to
+> `::isspace` whenever `HAVE_CTYPE_H` is set, which is every target here. Full
+> reasoning in
+> [planning/2026-07-25-cxx17-modernization § Decisions](../planning/2026-07-25-cxx17-modernization/README.md).
+
+### 1a. No iostreams in shipped code
+
+`<iostream>`, `<fstream>`, `<sstream>` and `<iomanip>` are not to be included by
+anything that ships. They cost far more than they look like they do, and the cost
+lands on the most constrained target.
+
+Measured on armv7, statically linked at `-Os`:
+
+| Program | Stripped size |
+|---|---|
+| `<cstdio>` only, including `%f` conversions | 366,948 |
+| + iostreams (one `std::cerr <<`) | 963,240 |
+| + fmt 12.2.0 instead (header-only) | 901,576 |
+
+So iostreams add **596 KB**, roughly 1.6× the entire `<cstdio>`-only C++ runtime
+floor. The real saving is larger than that in practice: removing them from
+`util/logging.hpp` took the armv7 `wreel-probe` from 3,014,624 to 2,148,792
+bytes — **865 KB, 28%** — because the locale transliteration tables and the C++
+demangler went with them.
+
+`util::logging` is printf-style for this reason. Format strings are still checked
+at compile time, because each function carries
+`__attribute__((format(printf, 1, 2)))` and the build enables `-Wformat=2`.
+
+Two related findings worth not re-deriving:
+
+- **`std::print` is not an option.** It is C++23 and needs GCC 14; `std::format`
+  needs GCC 13. The *host* GCC 12.2 has neither header, so this is not merely a
+  GCC 8.3 limitation.
+- **fmt is not the escape either.** As the reference implementation of both, it
+  looks like the obvious modern answer, but measured above it costs 522 KB over
+  plain `printf` and is only ~60 KB better than the iostreams it would replace —
+  it reaches the same glibc locale and demangler machinery through its exception
+  and RTTI paths. `-fno-exceptions` recovered about 4 KB. That is fmt's default
+  configuration, not a tuned one.
 
 ### 2. The glibc forward-compatibility trap
 
@@ -250,6 +297,7 @@ library versions. Tags verified upstream.
 | SDL2_ttf | `release-2.24.0` | vendored FreeType on **every** target; HarfBuzz off |
 | SDL2_mixer | `release-2.8.2` | codec set per `WREEL_AUDIO_CODECS`; vendored libxmp, no external deps |
 | nlohmann/json | `v3.12.0` | JSON config and data; replaces RapidJSON |
+| pugixml | `v1.16` | Sparrow texture atlases and Tiled TMX maps |
 | doctest | `v2.5.3` | test framework; single header, no per-target build |
 
 Three things about this that are easy to get wrong, and are settled here:
@@ -320,11 +368,59 @@ rather than letting `nlohmann::json` into module signatures — the same pattern
 [`posix::wrap`](../include/posix/errors.hpp) uses over `errno`. That keeps a
 future swap contained and matches how the rest of the tree is built.
 
-**What this unlocks.** [loaders/sparrow.cc](../loaders/sparrow.cc) is entirely
-commented out, blocked on a `util/xml.hpp` that was never written, with
-`data/jetpackdude.xml` and friends orphaned beside it. Converting those Sparrow
-atlases to JSON revives that loader **without needing an XML parser at all**,
-avoiding a second dependency decision.
+**What this unlocks.** JSON remains the format for configuration and for the MIDI
+controller mapping files.
+
+> **Superseded, 2026-07-25.** This section used to argue that converting the
+> Sparrow atlases to JSON would revive `loaders/sparrow.cc` "without needing an
+> XML parser at all, avoiding a second dependency decision". That is no longer the
+> direction: XML is supported natively and JSON support is unaffected. See
+> *XML: why pugixml* below.
+
+### XML: why pugixml
+
+Two asset formats in the 2D pipeline are XML and are not ours to redefine:
+**Sparrow texture atlases** (what TexturePacker and ShoeBox export, and what
+`data/jetpackdude.xml` already is) and **Tiled TMX** maps. Supporting them as
+authored means reading XML rather than asking artists to convert on the way in.
+
+[loaders/sparrow.cc](../loaders/sparrow.cc) is entirely commented out today,
+blocked on a `util/xml.hpp` that was never written.
+
+**Why not hand-roll it.** Sparrow's subset is trivially regular — a tag name and
+quoted attributes — and could be read in under 200 lines over the existing
+tokenizers. TMX is not: external `.tsx` tileset references, object layers,
+properties, and multiple layer-data encodings. Hand-rolling that is a parser
+project with a long tail of malformed-input handling, and it would be ours to
+maintain.
+
+**Why pugixml over tinyxml2.** Both are MIT, both clear the GCC 8.3 floor, both
+cross-compile with no further dependencies. Static footprint was measured on
+armv7 rather than assumed, with iostreams already linked as they are here:
+
+| | armv7 marginal cost |
+|---|---|
+| tinyxml2 11.0.0 | 16,488 bytes |
+| pugixml v1.16 (`PUGIXML_NO_XPATH`) | 40,968 bytes |
+
+24 KB apart on a 128 MB device, so size does not decide it. pugixml wins on
+ergonomics: its range-based `doc.child("TextureAtlas").children("SubTexture")`
+composes with range-`for` and the standard algorithms, which is the style this
+codebase already leans into, and its attribute accessors (`as_int()`, with
+defaults) read better than `QueryIntAttribute` out-parameters. XPath is compiled
+out; nothing here needs it.
+
+**Wrapped, like JSON.** Access goes behind a `util::xml` facade for the same
+reason `nlohmann::json` does — see *Wrap it, don't spread it*. `pugi::xml_node`
+does not belong in a `loaders::` signature.
+
+**One TMX constraint worth knowing before authoring maps.** Tiled can write tile
+layer data as XML, CSV, or base64 with optional gzip/zlib/zstd compression. This
+project reads **CSV**, which is a documented user-selectable option in Tiled.
+Supporting base64+zlib would need a base64 decoder and zlib — and while zlib
+symbols do appear in the linked binary transitively through SDL_image, no zlib
+target or header is exposed to the project, so it would mean declaring another
+dependency. Save maps as CSV.
 
 ### Testing: why doctest
 

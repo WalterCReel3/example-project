@@ -262,7 +262,7 @@ building the same dependencies for several targets.
 | `WREEL_BUILD_TESTS` | `ON` | build the doctest suite |
 | `WREEL_BUILD_DEMOS` | `ON` | build `skratch` — forced `OFF` unless the backend is `gl_legacy` |
 | `WREEL_BUILD_PROBE` | `ON` | build `wreel-probe` |
-| `WREEL_WERROR` | `OFF` | treat warnings as errors. Off because the 2016 sources do not survive `-Wall -Wextra` yet; flips to `ON` with the C++17 cleanup |
+| `WREEL_WERROR` | `OFF` | treat warnings as errors. Off because the 2016 GL sources do not survive the full warning set yet — 33 remain on `desktop-debug`, down from 167. `desktop-software` is already clean and could be gated today. See [planning/2026-07-25-cxx17-modernization](../planning/2026-07-25-cxx17-modernization/) |
 | `WREEL_STATIC_CXX` | `OFF` | static-link libstdc++/libgcc. Forced `ON` by every device toolchain |
 | `WREEL_AUDIO_CODECS` | per-target | `minimal` \| `standard` \| `full`. Affects **binary size only** — see below |
 | `WREEL_AUDIO_RATE` | 44100 / 22050 | mixer sample rate. Affects **per-frame CPU** |
@@ -470,14 +470,16 @@ Two inherited quirks these files intentionally settle:
 | `software` graphics backend | **verified** — builds on x86_64, aarch64 |
 | `audio` module | **verified** — opens on pulseaudio and dummy; 3 codec tiers build |
 | `wreel-probe` | **verified** — runs on x86_64 and as an aarch64 binary under qemu; reports audio |
-| doctest suite | **verified** — 36 cases, 99 assertions, passing natively and cross |
+| doctest suite | **verified** — 6 executables, 6/6 on all five configured presets: both desktop, plus `rk3326`, `h700` and `miyoomini` under qemu |
+| `util::ascii` predicates | **verified** — `test_ascii`, 12 cases / 1017 assertions; replaces the `<ctype.h>` predicates in `string.hpp` |
+| `util::logging` | **verified** — `test_logging`, 11 cases / 38 assertions. printf-style, no iostreams; armv7 `wreel-probe` dropped 865 KB (28%) |
 | `rk3326` / `h700` toolchains | **verified** — cross-build plus `ctest` under qemu |
 | `miyoomini` toolchain | **verified in compile-check mode** — armv7 build + `ctest` under qemu-arm. Device toolchain (GCC 8.3) still untried |
-| `gl_legacy` backend | **verified** — `desktop-debug` builds and links, `skratch` included, 4/4 tests |
+| `gl_legacy` backend | **verified** — `desktop-debug` builds and links, `skratch` included, 6/6 tests |
 | `steam` preset | not run — needs the sniper container |
 | `docker/miyoomini.Dockerfile` | not built — needs Docker plus the upstream base image |
 | `gles2` / `gl33` backends | not started |
-| C++17 cleanup of 2016 sources | not started (`WREEL_WERROR` stays `OFF` until then) |
+| C++17 cleanup of 2016 sources | **in progress.** `string.hpp` done — the `ptr_fun`/`not1`/`unary_function` cluster is gone and character classification moved to `util/ascii.hpp`. `desktop-software` is at **zero warnings**; `desktop-debug` is at 33, down from 167, all in `gl_legacy`/`skratch` files that `graphics-backends` deletes or rewrites. `WREEL_WERROR` stays `OFF` until those clear |
 
 ### What has actually been run
 
@@ -486,11 +488,11 @@ On Debian 12 / GCC 12.2 / CMake 3.25 / clang-format 14, after a full
 
 | Check | Result |
 |---|---|
-| `desktop-software` cold configure → build → test | pass, 4/4, zero errors |
-| `rk3326` cross-build → `ctest` under qemu | pass, 4/4 |
-| `h700` cross-build → `ctest` under qemu | pass, 4/4, `-mcpu=cortex-a53` confirmed |
-| `miyoomini` armv7 build → `ctest` under qemu-arm | pass, 4/4, `-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4` confirmed |
-| `desktop-debug` (`gl_legacy`) build → test | pass, 4/4; `skratch` links; probe reports Mesa 22.3.6 / AMD |
+| `desktop-software` cold configure → build → test | pass, 6/6, zero errors, zero warnings |
+| `rk3326` cross-build → `ctest` under qemu | pass, 6/6 |
+| `h700` cross-build → `ctest` under qemu | pass, 6/6, `-mcpu=cortex-a53` confirmed |
+| `miyoomini` armv7 build → `ctest` under qemu-arm | pass, 6/6, `-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4` confirmed. `util/ascii.hpp` and the new logger compile warning-free on both ARM cross compilers, where `char` is unsigned |
+| `desktop-debug` (`gl_legacy`) build → test | pass, 6/6; `skratch` links; probe reports Mesa 22.3.6 / AMD |
 | `wreel-probe` as an aarch64 binary under qemu | runs, reports correctly |
 | `shellcheck scripts/bootstrap-debian.sh` | clean |
 | `clang-format --dump-config` | parses; authored files conform |
@@ -528,12 +530,12 @@ GPU, and probe links it only when both `WREEL_TARGET_HAS_GPU` and
 
 ### Running the `skratch` demo
 
-Read this before the first run — it is 2016 fullscreen code and it takes over the
-display.
+Read this before the first run — it goes fullscreen and takes over the display,
+which is the intended presentation, not an accident.
 
 ```sh
 cd /path/to/example-project          # MUST be the repo root
-SDL_VIDEODRIVER=x11 ./build/desktop-debug/bin/skratch
+./build/desktop-debug/bin/skratch
 ```
 
 **Four things that will bite otherwise:**
@@ -541,18 +543,20 @@ SDL_VIDEODRIVER=x11 ./build/desktop-debug/bin/skratch
 - **Working directory must be the repo root.** It opens `data/Speedy.fon` and
   `data/ico.obj` by relative path and writes `runlog.txt` to the current
   directory. Running it from `build/` fails immediately.
-- **It is always fullscreen at desktop resolution.** `gfx/context.cc` computes a
-  `flags` variable from its `fullscreen` parameter and then *ignores it* — the
-  `SDL_CreateWindow` call hardcodes `SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN`
-  (defect D9). There is no windowed mode without a code change.
-- **The cursor is hidden and the mouse is grabbed** via relative mouse mode.
+- **It is fullscreen at the panel's native mode**, via
+  `SDL_WINDOW_FULLSCREEN_DESKTOP`. For debugging, pass `false` to
+  `System::create_context()` — the `fullscreen` parameter is honoured now, and a
+  windowed run gets three quarters of the desktop, centred.
+- **The cursor is hidden and the mouse is grabbed** via relative mouse mode. Both
+  are conditional on `fullscreen`, so a windowed run leaves your pointer alone.
 - **Errors go to `runlog.txt`, not stderr.** `skratch/main.cc` catches everything
   and writes `e.what()` to that file, so a silent instant exit means *check the
   log*, not "nothing happened".
 
-`SDL_VIDEODRIVER=x11` is recommended: the code requests a real display mode change
-(`SDL_WINDOW_FULLSCREEN`, not `_DESKTOP`), which is X11-shaped. It will try Wayland
-first if you let it.
+`SDL_VIDEODRIVER=x11` is no longer needed — the mode-change request that made this
+X11-shaped is gone. It is still a useful thing to try first if the window does not
+appear on your compositor, since GLEW needs GLX and Wayland reaches it through
+XWayland.
 
 **Controls** (from `skratch/input.cc`):
 
@@ -576,11 +580,11 @@ unreachable. Joystick axis mapping is hardcoded for an Xbox 360 pad.
 - `pkill -x skratch` from another terminal or over SSH.
 - `Ctrl+Alt+F3` to switch VT, then `pkill`.
 
-For a first run, a watchdog costs nothing:
+For a first run, a watchdog costs nothing — it is fullscreen and grabs the mouse:
 
 ```sh
 ( sleep 30; pkill -x skratch ) &
-SDL_VIDEODRIVER=x11 ./build/desktop-debug/bin/skratch
+./build/desktop-debug/bin/skratch
 cat runlog.txt
 ```
 
@@ -592,8 +596,8 @@ the far plane is 100 units, so distant models clip out.
 **Already verified, so these are not the likely failure:** the assets load
 (`ico.obj` parses to 42 vertices / 240 indices, `teapot.obj` to 3644 / 18960), the
 binary links against real GLEW and GLU, and `wreel-probe` from the same build gets
-a working GL context. What is untested is this specific fullscreen mode-change path
-on your compositor.
+a working GL context. What is untested is whether the window actually appears on
+your compositor — no run of this demo has been observed on a real display.
 
 > A dry run under `SDL_VIDEODRIVER=offscreen` is **not** a valid substitute:
 > `glewInit()` fails there because GLEW needs GLX, and `runlog.txt` just says
