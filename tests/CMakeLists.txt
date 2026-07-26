@@ -10,6 +10,7 @@
 # These need no graphics context, so they run on every target — including under
 # qemu-user-static for cross builds.
 
+wreel_add_test(test_ascii   LIBS wreel::util)
 wreel_add_test(test_file    LIBS wreel::util wreel::posix)
 wreel_add_test(test_logging LIBS wreel::util wreel::posix)
 wreel_add_test(test_json    LIBS wreel::util)
