@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -168,6 +169,45 @@ TEST_CASE("loading missing music throws with a codec hint")
         CHECK(what.find("WREEL_AUDIO_CODECS") != std::string::npos);
     }
     CHECK(threw);
+}
+
+TEST_CASE("releasing a replaced track does not stop the one that replaced it")
+{
+    // Regression, 2026-07-27. ~Music guarded its halt on Mix_PlayingMusic(),
+    // which answers "is ANY music playing" — SDL_mixer has one music channel
+    // and offers no way to ask which Mix_Music owns it. So destroying a track
+    // halted whatever was current, which need not have been that track.
+    //
+    // Unnoticed until coppers::Playlist became the first consumer to hold two
+    // Music objects at once. Changing track constructs the successor, starts
+    // it, then releases the predecessor — whose destructor stopped the
+    // successor a moment after it began. Symptom on screen: the song name
+    // changed and the music went silent.
+    //
+    // Mix_FreeMusic already halts, but only when the music being freed is the
+    // one playing, and under Mix_LockAudio(). The fix was to delete our halt
+    // and let it do the targeted thing.
+    audio::Device device;
+    REQUIRE(device.available());
+
+    std::unique_ptr<audio::Music> current(
+        new audio::Music("data/complications.mod"));
+    current->play();
+    REQUIRE(current->playing());
+
+    // Exactly the Playlist ordering: the successor is constructed and started
+    // while the predecessor is still alive, so a failed load would leave the
+    // current track playing rather than dropping into silence.
+    std::unique_ptr<audio::Music> replacement(
+        new audio::Music("data/complications ii.mod"));
+    replacement->play();
+    REQUIRE(replacement->playing());
+
+    current.reset();
+
+    // The assertion that used to fail. Releasing the superseded track must not
+    // touch the mixer's current music.
+    CHECK(replacement->playing());
 }
 
 TEST_CASE("Device is destroyed cleanly while a sound is still playing")

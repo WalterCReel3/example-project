@@ -54,10 +54,18 @@ Music::Music(const std::string& path)
 Music::~Music()
 {
     if (_music) {
-        // Halting first avoids freeing a track the mixer callback is reading.
-        if (Mix_PlayingMusic()) {
-            Mix_HaltMusic();
-        }
+        // No halt here, deliberately. Mix_FreeMusic already stops the track if
+        // it is the one playing, and it does so under Mix_LockAudio() having
+        // first compared against its own `music_playing` pointer — which is
+        // both the race this used to guard against and a check we cannot make
+        // from out here, because SDL_mixer exposes no "is *this* music
+        // playing".
+        //
+        // Mix_PlayingMusic() answers "is ANY music playing", so halting on it
+        // stopped whatever track happened to be current, which need not be this
+        // one. With two Music objects alive that is exactly wrong: replacing a
+        // track by constructing its successor, starting it, and then releasing
+        // the old one halted the successor a moment after it began.
         Mix_FreeMusic(_music);
     }
 }
