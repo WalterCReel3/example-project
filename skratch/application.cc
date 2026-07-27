@@ -3,6 +3,7 @@
 #include <gfx/gles2/texture.hpp>
 #include <gfx/types.hpp>
 #include <loaders/obj.hpp>
+#include <rig/assets.hpp>
 #include <util/format.hpp>
 #include <util/logging.hpp>
 
@@ -55,7 +56,9 @@ const float grid_spacing = 10.0f;
 } // namespace
 
 Application::Application()
-    : _last_tick(0)
+    // Capped rather than uncapped: gfx::gles2::Context never asks for a swap
+    // interval, so whether vsync throttles this at all is up to the driver.
+    : _clock(60)
     , _exit(false)
     , _input()
     , _system()
@@ -71,10 +74,11 @@ Application::Application()
     // getting the order wrong reports "Library not initialized".
     _input.init();
 
-    _font = TTF_OpenFontIndex("data/Speedy.fon", 10, 0);
+    const std::string font_path = rig::asset_path("Speedy.fon");
+    _font = TTF_OpenFontIndex(font_path.c_str(), 10, 0);
     if (!_font) {
-        throw std::runtime_error(
-            std::string("could not load data/Speedy.fon: ") + TTF_GetError());
+        throw std::runtime_error("could not load " + font_path + ": " +
+                                 TTF_GetError());
     }
 
     // The context comes first and is destroyed last: every GL object below is
@@ -88,7 +92,7 @@ Application::Application()
     // vertices, colours and indexes; MeshBuffer uploads a copy, and the
     // CPU-side Mesh goes out of scope here, which is deliberate on a 128 MB
     // device.
-    const gfx::Mesh mesh = loaders::load_obj("data/ico.obj");
+    const gfx::Mesh mesh = loaders::load_obj(rig::asset_path("ico.obj"));
     util::log_info("ico.obj: %zu vertices, %zu indexes", mesh.vertices.size(),
                    mesh.indexes.size());
     _model.reset(new gfx::gles2::MeshBuffer(mesh));
@@ -221,9 +225,18 @@ bool Application::render_to_file(const std::string& path, int frames)
     return _context->save_screenshot(path);
 }
 
-void Application::update_state()
+void Application::update_state(float dt)
 {
-    const float d_angle = 0.15f;
+    // Every constant in this function was a per-frame increment, tuned against
+    // whatever rate the old SDL_Delay(10) loop happened to produce. They are
+    // kept verbatim and scaled by how long this frame actually took relative to
+    // 60 Hz, so the demo moves identically at 60 fps and correctly at any other
+    // rate. Rewriting them as units-per-second would read better and would
+    // quietly retune the demo, which is not what this change is for.
+    const float frame_scale = dt * 60.0f;
+
+    const float d_angle = 0.15f * frame_scale;
+    const float d_move = 0.1f * frame_scale;
     InputState& input = _input.get_state();
 
     if (input.input_tab[InputState::EXIT]) {
@@ -248,34 +261,43 @@ void Application::update_state()
         _camera.roll -= d_angle;
     }
     if (input.input_tab[InputState::FORWARD]) {
-        _camera.position.z -= 0.1f;
+        _camera.position.z -= d_move;
     }
     if (input.input_tab[InputState::BACKWARD]) {
-        _camera.position.z += 0.1f;
+        _camera.position.z += d_move;
     }
     if (input.input_tab[InputState::S_LEFT]) {
-        _camera.position.x -= 0.1f;
+        _camera.position.x -= d_move;
     }
     if (input.input_tab[InputState::S_RIGHT]) {
-        _camera.position.x += 0.1f;
+        _camera.position.x += d_move;
     }
     if (input.input_tab[InputState::UP]) {
-        _camera.position.y += 0.1f;
+        _camera.position.y += d_move;
     }
     if (input.input_tab[InputState::DOWN]) {
-        _camera.position.y -= 0.1f;
+        _camera.position.y -= d_move;
     }
 
     // Analogue sticks are 16-bit signed; scaling by 2*SHRT_MAX gives roughly
-    // +/- 0.5 units per frame at full deflection.
+    // +/- 0.5 units per 60 Hz frame at full deflection. A held stick is a
+    // velocity, so it scales with frame length like the keys above.
     const float scale = static_cast<float>(SHRT_MAX) * 2.0f;
-    _camera.position.x += static_cast<float>(input.joy_val_0) / scale;
-    _camera.position.z += static_cast<float>(input.joy_val_1) / scale;
+    _camera.position.x +=
+        static_cast<float>(input.joy_val_0) / scale * frame_scale;
+    _camera.position.z +=
+        static_cast<float>(input.joy_val_1) / scale * frame_scale;
 
+    // Mouse deltas are the exception, and must NOT be scaled. input_tab and the
+    // stick axes report a state that was held for the whole frame; mouse_rel_*
+    // is a displacement already accumulated over it. Scaling it by frame length
+    // would make look sensitivity depend on the frame rate, which is the bug
+    // this whole change exists to remove.
     _camera.yaw += static_cast<float>(input.mouse_rel_x) +
-                   static_cast<float>(input.joy_val_4) / 5000.0f;
-    _camera.pitch += static_cast<float>(input.mouse_rel_y) +
-                     static_cast<float>(input.joy_val_3) / 5000.0f;
+                   static_cast<float>(input.joy_val_4) / 5000.0f * frame_scale;
+    _camera.pitch +=
+        static_cast<float>(input.mouse_rel_y) +
+        static_cast<float>(input.joy_val_3) / 5000.0f * frame_scale;
 
     if (_camera.pitch < -70.0f) {
         _camera.pitch = -70.0f;
@@ -290,16 +312,18 @@ void Application::update_state()
 
 void Application::game_loop()
 {
-    _last_tick = SDL_GetTicks();
+    // Discards the time spent loading the font, the model and the shaders. That
+    // interval would otherwise arrive as the first frame's delta and get
+    // clamped, which is harmless but shows up as one stuttered frame at start.
+    _clock.reset();
 
     while (!_exit) {
-        handle_events();
-        update_state();
-        render_scene();
+        // Sleeps out the remainder of the frame's budget, then reports how long
+        // the frame actually took.
+        const float dt = static_cast<float>(_clock.tick());
 
-        // Unconditional 10 ms, as inherited. This is neither a frame cap nor
-        // vsync, and replacing it is a task shared with
-        // planning/2026-07-25-midi-live-visuals/ and the 2D snapshot.
-        SDL_Delay(10);
+        handle_events();
+        update_state(dt);
+        render_scene();
     }
 }

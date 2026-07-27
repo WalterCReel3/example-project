@@ -12,6 +12,7 @@
 #include <gfx/gles2/sprite_renderer.hpp>
 #include <gfx/system.hpp>
 
+#include <rig/timing.hpp>
 #include <util/nocopy.hpp>
 
 #include "camera.hpp"
@@ -52,7 +53,10 @@ private:
     DISALLOW_COPY_AND_ASSIGN(Application);
 
 public:
-    void update_state();
+    // dt is seconds since the previous frame. Camera motion is expressed as a
+    // rate rather than a per-frame increment so the demo moves at the same
+    // speed on a dev box and on a device.
+    void update_state(float dt);
     void render_scene();
     void handle_events();
     void game_loop();
@@ -70,7 +74,7 @@ private:
     void draw_frame();
 
     // Flow control
-    Uint32 _last_tick;
+    rig::FrameClock _clock;
     bool _exit;
 
     InputManager _input;
