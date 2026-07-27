@@ -326,9 +326,11 @@ Inventory with severity in
 [planning/2026-07-25-cxx17-modernization/defects.md](planning/2026-07-25-cxx17-modernization/defects.md).
 The ones most likely to surprise you:
 
-- Assets are opened by **relative path**, so anything that changes the working
-  directory breaks the demo. `SDL_GetBasePath()` is the fix and it is not done yet;
-  `skratch`'s *log* already moved to `SDL_GetPrefPath()`.
+- ~~Assets are opened by **relative path**~~ — **fixed 2026-07-27.** Asset paths
+  resolve through `rig::asset_path()`, which prefers `$WREEL_DATA_DIR`, then
+  `data/` beside the executable, then the old working-directory behaviour. Proven
+  against an installed bundle launched from `/tmp`. Anything new that opens an
+  asset goes through it rather than a literal `"data/..."`.
 - `util/string.hpp` still has `using namespace std;` inside `namespace util` (D5),
   which is why the rest of that header qualifies everything explicitly.
 

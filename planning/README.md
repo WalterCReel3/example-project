@@ -39,6 +39,7 @@ Each `README.md` opens with one of:
 | [2026-07-25-software-2d-sprites-tiling](2026-07-25-software-2d-sprites-tiling/) | `in-progress` | Where the handheld work goes: textures, atlases, TMX tilemaps, a minimal entity store. XML dependency landed; `Texture` is next |
 | [2026-07-25-software-3d-rasteriser](2026-07-25-software-3d-rasteriser/) | `snapshot` | Deliberately not scheduled. Records what a CPU rasteriser would cost, and the cheaper alternatives |
 | [2026-07-25-target-validation](2026-07-25-target-validation/) | `in-progress` | Prove the cross and Steam presets on real toolchains and hardware. Steps 1–2 done; the device toolchain, containers and hardware remain |
+| [2026-07-26-coppers-cracktro](2026-07-26-coppers-cracktro/) | `snapshot` | A copper-bar cracktro on `gfx::renderer`: the first thing to run on a Miyoo Mini Plus / Flip, and the instrument that takes the fill-rate measurement. Shares `Texture` with the 2D snapshot |
 | [2026-07-25-packaging-distribution](2026-07-25-packaging-distribution/) | `snapshot` | Handheld bundles per firmware, Steam depot layout |
 | [2026-07-25-midi-live-visuals](2026-07-25-midi-live-visuals/) | `snapshot` | The secondary goal: MIDI-driven demo-style graphics |
 
@@ -77,3 +78,36 @@ The rest:
 depends on nothing, and its shader-based effects are now possible rather than
 hypothetical. It shares the frame-timing task with `software-2d-sprites-tiling`;
 `skratch`'s loop still `SDL_Delay(10)`s unconditionally.
+
+## Revised again, 2026-07-26: `coppers-cracktro` goes first
+
+Added after the ordering above was written, and it changes what to do next rather
+than adding to the queue.
+
+The deadlock in that ordering is that `target-validation` is the binding constraint
+on everything, and its two most valuable remaining steps — the fill-rate
+measurement and a device run — need *a program worth running on a device*.
+`wreel-probe` reports capabilities but draws nothing, and `skratch` needs
+`gfx::gles2`, which the Miyoo Mini will never have. So there has been no way to
+take the measurement that `software-2d-sprites-tiling` calls its main risk.
+
+[coppers-cracktro](2026-07-26-coppers-cracktro/) is that program, and it is not a
+detour:
+
+- Its stage 2 **is** `software-2d-sprites-tiling`'s blocking task —
+  `gfx::renderer::Texture` and a source-rect blit. The work is shared, not
+  duplicated.
+- A full-screen raster field is the fill-rate stress case, so
+  `target-validation`'s open question is answered as a by-product.
+- It adds the `gfx::renderer` screenshot path that `target-validation` records as
+  missing, which is how any device gets checked over SSH.
+- It settles the locked-pixels design question that `software-2d-sprites-tiling`
+  and `midi-live-visuals` are both holding open, and which is cheap now and
+  expensive after the API sets.
+- It forces the frame clock those two share.
+
+It also found three things worth knowing on its own: `WREEL_BUILD_DEMOS` disables
+itself on every GPU-less target, so `miyoomini` builds no demo at all; SDL's ARM
+NEON blitters are unbuilt on the one target that does all its pixel work on the
+CPU; and the `320×240` these documents pose their cost questions at does not match
+the 640×480 panel those devices have.

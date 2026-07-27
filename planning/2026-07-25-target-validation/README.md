@@ -166,9 +166,12 @@ added 2026-07-26:
   against, so this is the only way to confirm the renderer draws on a device. It
   needs `gfx::gles2`, so it applies to the two Mali targets and not the Miyoo Mini.
 
-For the Miyoo Mini the equivalent check is still missing: `gfx::renderer` has no
-screenshot path, because `SDL_Renderer` needs `SDL_RenderReadPixels` rather than
-`glReadPixels`. Worth adding when the fill-rate measurement below is taken.
+~~For the Miyoo Mini the equivalent check is still missing.~~ **Added 2026-07-27**
+as `gfx::renderer::Context::save_screenshot()`, via `SDL_RenderReadPixels` and
+named to match the `gles2` one. Both renderers can now be checked over SSH. It
+arrived with the fill-rate measurement exactly as predicted here, because the demo
+that takes the measurement is also the thing that needed the screenshot —
+[coppers](../2026-07-26-coppers-cracktro/).
 
 ### 5. Steam Runtime
 
@@ -181,8 +184,9 @@ glibc symbol versioning, which `objdump -T | grep GLIBC_` can confirm directly.
 
 ## Deliverables
 
-- [ ] A `results.md` in this directory recording what happened per preset, with
-      real command output rather than a summary
+- [x] A [`results.md`](results.md) in this directory recording what happened per
+      preset, with real command output rather than a summary. Started 2026-07-27
+      with the fill-rate measurement
 - [x] `docs/DEVELOPMENT.md § Status` updated to move rows from "not run" to
       verified — done for steps 1 and 2; that table is now the authoritative
       record and this document defers to it
@@ -196,11 +200,15 @@ glibc symbol versioning, which `objdump -T | grep GLIBC_` can confirm directly.
   `WREEL_USE_SYSTEM_SDL2=ON` mandatory there? This is the largest single unknown
   in the project, and it decides whether the hermetic-FetchContent approach holds
   for the hardest target or needs a documented exception.
-- **What is the software driver's fill rate at 320×240 on two Cortex-A7 cores?**
-  This is the one measurement
-  [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/) calls its
-  main risk, and it is the reason that snapshot says to measure before building a
-  tilemap on the assumption that per-tile blitting is viable.
+- ~~**What is the software driver's fill rate at 320×240 on two Cortex-A7 cores?**~~
+  **Method built and measured on the dev box, 2026-07-27** — see
+  [results.md](results.md). Still open on hardware, but the question was posed
+  wrongly: 320×240 is not any device's resolution (the Mini Plus is 640×480 and the
+  Flip is 750×560), and a lower *internal* resolution turns out to be a **net loss**
+  on the software driver, because SDL's scaling blit costs more than the plotting it
+  saves. It is a 2.8× win on an accelerated driver. So the answer inverts between
+  the two drivers this project ships on, and `coppers --seconds` is how it gets
+  taken on a device.
 - Should CI be added now? A GitHub Actions matrix over `desktop-software`,
   `desktop-debug` and the two aarch64 compile-checks would catch regressions
   cheaply. The container-based targets are harder and can come later.

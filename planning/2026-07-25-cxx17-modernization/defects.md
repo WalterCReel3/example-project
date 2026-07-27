@@ -697,3 +697,108 @@ still lists only `libm.so.6` and `libc.so.6` as `NEEDED`. No bootstrap change.
 | `util::format` | `include/util/format.hpp` | Reused a consumed `va_list` (UB), never called `va_end`, and sized the buffer one byte short so every message lost its last character. On the error path of both `FileImpl` backends. |
 | `if(GCC)` | `CMakeLists.txt` | Tested an undefined variable, so `-Wall -Werror` was never applied. Replaced by the `wreel::warnings` interface target. |
 | `TTF_Font` tag | `include/gfx/software/context.hpp` | Forward declaration used `_TTF_Font`; SDL_ttf 2.24 uses `TTF_Font`. Hard error in any TU including both. |
+
+## D19 — `WREEL_WERROR=ON` took effect in no existing build directory
+
+**WRONG.** [`cmake/ProjectOptions.cmake:51`](../../cmake/ProjectOptions.cmake)
+
+```cmake
+option(WREEL_WERROR "Treat warnings as errors" ON)
+```
+
+The default was flipped from `OFF` to `ON` on 2026-07-26 when the 2016 sources were
+deleted, and `docs/DEVELOPMENT.md` records it as on. It was not on anywhere.
+
+`option()` does not overwrite an existing cache entry. Every build directory
+configured before the flip keeps the value it was first given, so changing the
+default reaches a fresh clone and nothing else. Read out of the caches on
+2026-07-27, after a reconfigure of all five:
+
+| Preset | `WREEL_WERROR` in cache |
+|---|---|
+| `desktop-debug` | `OFF` |
+| `desktop-software` | `OFF` |
+| `miyoomini` | `OFF` |
+| `rk3326` | `OFF` |
+| `h700` | `OFF` |
+
+So for a day the gate the tree relies on was off in every directory anyone builds
+in, while the configure summary printed `warnings as errors . OFF` and nobody read
+it as a contradiction of the documented default.
+
+**This is D18's twin, and the renderer snapshot already wrote the lesson down**:
+"only forcing the OFF case meant an existing build directory kept GL disabled
+after the flag was corrected — the flag would change and nothing would happen".
+The same trap, one option over. A changed default is not a changed setting.
+
+Harmless in outcome, this time: rebuilding all five presets with
+`-DWREEL_WERROR=ON` produced **zero warnings and 12/12 tests** everywhere, so the
+tree really was as clean as claimed. The defect is that this was not *verified* by
+the builds that claimed to verify it — every "zero warnings under `-Werror`" line
+in the status table was produced by a build with `-Werror` off.
+
+**Not yet fixed.** The options are to `FORCE` the cache value like
+`Dependencies.cmake` does for the SDL GL flags, to set it in `CMakePresets.json`
+where a preset's `cacheVariables` are applied on every configure, or to leave the
+default alone and accept that flipping one is a per-developer reconfigure. Worth
+deciding rather than patching, because the general question — which of these
+options are settings and which are defaults — applies to all of them.
+
+## D20 — `~Music` halted whichever track was playing, not its own
+
+**WRONG.** `audio/music.cc`
+
+```cpp
+Music::~Music()
+{
+    if (_music) {
+        // Halting first avoids freeing a track the mixer callback is reading.
+        if (Mix_PlayingMusic()) {
+            Mix_HaltMusic();
+        }
+        Mix_FreeMusic(_music);
+    }
+}
+```
+
+`Mix_PlayingMusic()` answers "is **any** music playing". SDL_mixer has a single
+music channel and exposes no way to ask which `Mix_Music` currently owns it, so
+this condition is not about `_music` at all. Destroying any `Music` therefore
+stopped whatever track was current.
+
+Invisible for as long as one `Music` existed at a time, which was the whole life
+of the class until `coppers::Playlist` became its first two-track consumer.
+Changing track constructs the successor, plays it, and then releases the
+predecessor — deliberately in that order, so that a failed load leaves the
+current track playing instead of dropping into silence. The predecessor's
+destructor then halted the successor a fraction of a second after it started.
+
+**Reported from use, not found by the tests.** `test_playlist` covered exactly
+this sequence and passed, because it asserted that `current()` returned the new
+filename. It did: the bookkeeping was correct and the mixer was silent. A test
+that checks the record of what happened rather than what happened is worth very
+little, and this is the cleanest example of it in the tree.
+
+**Fixed** 2026-07-27 by deleting the halt outright. `Mix_FreeMusic` already does
+the right thing and does it better — from `music.c` in the pinned SDL2_mixer
+2.8.2:
+
+```c
+Mix_LockAudio();
+if (music == music_playing) {
+    ...
+    music_internal_halt();
+}
+Mix_UnlockAudio();
+```
+
+It compares against its own `music_playing` pointer, which is the comparison we
+could not make from outside, and it does so under the audio lock — so the race
+the original comment was guarding against was already handled, and handled more
+correctly than by our unlocked check.
+
+Regression tests added in both places, and both were confirmed to fail against
+the old destructor before the fix was kept: `test_audio` holds two `Music`
+objects and asserts the survivor is still playing after the other is released,
+and `test_playlist` now asserts `playing()` at every step rather than only the
+track name.

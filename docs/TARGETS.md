@@ -12,7 +12,7 @@ elsewhere don't have to re-derive them.
 | `desktop-debug` / `-release` | your dev box | any | `x86_64` | any | `opengl` | host GCC/Clang |
 | `desktop-software` | your dev box | any | `x86_64` | any | `software` (forced) | host GCC/Clang |
 | `steam` | Steam / Steam Deck | any | `x86_64` | any | `opengl` | Steam Runtime **sniper** container |
-| `miyoomini` | Miyoo Mini, Mini Plus | SigmaStar SSD202D | `armv7-a` | **none** | `software` **only** | `union-miyoomini-toolchain` (GCC 8.3) |
+| `miyoomini` | Miyoo Mini, Mini Plus, Mini Flip | SigmaStar SSD202D | `armv7-a` | **none** | `software` **only** | `union-miyoomini-toolchain` (GCC 8.3) |
 | `rk3326` | RG351P/M/V, RG353P/M/V | Rockchip RK3326 | `aarch64` | Mali-G31 | `opengles2` | device sysroot or Debian cross |
 | `h700` | RG35XX Plus/H/SP, RG40XX | Allwinner H700 | `aarch64` | Mali-G31 MP2 | `opengles2` | device sysroot or Debian cross |
 
@@ -20,6 +20,23 @@ Every preset builds `gfx::renderer`; the driver column is what SDL selects
 underneath it. The two Mali rows were `software` until 2026-07-26, when D18 was
 fixed — they had been compiled as though they had no GPU. Those two are
 **build-verified only**: no part of this has run on hardware.
+
+**One preset, three panels.** All three Miyoo devices are the same SSD202D with two
+Cortex-A7 cores at 1.2 GHz and 128 MB of DDR3, so one toolchain row covers them —
+but their displays differ, and the newest is the most expensive:
+
+| Device | Panel | Pixels |
+|---|---|---|
+| Miyoo Mini | 2.8", 640×480 | 307,200 |
+| Miyoo Mini Plus | 3.5", 640×480 | 307,200 |
+| Miyoo Mini Flip | 2.8", **750×560** | **420,000** |
+
+The Flip is therefore the binding target for anything fill-rate bound: 37% more
+pixels than the other two on identical silicon. 750×560 is also a non-standard
+mode, so whether the firmware reports it to SDL or interposes a scaler is a real
+unknown — ask `wreel-probe` on the device rather than assuming. Note that several
+planning documents pose cost questions at "320×240", which matches no device here;
+see [planning/2026-07-26-coppers-cracktro](../planning/2026-07-26-coppers-cracktro/).
 
 `desktop-software` is how you exercise the Miyoo Mini code path without a device.
 It sets `WREEL_TARGET_HAS_GPU=OFF`, so SDL is built with no GL at all and the
@@ -162,6 +179,29 @@ Consequences:
 - RAM is **128 MB total**, shared with the OS. Asset budgets are tight and
   unbounded caches are not an option.
 
+## Modules
+
+Dependencies run one way. `wreel::rig` is the newest and the one whose boundary is
+easiest to get wrong:
+
+| Module | For | Links SDL? |
+|---|---|---|
+| `posix` | typed errno exceptions | no |
+| `util` | tokenizers, number conversion, logging, file I/O, XML | **no, deliberately** |
+| `rig` | what a realtime program needs from its surroundings: asset and preference paths, frame timing, input mapping | yes |
+| `audio` | sound and music over SDL2_mixer | yes, and hides it |
+| `gfx` | `renderer` always, `gles2` where there is a GPU | yes |
+| `loaders` | asset formats to plain data | yes |
+
+**Why `rig` exists rather than putting this in `util`.** `util` is generic to any
+application on any platform and links no SDL. Asset resolution wants
+`SDL_GetBasePath()` and frame pacing wants a sleep, so putting either there would
+have put the tokenizer and number tests downstream of a windowing toolkit for the
+sake of two functions. The split is by what code is *for*, not by how generic it
+looks: `rig` is realtime-application services, and its charter — including what
+does **not** belong in it — is stated in [rig/CMakeLists.txt](../rig/CMakeLists.txt),
+because a name that broad invites a dumping ground.
+
 ## Graphics renderers
 
 **Renderers are capabilities, not alternatives.** There is no
@@ -225,9 +265,16 @@ further than `gfx` itself:
 |---|---|---|
 | `gfx` | `spritesheet.cc`, `system.cc`, `renderer/` | plus `gles2/` |
 | `loaders` | `image.cc`, `obj.cc`, `sparrow.cc` | — |
+| `rig` | `assets.cc`, `timing.cc` | — |
 | `skratch` demo | **not built** | built |
 | `wreel-probe` | built | built |
 | tests | built | built |
+
+`skratch` is the only thing here that needs `gles2`, and until 2026-07-27 its
+requirement was expressed as `WREEL_BUILD_DEMOS=OFF` — which switched off *all*
+demos on exactly the targets where a `gfx::renderer` demo is most wanted. The
+requirement now sits on `WREEL_BUILD_SKRATCH`, and `WREEL_BUILD_DEMOS` is the
+umbrella.
 
 Nothing in `loaders` is gated any more. `obj.cc` used to be, because it filled a
 `gfx::ObjModel` holding `GLuint` buffer handles — a text parser that transitively
