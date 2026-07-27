@@ -21,7 +21,9 @@
 set(WREEL_GFX_SOURCES
     spritesheet.cc
     system.cc
-    renderer/context.cc)
+    renderer/context.cc
+    renderer/layer.cc
+    renderer/texture.cc)
 
 if(WREEL_ENABLE_GLES2)
     list(APPEND WREEL_GFX_SOURCES

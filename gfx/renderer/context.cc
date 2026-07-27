@@ -4,6 +4,8 @@
 #include <SDL_ttf.h>
 #include <stdexcept>
 #include <string>
+
+#include <gfx/renderer/texture.hpp>
 #include <util/logging.hpp>
 
 namespace gfx
@@ -134,29 +136,61 @@ void Context::present()
     SDL_RenderPresent(_renderer);
 }
 
+void Context::draw(const Texture& texture, const Rect* src, const Rect* dst)
+{
+    if (!texture.handle()) {
+        return;
+    }
+
+    SDL_Rect source;
+    SDL_Rect target;
+
+    if (src) {
+        source.x = src->x;
+        source.y = src->y;
+        source.w = src->w;
+        source.h = src->h;
+    }
+    if (dst) {
+        target.x = dst->x;
+        target.y = dst->y;
+        target.w = dst->w;
+        target.h = dst->h;
+    }
+
+    SDL_RenderCopy(_renderer, texture.handle(), src ? &source : nullptr,
+                   dst ? &target : nullptr);
+}
+
 void Context::draw_surface(SDL_Surface* surface, Rect* rect)
 {
     if (!surface || !rect) {
         return;
     }
 
-    SDL_Texture* texture = SDL_CreateTextureFromSurface(_renderer, surface);
-    if (!texture) {
-        util::log_error("could not create texture: %s", SDL_GetError());
-        return;
+    // Built on Texture rather than calling SDL_CreateTextureFromSurface
+    // directly, so the upload happens in exactly one place. Two copies of this
+    // would drift the moment one of them gained a scale mode or a blend
+    // setting, and the difference would show as a sprite path and a text path
+    // that filter differently for no stated reason.
+    try {
+        const Texture texture(*this, surface);
+
+        Rect target;
+        target.x = rect->x;
+        target.y = rect->y;
+        target.w = texture.width();
+        target.h = texture.height();
+
+        draw(texture, nullptr, &target);
+
+        rect->w = target.w;
+        rect->h = target.h;
+    } catch (const std::exception& e) {
+        // Preserves the old behaviour of logging and carrying on: a failed HUD
+        // upload should cost the text, not the frame.
+        util::log_error("draw_surface: %s", e.what());
     }
-
-    SDL_Rect dst;
-    dst.x = rect->x;
-    dst.y = rect->y;
-    dst.w = surface->w;
-    dst.h = surface->h;
-
-    SDL_RenderCopy(_renderer, texture, nullptr, &dst);
-    SDL_DestroyTexture(texture);
-
-    rect->w = dst.w;
-    rect->h = dst.h;
 }
 
 void Context::draw_text(const std::string& text, TTF_Font* font,
@@ -180,6 +214,49 @@ void Context::draw_text(const std::string& text, TTF_Font* font,
     // unnecessary.
     draw_surface(rendered, rect);
     SDL_FreeSurface(rendered);
+}
+
+bool Context::save_screenshot(const std::string& path) const
+{
+    if (!_renderer || _width <= 0 || _height <= 0) {
+        util::log_error("screenshot: no renderer");
+        return false;
+    }
+
+    // ARGB8888 rather than the renderer's native format: SDL_RenderReadPixels
+    // converts on the way out, and asking for one known format means the BMP is
+    // identical whichever driver produced it. A software-driver screenshot and
+    // an opengles2 one are then directly comparable, which is the point of
+    // taking them.
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(
+        0, _width, _height, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (!surface) {
+        util::log_error("screenshot: could not allocate surface: %s",
+                        SDL_GetError());
+        return false;
+    }
+
+    // No row flip here, unlike the GL path: SDL_Renderer's origin is already
+    // top-left, which is also the BMP writer's.
+    if (SDL_RenderReadPixels(_renderer, nullptr, SDL_PIXELFORMAT_ARGB8888,
+                             surface->pixels, surface->pitch) != 0) {
+        util::log_error("screenshot: SDL_RenderReadPixels failed: %s",
+                        SDL_GetError());
+        SDL_FreeSurface(surface);
+        return false;
+    }
+
+    const bool ok = SDL_SaveBMP(surface, path.c_str()) == 0;
+    if (!ok) {
+        util::log_error("screenshot: could not write %s: %s", path.c_str(),
+                        SDL_GetError());
+    } else {
+        util::log_info("screenshot: wrote %s (%dx%d)", path.c_str(), _width,
+                       _height);
+    }
+
+    SDL_FreeSurface(surface);
+    return ok;
 }
 
 } // namespace renderer
