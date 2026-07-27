@@ -34,7 +34,7 @@ include_guard(GLOBAL)
 set(WREEL_ENABLE_GLES2 "" CACHE STRING "gfx::gles2: ON, OFF, or empty=auto")
 
 option(WREEL_BUILD_TESTS  "Build the doctest suite"              ON)
-option(WREEL_BUILD_DEMOS  "Build the skratch demo application"   ON)
+option(WREEL_BUILD_DEMOS  "Build the demo applications"          ON)
 option(WREEL_BUILD_PROBE  "Build the wreel-probe device tool"    ON)
 option(WREEL_USE_SYSTEM_SDL2
        "Link the sysroot's SDL2 instead of building a pinned copy" OFF)
@@ -157,15 +157,28 @@ if(WREEL_ENABLE_GLES2 AND NOT WREEL_TARGET_HAS_GPU)
         "  and it is built unconditionally. See docs/TARGETS.md § 3.")
 endif()
 
-# skratch renders through gfx::gles2, so it follows that renderer rather than
-# needing an option of its own. On a GPU-less target there is nothing for it to
-# draw with, and disabling it is better than failing a configure the user did not
-# ask to fail.
+# Demos are gated per demo, because they do not all need the same renderer.
+#
+# WREEL_BUILD_DEMOS is the umbrella switch. It used to *disable itself* whenever
+# WREEL_ENABLE_GLES2 was off, which was correct while skratch was the only demo
+# and wrong as soon as a second one existed: it turned demos off entirely on the
+# GPU-less targets, which is where a gfx::renderer demo is most wanted. So the
+# renderer requirement moves onto the demo that actually has one.
+#
+# skratch renders through gfx::gles2 and has nothing to draw with on a target
+# without a GPU. Skipping it is better than failing a configure nobody asked to
+# fail. A gfx::renderer demo has no such requirement — that renderer is built
+# unconditionally on every target.
 if(WREEL_BUILD_DEMOS AND NOT WREEL_ENABLE_GLES2)
     message(STATUS
-        "skratch demo needs gfx::gles2, which is off for this target; "
-        "disabling the demo")
-    set(WREEL_BUILD_DEMOS OFF)
+        "skratch needs gfx::gles2, which is off for this target; skipping it. "
+        "Demos that use gfx::renderer are unaffected.")
+endif()
+
+if(WREEL_BUILD_DEMOS AND WREEL_ENABLE_GLES2)
+    set(WREEL_BUILD_SKRATCH ON)
+else()
+    set(WREEL_BUILD_SKRATCH OFF)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -268,7 +281,9 @@ function(wreel_print_summary)
     message(STATUS "  warnings as errors . ${WREEL_WERROR}")
     message(STATUS "  static libstdc++ ... ${WREEL_STATIC_CXX}")
     message(STATUS "  tests .............. ${WREEL_BUILD_TESTS}")
-    message(STATUS "  skratch demo ....... ${WREEL_BUILD_DEMOS}")
+    message(STATUS "  demos .............. ${WREEL_BUILD_DEMOS}")
+    message(STATUS "    coppers (2D) ..... ${WREEL_BUILD_DEMOS}")
+    message(STATUS "    skratch (gles2) .. ${WREEL_BUILD_SKRATCH}")
     message(STATUS "  wreel-probe ........ ${WREEL_BUILD_PROBE}")
     message(STATUS "  install prefix ..... ${CMAKE_INSTALL_PREFIX}")
     message(STATUS "")
