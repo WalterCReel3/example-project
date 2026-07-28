@@ -521,11 +521,10 @@ later, which is the only time it is cheap.
 
 **Stage 3 — music and input — LANDED 2026-07-27**
 
-- [ ] **Commit the music.** `data/complications ii.mod` and
-      `data/her bloody weekend.mod` are present on disk but **untracked** — not
-      ignored, just never added. The demo loads them and `test_playlist` steps
-      through them, so a fresh clone fails both. **Still the one open item in this
-      stage**, because committing was not asked for
+- [x] **Commit the music** — done 2026-07-27. `data/complications ii.mod` and
+      `data/her bloody weekend.mod` had been sitting untracked in `data/` since
+      before this work, so a fresh clone had one of the three songs. They landed
+      with the `~Music` fix, whose regression test needs them
 - [x] `coppers/playlist.cc` over `audio::Music`; left and right step the three
       `.mod`s, wrapping both ways. `test_playlist`, 6 cases against the real
       files, including the two whose names contain spaces

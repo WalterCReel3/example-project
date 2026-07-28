@@ -146,9 +146,11 @@ Ordered so that something is visible on screen as early as possible.
 - [ ] Source a sheet for `jetpackdude.xml`, or replace the atlas fixture with one
       whose image is actually present
 - [ ] `gfx::AnimatedSprite` — frame sequence, frame duration, looping
-- [ ] Frame timing: the demo loop currently `SDL_Delay(10)`s unconditionally,
-      which is neither a frame cap nor vsync. Shared with
-      [midi-live-visuals](../2026-07-25-midi-live-visuals/)
+- [x] Frame timing — **done 2026-07-27** as `rig::FrameClock`, and `skratch` is
+      off `SDL_Delay(10)`. The clamped-delta and fps arithmetic is split out as
+      `rig::FrameTiming` so it is tested without sleeping.
+      [midi-live-visuals](../2026-07-25-midi-live-visuals/) shared this task and
+      can take it as read
 - [ ] `gfx::TileMap` + `loaders::load_tmx`, CSV layer data, external `.tsx`
 - [ ] A tilemap fixture in `data/` authored in Tiled
 - [ ] `game::Entities` — flat store, update tick, draw ordering
