@@ -2,7 +2,10 @@
 
 **Status:** `snapshot`
 **Written:** 2026-07-25
-**Blocked by:** [target-validation](../2026-07-25-target-validation/)
+**Unblocked:** 2026-07-27 — see below. `coppers` gave the handheld targets
+something worth putting on an SD card, and the bundle and the validation run are
+now the same trip rather than one waiting on the other.
+**Needs:** a Miyoo Mini Plus or Flip, and an SD card
 
 ## Motivation
 
@@ -22,15 +25,48 @@ install rule, a `wreel_add_handheld_bundle()` stub that writes a `launch.sh`, an
 CPack configured for `TGZ`. It is deliberately thin because the target layouts are
 guesses until hardware is in hand.
 
-## Why this is blocked
+## Why this was blocked, and what changed
 
 Defining a bundle layout for a binary that has never run on the device is
-speculative work. Two things must be known first, both from
+speculative work. Two things had to be known first, both from
 [target-validation](../2026-07-25-target-validation/):
 
 1. Whether the binary runs at all, and against which SDL2.
 2. What the firmware expects — which is best learned by looking at how existing
    ports on that firmware are laid out.
+
+**Neither is answered yet, but the first one is now askable.** As of 2026-07-27
+there is something worth putting on an SD card: `coppers`
+([2026-07-26-coppers-cracktro](../2026-07-26-coppers-cracktro/)) builds on
+`miyoomini`, draws through `gfx::renderer`, and reports what it found. Before
+that, the only demo needed a GPU the Miyoo Mini does not have, so "does the bundle
+work" could not be asked at all.
+
+So this stops being *blocked* and becomes *first*, in this order:
+
+1. Build a bundle for one firmware — OnionOS on a Miyoo Mini Plus or Flip is the
+   obvious first, since that is the hardware in hand.
+2. Run the sequence in
+   [target-validation/results.md](../2026-07-25-target-validation/results.md),
+   which answers the display path, video driver, gamepad enumeration, audio spec
+   and fill rate in one pass and writes them to a log.
+3. Fix whatever that breaks, then generalise the layout to a second firmware.
+
+Step 2 is why the bundle comes first rather than after validation: they are the
+same trip.
+
+### Read before starting
+
+- **The Miyoo Mini Flip is 750×560, not 640×480**, on the same SSD202D as the
+  Plus. Same preset, 37% more pixels, so it is the binding target for anything
+  fill-rate bound and the more valuable of the two to test first.
+  `docs/TARGETS.md § Target matrix` has the panel table.
+- **Whether upstream SDL2 runs on stock firmware is still the largest single
+  unknown in the project**, and it is answered by whether the very first run
+  works. If it does not, `WREEL_USE_SYSTEM_SDL2=ON` against the firmware's patched
+  copy is the documented exception, and that decision belongs here.
+- `coppers --screenshot` needs no display and no keyboard, so the first check is
+  runnable over SSH before anything is known about the panel.
 
 ## Per-firmware layouts to establish
 
@@ -76,6 +112,27 @@ Common requirements across all of them:
 - Controller support: Steam Input will remap, but the raw joystick handling in
   `skratch/input.cc` should move to `SDL_GameController` first so mappings come
   from SDL's database rather than hard-coded Xbox 360 axis indices
+
+## Prerequisites carried in from the coppers work
+
+Three things known to be outstanding, recorded here because this is the snapshot
+that has to care about them.
+
+- [ ] **`data/glyphs-16x16.png` has no licence and cannot ship.** The collection
+      it came from carries no LICENSE and its curator states they do not know its
+      provenance. Fine for development, an actual problem in a store build. Either
+      identify the author and obtain terms or substitute a CC0/OFL sheet — see
+      [`data/PROVENANCE.md`](../../data/PROVENANCE.md), which also records the
+      honest "unknown" rows for the 2016 assets and flags the tracker modules as
+      the sharper case, since tracker authors are normally named. Swapping the
+      sheet is a data change rather than a code change **only until something
+      depends on that specific grid**, so it is cheaper now than later.
+- [ ] **Every shipped asset needs a known licence**, not just the glyph sheet.
+      `data/PROVENANCE.md` is the checklist; most rows currently say "unknown".
+- [ ] **`skratch/input.cc` still hard-codes Xbox 360 axis indices.** `rig::Pad`
+      exists and `coppers` uses it, so the port is mechanical — but it is a change
+      to a working demo and wants its own commit. Only blocking if `skratch` is
+      shipped; `coppers` is unaffected.
 
 ## Tasks
 

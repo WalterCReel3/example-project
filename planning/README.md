@@ -39,8 +39,8 @@ Each `README.md` opens with one of:
 | [2026-07-25-software-2d-sprites-tiling](2026-07-25-software-2d-sprites-tiling/) | `in-progress` | Where the handheld work goes: textures, atlases, TMX tilemaps, a minimal entity store. XML dependency landed; `Texture` is next |
 | [2026-07-25-software-3d-rasteriser](2026-07-25-software-3d-rasteriser/) | `snapshot` | Deliberately not scheduled. Records what a CPU rasteriser would cost, and the cheaper alternatives |
 | [2026-07-25-target-validation](2026-07-25-target-validation/) | `in-progress` | Prove the cross and Steam presets on real toolchains and hardware. Steps 1–2 done; the device toolchain, containers and hardware remain |
-| [2026-07-26-coppers-cracktro](2026-07-26-coppers-cracktro/) | `snapshot` | A copper-bar cracktro on `gfx::renderer`: the first thing to run on a Miyoo Mini Plus / Flip, and the instrument that takes the fill-rate measurement. Shares `Texture` with the 2D snapshot |
-| [2026-07-25-packaging-distribution](2026-07-25-packaging-distribution/) | `snapshot` | Handheld bundles per firmware, Steam depot layout |
+| [2026-07-26-coppers-cracktro](2026-07-26-coppers-cracktro/) | `in-progress` | A copper-bar cracktro on `gfx::renderer`. Stages 0–3 landed 2026-07-27: `rig`, the locked-pixels layer, `Texture` and the source-rect blit, both scroller paths, music and input. **Stage 4 is the on-device measurement and needs hardware** |
+| [2026-07-25-packaging-distribution](2026-07-25-packaging-distribution/) | `snapshot` | Handheld bundles per firmware, Steam depot layout. **Unblocked 2026-07-27** and now the next thing to do: `coppers` is something worth putting on an SD card, so the bundle and the device validation run are one trip |
 | [2026-07-25-midi-live-visuals](2026-07-25-midi-live-visuals/) | `snapshot` | The secondary goal: MIDI-driven demo-style graphics |
 
 ## Ordering
@@ -111,3 +111,47 @@ itself on every GPU-less target, so `miyoomini` builds no demo at all; SDL's ARM
 NEON blitters are unbuilt on the one target that does all its pixel work on the
 CPU; and the `320×240` these documents pose their cost questions at does not match
 the 640×480 panel those devices have.
+
+## Revised 2026-07-27: packaging goes next, and it is the same trip as validation
+
+`coppers-cracktro` stages 0–3 landed. The ordering above said `target-validation`
+was the binding constraint on almost everything, and it was — but for a reason that
+has now changed shape.
+
+That document's two most valuable steps needed a program worth running on a device,
+and there wasn't one: `wreel-probe` draws nothing and `skratch` needs a renderer the
+Miyoo Mini will never have. There is one now. `coppers` builds on `miyoomini`, draws
+through `gfx::renderer`, and reports the display path, video driver, gamepad
+enumeration, audio spec and fill rate into a log — with `--screenshot` and
+`--seconds` so none of it needs a keyboard or a panel anyone can see.
+
+So `packaging-distribution` stops being blocked *by* validation and becomes the
+vehicle *for* it. Getting a bundle onto an SD card and running the sequence in
+[target-validation/results.md](2026-07-25-target-validation/results.md) are one
+trip, not two, and the bundle has to exist first either way.
+
+What that trip settles, in rough order of how much rests on it:
+
+- **Whether upstream SDL2 runs on stock Miyoo firmware at all.** Still the largest
+  single unknown in the project, and the answer is whether the first run works. If
+  it does not, `WREEL_USE_SYSTEM_SDL2=ON` is the documented exception and
+  packaging owns that decision.
+- **The real fill rate**, which two snapshots have been guessing at. Note the
+  dev-box finding that the internal-resolution and glyph-blitter answers *invert*
+  between the software and accelerated drivers, so the Miyoo numbers are genuinely
+  not predictable from the ones already taken.
+- **What the pad enumerates as**, which `skratch/input.cc`'s hard-coded Xbox 360
+  axis indices certainly get wrong and which `rig::Pad` now logs in full.
+- **Whether the Flip reports 750×560 to SDL or interposes a scaler.** It is the
+  binding target for anything fill-rate bound — same SSD202D as the Plus, 37% more
+  pixels — so it is the more valuable of the two to test first.
+
+`software-2d-sprites-tiling` is unblocked and is the main line again once hardware
+answers come back: `Texture`, the source-rect blit and a locked-pixels view all
+exist, so `Atlas`, `AnimatedSprite` and `TileMap` are ordinary work now rather than
+waiting on a design question.
+
+Three things are recorded as carried forward, in
+[packaging-distribution](2026-07-25-packaging-distribution/): the unlicensed glyph
+sheet, the wider "every shipped asset needs a known licence" problem, and the
+`skratch` input port.
