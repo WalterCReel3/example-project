@@ -4,6 +4,16 @@
 **Written:** 2026-07-25
 **Blocked by:** nothing
 
+> **Unblocked 2026-07-27.** `gfx::renderer::Texture` and the source-rect blit —
+> "the piece everything else waits on" below — landed as a side effect of
+> [coppers](../2026-07-26-coppers-cracktro/), whose scroller needed exactly them.
+> A locked-pixels view came with it, which settles the open design question at the
+> bottom of this document. And the fill-rate risk now has numbers:
+> [results.md](../2026-07-25-target-validation/results.md) says a lower internal
+> resolution is a net *loss* on the software driver and a win on an accelerated
+> one, so "measure before building a tilemap on the assumption that per-tile
+> blitting is viable" still stands, and now has an instrument.
+>
 > **Started 2026-07-26 with the XML dependency**, which is the first task below
 > and the one `loaders/sparrow.cc` has been blocked on since 2016. pugixml is
 > pinned, `util::xml` exists with 19 cases against the real Sparrow atlas in
@@ -120,10 +130,16 @@ Ordered so that something is visible on screen as early as possible.
       instead and offers `require_attribute_*` forms that throw (D17); and
       `Node` is a non-owning view, so it dangles once its `Document` goes —
       `load_sparrow` must not return `Node`s, which it was never going to
-- [ ] `gfx::renderer::Texture` — owning, created once, movable not copyable
-- [ ] `Context::draw()` taking source and destination rects
-- [ ] Retire or re-express `draw_surface` in terms of `Texture` so the per-call
-      upload has exactly one remaining caller (`draw_text`) rather than two
+- [x] `gfx::renderer::Texture` — owning, created once, movable not copyable.
+      **Done 2026-07-27**, by [coppers](../2026-07-26-coppers-cracktro/), which
+      needed it for its scroller. Carries colour and alpha modulation, which is
+      what lets a 1-bit glyph sheet be drawn in any colour from one upload
+- [x] `Context::draw()` taking source and destination rects. Done 2026-07-27.
+      **The two gaps this snapshot named are closed**, so `Atlas`,
+      `AnimatedSprite` and `TileMap` are now expressible
+- [x] Retire or re-express `draw_surface` in terms of `Texture` so the per-call
+      upload has exactly one remaining caller (`draw_text`) rather than two.
+      Done 2026-07-27 — re-expressed rather than retired
 - [ ] `gfx::Atlas` over `Texture`, reusing `SpritesheetFrame`
 - [ ] `loaders::load_sparrow` — uncomment and rewrite against `util::xml`;
       `test_sparrow.cc` against `data/jetpackdude.xml`

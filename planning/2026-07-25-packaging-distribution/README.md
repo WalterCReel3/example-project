@@ -45,11 +45,16 @@ Each of these needs confirming against a real SD card, not documentation.
 
 Common requirements across all of them:
 
-- Assets resolved **relative to the executable**, not the working directory. The
-  demo still does `TTF_OpenFontIndex("data/Speedy.fon", ...)` and
-  `loaders::load_obj("data/ico.obj")` — both break the moment a launcher `cd`s
-  elsewhere. `SDL_GetBasePath()` is the fix, and it should land before any packaging
-  work. **Still outstanding**, and the last item on `CLAUDE.md`'s landmine list.
+- ~~Assets resolved **relative to the executable**, not the working directory.~~
+  **Done 2026-07-27** as `rig::asset_path()`, in the new `wreel::rig` module. It
+  prefers `$WREEL_DATA_DIR`, then `data/` beside the executable, then the old
+  working-directory behaviour, and logs which rule won — so a device whose bundle
+  is laid out wrong says so instead of looking like one with missing assets.
+  Verified the way this document asked for: `cmake --install` to a prefix, then
+  `skratch --screenshot` launched from `/tmp`, which resolved `bin/data/` and
+  rendered. The `install(DIRECTORY data/ DESTINATION bin/data)` rule in
+  `cmake/Packaging.cmake` is what that relies on, so it is now load-bearing for a
+  reason it can state rather than as a workaround.
 - ~~`runlog.txt` is written to the current directory by `skratch/main.cc`.~~
   **Done 2026-07-26.** The log goes to `SDL_GetPrefPath("wreel", "skratch")`, which
   also took `<fstream>` out of a shipped executable — it had its own
@@ -74,15 +79,20 @@ Common requirements across all of them:
 
 ## Tasks
 
-- [ ] Move asset resolution to `SDL_GetBasePath()`; add a `util` helper
+- [x] Move asset resolution to `SDL_GetBasePath()` — done 2026-07-27, as
+      `rig::asset_path()` rather than a `util` helper. `util` links no SDL
+      deliberately, so the realtime-services module was created for this and for
+      frame timing; see docs/TARGETS.md § Modules
 - [x] Move `runlog.txt` to `SDL_GetPrefPath()` — done 2026-07-26 with the skratch port
 - [ ] Confirm one firmware's layout against a real device, and implement it
 - [ ] Flesh out `wreel_add_handheld_bundle()` per firmware
 - [ ] Add a `WREEL_TARGET_FIRMWARE` option if layouts diverge enough to need it
 - [ ] Verify the Steam build's glibc floor
-- [ ] Port input to `SDL_GameController`. `skratch/input.cc` still hard-codes Xbox
-      360 axis indices, and it survived the renderer rework untouched — the port
-      moved rendering, not input
+- [~] Port input to `SDL_GameController`. **Half done 2026-07-27**: `rig::Pad`
+      exists and `coppers` uses it — `SDL_GameController` with a raw-joystick
+      fallback, keyboard equivalents, and full enumeration logged.
+      `skratch/input.cc` still hard-codes Xbox 360 axis indices and has *not* been
+      ported; that is a change to a working demo and wants its own commit
 - [ ] Decide whether CPack is the right tool or a plain `install()` + `tar` is
       simpler for handheld bundles
 

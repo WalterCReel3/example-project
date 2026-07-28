@@ -238,9 +238,9 @@ building the same dependencies for several targets.
 | `WREEL_ENABLE_GLES2` | follows `WREEL_TARGET_HAS_GPU` | build `gfx::gles2`. Rejected on a target with no GPU. Empty means auto; set `ON`/`OFF` to override |
 | `WREEL_USE_SYSTEM_SDL2` | `OFF` | link the sysroot's SDL2 instead of building the pinned copy |
 | `WREEL_BUILD_TESTS` | `ON` | build the doctest suite |
-| `WREEL_BUILD_DEMOS` | `ON` | build `skratch` — forced `OFF` where `gfx::gles2` is unavailable, i.e. on a target with no GPU |
+| `WREEL_BUILD_DEMOS` | `ON` | build the demo applications. Gated per demo: `skratch` is skipped where `gfx::gles2` is unavailable, but a `gfx::renderer` demo builds on every target |
 | `WREEL_BUILD_PROBE` | `ON` | build `wreel-probe` |
-| `WREEL_WERROR` | `ON` | treat warnings as errors. On since 2026-07-26: the tree is at zero warnings on all five configured presets. It was off while the 2016 fixed-function sources were in it |
+| `WREEL_WERROR` | `ON` | treat warnings as errors. The tree is at zero warnings on all five configured presets, verified 2026-07-27. **Changing this default does not change an existing build directory** — `option()` will not overwrite a cache entry, so a directory configured before 2026-07-26 kept `OFF` and reported it in the configure summary. Pass `-DWREEL_WERROR=ON` once, or check the summary. Recorded as D19 |
 | `WREEL_STATIC_CXX` | `OFF` | static-link libstdc++/libgcc. Forced `ON` by every device toolchain |
 | `WREEL_AUDIO_CODECS` | per-target | `minimal` \| `standard` \| `full`. Affects **binary size only** — see below |
 | `WREEL_AUDIO_RATE` | 44100 / 22050 | mixer sample rate. Affects **per-frame CPU** |
@@ -449,11 +449,20 @@ Two inherited quirks these files intentionally settle:
 | Accelerated 2D on Mali | **build verified only** — `rk3326`/`h700` now compile SDL with the `opengles2` render driver (D18). Whether the vendor blobs expose it is a hardware question |
 | `audio` module | **verified** — opens on pulseaudio and dummy; 3 codec tiers build |
 | `wreel-probe` | **verified** — runs on x86_64 and as an aarch64 binary under qemu; reports audio |
-| doctest suite | **verified** — 10 executables, 114 cases / 1482 assertions, 10/10 on all five configured presets: both desktop, plus `rk3326`, `h700` and `miyoomini` under qemu |
+| `rig::Pad` | **verified on the dev box, keyboard path only** — `SDL_GameController` when SDL recognises the device, raw `SDL_Joystick` otherwise, keyboard always. No pad has been enumerated on a handheld yet, which is the point: it logs name, GUID, axis/button/hat counts and whether a mapping existed, so a device answers the question instead of being guessed at. **The raw fallback's button order is unverified and says so in the log** |
+| `coppers::Playlist` | **verified** — `test_playlist`, 6 cases stepping the three real `.mod` files both ways, and skipping a missing file, a non-module and an all-dead playlist without throwing. Asserts `playing()` at each step, not just the track name: the first version checked only the name and passed straight through D20, which left the mixer silent |
+| `audio::Music` lifetime | **verified** — two tracks alive at once, releasing the superseded one leaves the current one playing (D20). Both regression tests were confirmed to fail against the old destructor before the fix was kept |
+| `gfx::renderer::Texture` | **verified** — owning, movable, colour-modulated. `Context::draw()` takes source and destination rects, so an atlas cell is expressible for the first time; `coppers`' scroller is the first consumer and `draw_surface` is now built on it. This is what [software-2d-sprites-tiling](../planning/2026-07-25-software-2d-sprites-tiling/) was blocked on |
+| `gfx::renderer::Layer` | **verified** — CPU-plotted streaming texture with a scope-guarded lock. `coppers` draws its bar field through it on x86-64 and armv7; the two produce byte-identical screenshots. This is the locked-pixels view two snapshots were holding open as a design question |
+| `coppers` demo | **verified on the dev box** — builds on all five presets including `miyoomini`, renders copper bars through `gfx::renderer` on both the software and `opengl` drivers, and its `--screenshot`/`--seconds` make a fill-rate run a command. Never run on a device |
+| Fill rate | **measured on the dev box only** — [target-validation/results.md](../planning/2026-07-25-target-validation/results.md). A lower internal resolution is a net *loss* on the software driver and a 2.8× win on an accelerated one; the answer inverts, so there is no single default |
+| doctest suite | **verified** — 15 executables, 15/15 on all five configured presets: both desktop, plus `rk3326`, `h700` and `miyoomini` under qemu. Re-run 2026-07-27 with `-DWREEL_WERROR=ON` after D19 |
 | `util::ascii` predicates | **verified** — `test_ascii`, 12 cases / 1017 assertions; replaces the `<ctype.h>` predicates in `string.hpp` |
 | `util::logging` | **verified** — `test_logging`, 11 cases / 38 assertions. printf-style, no iostreams; armv7 `wreel-probe` dropped 865 KB (28%) |
 | `util::xml` | **verified** — `test_xml`, 19 cases / 116 assertions against the real Sparrow atlas in `data/`. pugixml `v1.16`, XPath compiled out, and confirmed private to `util/xml.cc`: no consumer of `wreel::util` gets pugixml's include path |
 | `util::from_string` | **verified** — `test_number`, 11 cases / 77 assertions. Strict whole-string conversion; `include/util/number.hpp` |
+| `rig::FrameTiming` | **verified** — `test_timing`, 10 cases. Clamped delta, monotonicity, fps seeding and smoothing, all over supplied timestamps so nothing sleeps. `rig::FrameClock` is deliberately untested: it adds a `steady_clock` read and an `SDL_Delay` |
+| `rig::asset_path` | **verified for the shipped layout** — `test_assets` covers the `WREEL_DATA_DIR` override, caching and separator handling; the "beside the executable" rule was confirmed against a real `cmake --install` tree run from `/tmp`, which resolved `bin/data/` and rendered. That invocation failed before |
 | `rk3326` / `h700` toolchains | **verified** — cross-build plus `ctest` under qemu |
 | `miyoomini` toolchain | **verified in compile-check mode** — armv7 build + `ctest` under qemu-arm. Device toolchain (GCC 8.3) still untried |
 | `gfx::gles2` | **verified on the dev box** — `skratch` renders a 20×20 grid through it, confirmed with `--screenshot`. ES 2.0 profile from Mesa. No GL library linked; entry points come from `SDL_GL_GetProcAddress`. Never run on a device |
@@ -470,11 +479,15 @@ On Debian 12 / GCC 12.2 / CMake 3.25 / clang-format 14, after a full
 
 | Check | Result |
 |---|---|
-| `desktop-software` cold configure → build → test | pass, 10/10, zero errors, zero warnings |
-| `rk3326` cross-build → `ctest` under qemu | pass, 10/10 |
-| `h700` cross-build → `ctest` under qemu | pass, 10/10, `-mcpu=cortex-a53` confirmed |
-| `miyoomini` armv7 build → `ctest` under qemu-arm | pass, 10/10, `-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4` confirmed. `util/ascii.hpp` and the new logger compile warning-free on both ARM cross compilers, where `char` is unsigned. This preset caught a `long`-width assumption in `test_number` that both 64-bit presets accepted |
-| `desktop-debug` build → test | pass, 10/10, zero warnings under `-Werror`; `skratch` renders and screenshots |
+| All five presets rebuilt with `-DWREEL_WERROR=ON` | 2026-07-27: **15/15 tests and zero warnings on every one.** This is the first run in which `-Werror` was actually in effect — see D19 |
+| `coppers` on all five presets | builds everywhere, including `miyoomini` where no demo could be built before. Renders through the software driver and through `opengl` |
+| `coppers` armv7 under qemu-arm | runs the full path — layer, lock, plot, scaled blit, present, BMP. Its *timings* are meaningless under qemu and must not be quoted as Cortex-A7 figures |
+| `skratch` from an installed bundle, launched from `/tmp` | resolves `bin/data/` via `rig::asset_path`, loads font and model, screenshots correctly. The relative-path landmine is gone |
+| `desktop-software` cold configure → build → test | pass, zero errors, zero warnings |
+| `rk3326` cross-build → `ctest` under qemu | pass |
+| `h700` cross-build → `ctest` under qemu | pass, `-mcpu=cortex-a53` confirmed |
+| `miyoomini` armv7 build → `ctest` under qemu-arm | pass, `-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4` confirmed. `util/ascii.hpp` and the new logger compile warning-free on both ARM cross compilers, where `char` is unsigned. This preset caught a `long`-width assumption in `test_number` that both 64-bit presets accepted |
+| `desktop-debug` build → test | pass, zero warnings under `-Werror`; `skratch` renders and screenshots |
 | `wreel-probe` as an aarch64 binary under qemu | runs, reports correctly |
 | `shellcheck scripts/bootstrap-debian.sh` | clean |
 | `clang-format --dump-config` | parses; authored files conform |

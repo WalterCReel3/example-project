@@ -70,11 +70,13 @@ include(Dependencies)
 #
 # Flat module directories, one static library each, public headers hoisted into
 # include/<module>/. Dependencies run one way:
-#     skratch -> loaders -> util -> posix
+#     demo -> loaders -> util -> posix
+#          -> rig     -> util
 # ---------------------------------------------------------------------------
 
 add_subdirectory(posix)
 add_subdirectory(util)
+add_subdirectory(rig)
 add_subdirectory(audio)
 add_subdirectory(gfx)
 add_subdirectory(loaders)
@@ -83,8 +85,15 @@ if(WREEL_BUILD_PROBE)
     add_subdirectory(probe)
 endif()
 
-if(WREEL_BUILD_DEMOS)
+# One condition per demo rather than one for all of them: skratch needs
+# gfx::gles2, coppers needs nothing beyond gfx::renderer. See
+# WREEL_BUILD_SKRATCH in cmake/ProjectOptions.cmake.
+if(WREEL_BUILD_SKRATCH)
     add_subdirectory(skratch)
+endif()
+
+if(WREEL_BUILD_DEMOS)
+    add_subdirectory(coppers)
 endif()
 
 if(WREEL_BUILD_TESTS)

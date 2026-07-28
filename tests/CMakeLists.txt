@@ -20,6 +20,31 @@ wreel_add_test(test_string  LIBS wreel::util)
 wreel_add_test(test_xml     LIBS wreel::util wreel::posix)
 wreel_add_test(test_audio   LIBS wreel::audio)
 
+# wreel::rig links SDL2, but neither of these initialises a subsystem:
+# FrameTiming is arithmetic over supplied timestamps, and asset resolution is
+# SDL_GetBasePath plus a stat.
+wreel_add_test(test_assets  LIBS wreel::rig)
+wreel_add_test(test_timing  LIBS wreel::rig)
+
+# coppers/bars.cc is compiled into the test rather than linked, because the demo
+# is an executable and its sources are not a library. Worth a library if a second
+# consumer ever appears; not worth one for a single test.
+wreel_add_test(test_bars
+               SOURCES test_bars.cc ../coppers/bars.cc
+               LIBS wreel::gfx)
+
+# Loads the real data/glyphs-16x16.png. Needs no video subsystem: IMG_Load does
+# not require one, so the whole glyph path is covered headlessly and under qemu.
+wreel_add_test(test_glyphs
+               SOURCES test_glyphs.cc ../coppers/glyphs.cc
+               LIBS wreel::loaders wreel::rig wreel::gfx)
+
+# Opens the mixer under the dummy audio driver and loads the real .mod files, so
+# it covers libxmp actually accepting and rejecting them rather than a stand-in.
+wreel_add_test(test_playlist
+               SOURCES test_playlist.cc ../coppers/playlist.cc
+               LIBS wreel::audio wreel::rig)
+
 # Needs a video subsystem, so it runs under SDL_VIDEODRIVER=dummy like the audio
 # tests run under the dummy audio driver.
 wreel_add_test(test_renderer LIBS wreel::gfx)

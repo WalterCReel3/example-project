@@ -40,6 +40,8 @@ namespace gfx
 namespace renderer
 {
 
+class Texture;
+
 struct Color {
     unsigned char r;
     unsigned char g;
@@ -104,8 +106,21 @@ public:
     void clear(const Color& color);
     void present();
 
+    // Blits part of a texture into part of the render target. Null src means
+    // the whole texture, null dst the whole target; sizes that differ scale.
+    //
+    // The source rectangle is the reason this exists. draw_surface() can only
+    // blit a whole surface at a point, so an atlas cell, a tilemap tile or a
+    // glyph could not be expressed at all — which is what blocked
+    // planning/2026-07-25-software-2d-sprites-tiling/.
+    void draw(const Texture& texture, const Rect* src, const Rect* dst);
+
     // Blits a surface at rect's origin. rect->w/h are filled in with the
     // surface's dimensions, matching gfx::render_surface's behaviour.
+    //
+    // Uploads and destroys a texture per call, which is why anything drawn more
+    // than once should hold a Texture instead. Implemented in terms of one now,
+    // so there is a single upload path rather than two that can drift.
     void draw_surface(SDL_Surface* surface, Rect* rect);
 
     // Renders UTF-8 text and returns the pixel size consumed. Costly: this
@@ -113,6 +128,18 @@ public:
     // strings.
     void draw_text(const std::string& text, TTF_Font* font, const Color& color,
                    Rect* rect);
+
+    // Writes the current render target to a BMP. The counterpart of
+    // gfx::gles2::Context::save_screenshot, and the reason it exists is the
+    // same: nobody can watch a handheld's panel over SSH, and there is no
+    // headless renderer to test against, so this is how "does it actually
+    // draw?" gets answered on a device.
+    //
+    // Call this BEFORE present(). SDL does not guarantee the back buffer's
+    // contents survive the swap, so reading after presenting can return
+    // undefined pixels — on some drivers it happens to work, which is worse
+    // than if it never did.
+    bool save_screenshot(const std::string& path) const;
 
 private:
     SDL_Window* _window;
@@ -123,4 +150,3 @@ private:
 
 } // namespace renderer
 } // namespace gfx
-

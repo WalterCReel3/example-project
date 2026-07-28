@@ -12,6 +12,7 @@
 
 #include <SDL.h>
 
+#include <rig/assets.hpp>
 #include <util/logging.hpp>
 
 #include <cstdio>
@@ -23,17 +24,15 @@
 namespace
 {
 
-// Returns the log path, and an empty string if SDL cannot offer a writable
-// directory — in which case logging stays on stderr rather than failing.
+// Returns the log path, and an empty string if there is no writable directory —
+// in which case logging stays on stderr rather than failing.
 std::string log_path()
 {
-    char* pref = SDL_GetPrefPath("wreel", "skratch");
-    if (!pref) {
+    const std::string pref = rig::pref_path("skratch");
+    if (pref.empty()) {
         return std::string();
     }
-    const std::string path = std::string(pref) + "skratch.log";
-    SDL_free(pref);
-    return path;
+    return pref + "skratch.log";
 }
 
 } // namespace
