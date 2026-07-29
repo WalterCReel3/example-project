@@ -1,6 +1,7 @@
 #include "demo.hpp"
 
 #include <SDL.h>
+#include <SDL_ttf.h>
 
 #include <cmath>
 #include <cstdio>
@@ -36,6 +37,8 @@ void accumulate(double& average, double sample)
 Demo::Demo(const Options& options)
     : _options(options)
     , _exit(false)
+    , _hud_measured(false)
+    , _layer_only(false)
     , _system()
     , _context()
     , _layer()
@@ -68,6 +71,35 @@ Demo::Demo(const Options& options)
 
     _texture_scroller = make_texture_scroller(*_context, *_glyphs);
     _cpu_scroller = make_cpu_scroller(*_glyphs);
+
+    // Some renderers cannot draw a sub-rectangle correctly, and on those the
+    // only thing that reaches the panel is the layer.
+    //
+    // The Miyoo Mini's SDL2 is the case in hand. Its render backend implements
+    // one operation — RenderCopy — always rotated 180 degrees with x mirrored,
+    // so a full-screen copy survives and every glyph and HUD line does not. Its
+    // fills, geometry, CopyEx and ReadPixels are no-ops. Selecting SDL's own
+    // software renderer instead does not help: it composites correctly into a
+    // window surface the video driver then declines to present.
+    //
+    // Detected at runtime by name rather than compiled in per target, because
+    // three different SDL2 builds for this device have now been seen and the
+    // name is the only thing that reliably tells them apart. A firmware that
+    // ships a fixed one will simply stop matching.
+    //
+    // The flags and the B button still work: this changes the default, not the
+    // capability, so the comparison the demo exists for stays available
+    // wherever it means anything.
+    if (_context->driver_name() == "Miyoo Mini") {
+        _layer_only = true;
+
+        if (!_options.cpu_scroller) {
+            _options.cpu_scroller = true;
+            util::log_warning("%s draws sub-rectangles wrongly; defaulting to "
+                              "the CPU scroller and a plotted HUD",
+                              _context->driver_name().c_str());
+        }
+    }
 
     if (!_options.mute) {
         // Two of the three filenames contain spaces, which is why these are
@@ -290,6 +322,16 @@ void Demo::draw_frame(double t)
             scroller().plot(pixels,
                             scroll_state(t, pixels.width(), pixels.height()));
         }
+
+        // The HUD goes in here too where the renderer cannot be trusted with a
+        // sub-rectangle. Its cost then lands in the plot stage rather than the
+        // blit stage, which is worth knowing when reading the numbers: the
+        // instrument is inside the thing it measures. --no-hud remains the way
+        // to take a clean reading, and the exit summary is unaffected either
+        // way.
+        if (_options.hud && _layer_only) {
+            plot_hud(pixels);
+        }
     } // unlocked here, which is what makes the plot timing meaningful
 
     const double blit_start = rig::FrameClock::now();
@@ -309,7 +351,9 @@ void Demo::draw_frame(double t)
             *_context, scroll_state(t, _context->width(), _context->height()));
     }
 
-    if (_options.hud) {
+    // Drawn as a texture only where that works. Where it does not, it was
+    // already plotted into the layer above.
+    if (_options.hud && !_layer_only) {
         draw_hud();
     }
 
@@ -327,19 +371,134 @@ void Demo::draw_frame(double t)
     accumulate(_blit_ms, (rig::FrameClock::now() - blit_start) * 1000.0);
 }
 
+// Two lines rather than one, because a texture cannot be wider than the device
+// allows and the Miyoo Mini allows exactly the panel: 640x480. The single line
+// this used to be rasterised past that, so every frame failed to upload and the
+// HUD simply was not there — on the dev box the same string is fine, because a
+// desktop driver's limit is 16384. Anything drawn as one texture has to fit the
+// panel on this hardware; see docs/TARGETS.md.
 std::string Demo::hud_text() const
 {
-    return util::format(
-        "%.1f fps  plot %.2f  blit %.2f  present %.2f  scroll %s %.0f us  "
-        "%dx%d->%dx%d  %s  %s%s",
-        _clock.fps(), _plot_ms, _blit_ms, _present_ms,
-        _options.cpu_scroller ? "cpu" : "tex", scroller_cost_us(),
-        _layer->width(), _layer->height(), _context->width(),
-        _context->height(), _field->palette_name(),
-        _playlist && !_playlist->current().empty()
-            ? _playlist->current().c_str()
-            : "silent",
-        _clock.clamped() ? "  STALL" : "");
+    return util::format("%.1f fps  plot %.2f  blit %.2f  present %.2f%s",
+                        _clock.fps(), _plot_ms, _blit_ms, _present_ms,
+                        _clock.clamped() ? "  STALL" : "");
+}
+
+std::string Demo::hud_text_second() const
+{
+    return util::format("%dx%d->%dx%d  scroll %s %.0f us  %s  %s",
+                        _layer->width(), _layer->height(), _context->width(),
+                        _context->height(),
+                        _options.cpu_scroller ? "cpu" : "tex",
+                        scroller_cost_us(), _field->palette_name(),
+                        _playlist && !_playlist->current().empty()
+                            ? _playlist->current().c_str()
+                            : "silent");
+}
+
+// Copies a rasterised text surface into the locked layer, alpha-blended.
+//
+// This exists so the HUD keeps SDL_ttf and Speedy.fon where the renderer cannot
+// draw a sub-rectangle. It deliberately does NOT use the glyph sheet: the sheet
+// is 16px uppercase ASCII 32-91, so a sixty-character line of figures would
+// neither fit nor read — and more importantly, decision 2 of this demo's
+// snapshot pins the HUD to a different mechanism from the scroller on purpose,
+// so that the instrument does not move with the thing it measures. Only the
+// transport changes here, not the rasteriser.
+//
+// It wants to live in gfx::renderer rather than in a demo: compositing a
+// surface into a layer is what every sprite on this target will have to do.
+// Left here until software-2d-sprites-tiling needs it, so the interface is
+// designed against two callers rather than guessed at with one.
+void blit_surface_into_layer(gfx::renderer::LayerLock& pixels,
+                             SDL_Surface* surface, int left, int top)
+{
+    SDL_Surface* argb =
+        SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_ARGB8888, 0);
+    if (!argb) {
+        return;
+    }
+
+    const std::uint32_t* src = static_cast<const std::uint32_t*>(argb->pixels);
+    const int src_stride =
+        argb->pitch / static_cast<int>(sizeof(std::uint32_t));
+
+    for (int y = 0; y < argb->h; ++y) {
+        const int dy = top + y;
+        if (dy < 0 || dy >= pixels.height()) {
+            continue;
+        }
+
+        std::uint32_t* row = pixels.row(dy);
+
+        for (int x = 0; x < argb->w; ++x) {
+            const int dx = left + x;
+            if (dx < 0 || dx >= pixels.width()) {
+                continue;
+            }
+
+            const std::uint32_t s = src[y * src_stride + x];
+            const unsigned a = (s >> 24) & 0xffu;
+            if (a == 0) {
+                continue;
+            }
+            if (a == 255) {
+                row[dx] = s;
+                continue;
+            }
+
+            // Blended rather than thresholded, because TTF_RenderUTF8_Blended
+            // antialiases and a 1-bit test would make the HUD crawl.
+            const std::uint32_t d = row[dx];
+            const unsigned inv = 255u - a;
+            const unsigned r =
+                (((s >> 16) & 0xffu) * a + ((d >> 16) & 0xffu) * inv) / 255u;
+            const unsigned g =
+                (((s >> 8) & 0xffu) * a + ((d >> 8) & 0xffu) * inv) / 255u;
+            const unsigned b = ((s & 0xffu) * a + (d & 0xffu) * inv) / 255u;
+            row[dx] = gfx::renderer::Layer::pack(static_cast<unsigned char>(r),
+                                                 static_cast<unsigned char>(g),
+                                                 static_cast<unsigned char>(b));
+        }
+    }
+
+    SDL_FreeSurface(argb);
+}
+
+void Demo::plot_hud(gfx::renderer::LayerLock& pixels)
+{
+    if (!_font) {
+        return;
+    }
+
+    SDL_Color white;
+    white.r = 255;
+    white.g = 255;
+    white.b = 255;
+    white.a = 255;
+
+    int y = 2;
+
+    for (int i = 0; i < 2; ++i) {
+        const std::string text = i == 0 ? hud_text() : hud_text_second();
+
+        SDL_Surface* rendered =
+            TTF_RenderUTF8_Blended(_font, text.c_str(), white);
+        if (!rendered) {
+            continue;
+        }
+
+        blit_surface_into_layer(pixels, rendered, 2, y);
+
+        if (!_hud_measured && i == 1) {
+            _hud_measured = true;
+            util::log_info("hud: plotted into the %dx%d layer, lines %dpx tall",
+                           pixels.width(), pixels.height(), rendered->h);
+        }
+
+        y += rendered->h + 1;
+        SDL_FreeSurface(rendered);
+    }
 }
 
 void Demo::draw_hud()
@@ -365,6 +524,27 @@ void Demo::draw_hud()
     // cost lands in the blit stage where the HUD's own overhead is visible
     // rather than hidden inside the plot measurement.
     _context->draw_text(hud_text(), _font, white, &rect);
+
+    // Below the first, using the height draw_text reported rather than a
+    // constant, so it follows whatever the font actually rasterised to.
+    gfx::renderer::Rect second;
+    second.x = 4;
+    second.y = 4 + (rect.h > 0 ? rect.h : 12);
+    second.w = 0;
+    second.h = 0;
+
+    _context->draw_text(hud_text_second(), _font, white, &second);
+
+    // Once, not per frame. A texture cannot exceed the panel on this hardware,
+    // so how wide these lines actually rasterise is the difference between a
+    // HUD and 2437 identical upload failures — which is what the first device
+    // run produced. Recording the measured widths means the next reader does
+    // not have to trust that the split was wide enough.
+    if (!_hud_measured) {
+        _hud_measured = true;
+        util::log_info("hud: line widths %dpx and %dpx, output %dpx wide",
+                       rect.w, second.w, _context->width());
+    }
 }
 
 void Demo::run()
@@ -408,6 +588,12 @@ bool Demo::render_to_file(const std::string& path, int frames)
         frames = 1;
     }
 
+    // Keep the plotted pixels, so there is something to save even where the
+    // renderer cannot be read back. This costs a full-frame copy per lock and
+    // is switched on only here — a timed run must not pay for it, or the
+    // screenshot path would change the numbers the demo exists to produce.
+    _layer->set_readback(true);
+
     // Frames at a fixed 1/60 step rather than at wall-clock time, so the image
     // is reproducible: a screenshot that depends on how long the machine took
     // to get here cannot be compared against a previous one.
@@ -420,7 +606,22 @@ bool Demo::render_to_file(const std::string& path, int frames)
     }
 
     // Before present(), which is what save_screenshot documents.
-    return _context->save_screenshot(path);
+    if (_context->save_screenshot(path)) {
+        return true;
+    }
+
+    // The renderer could not read itself back. That is not an edge case on the
+    // target this demo was written for: the Miyoo Mini's SDL2 returns
+    // SDL_Unsupported from SDL_RenderReadPixels, so this is the path that runs
+    // there, and without it a screenshot is impossible on the one device where
+    // it is the only way to see the output.
+    //
+    // The two images are not identical. This one is the layer as plotted —
+    // before scaling to the window, and without anything drawn over it through
+    // the renderer, which on that device is nothing that works anyway.
+    util::log_warning(
+        "screenshot: renderer read-back failed, saving the layer instead");
+    return _layer->save_bmp(path);
 }
 
 } // namespace coppers
