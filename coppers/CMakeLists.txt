@@ -11,15 +11,37 @@
 #
 # See planning/2026-07-26-coppers-cracktro/.
 
-add_executable(coppers
+# The texture scroller is not built for the Miyoo Mini.
+#
+# Its SDL2's render backend draws every sub-rectangle rotated 180 degrees with
+# x mirrored, so that path does not render text there — it renders debris. The
+# runtime selector in demo.cc already defaults away from it on that driver, but
+# a path that can only ever be wrong should not be in the binary at all: the B
+# button cannot select it, and 128 MB of RAM has better uses than code that
+# must not run.
+#
+# Gated on the target rather than on WREEL_TARGET_HAS_GPU, deliberately.
+# desktop-software is also GPU-less and its texture path works perfectly — it is
+# SDL's own software renderer — and the comparison between the two mechanisms is
+# exactly what that preset exists to make. The defect is this device's driver,
+# not the absence of a GPU.
+set(_coppers_sources
     main.cc
     demo.cc
     bars.cc
     glyphs.cc
     greetz.cc
-    scroller_texture.cc
     scroller_cpu.cc
     playlist.cc)
+
+if(WREEL_TARGET_ID STREQUAL "miyoomini")
+    message(STATUS "coppers: texture scroller omitted "
+                   "(this target's renderer cannot draw sub-rectangles)")
+else()
+    list(APPEND _coppers_sources scroller_texture.cc)
+endif()
+
+add_executable(coppers ${_coppers_sources})
 
 wreel_set_target_defaults(coppers)
 
@@ -38,6 +60,10 @@ target_link_libraries(coppers PRIVATE
 # wreel-probe reports, so the two agree about which build you are looking at.
 target_compile_definitions(coppers PRIVATE
     WREEL_TARGET_ID="${WREEL_TARGET_ID}")
+
+if(NOT WREEL_TARGET_ID STREQUAL "miyoomini")
+    target_compile_definitions(coppers PRIVATE WREEL_COPPERS_TEXTURE_SCROLLER=1)
+endif()
 
 set_target_properties(coppers PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${WREEL_RUNTIME_OUTPUT_DIRECTORY}")

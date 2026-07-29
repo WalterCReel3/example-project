@@ -44,7 +44,9 @@ Demo::Demo(const Options& options)
     , _layer()
     , _field()
     , _glyphs()
+#ifdef WREEL_COPPERS_TEXTURE_SCROLLER
     , _texture_scroller()
+#endif
     , _cpu_scroller()
     , _message()
     , _playlist()
@@ -69,7 +71,13 @@ Demo::Demo(const Options& options)
     _glyphs.reset(
         new GlyphSheet(rig::asset_path("glyphs-16x16.png"), 20, 3, 32));
 
+#ifdef WREEL_COPPERS_TEXTURE_SCROLLER
     _texture_scroller = make_texture_scroller(*_context, *_glyphs);
+#else
+    // Not built for this target, so the option cannot be honoured whatever the
+    // command line said. See coppers/CMakeLists.txt.
+    _options.cpu_scroller = true;
+#endif
     _cpu_scroller = make_cpu_scroller(*_glyphs);
 
     // Some renderers cannot draw a sub-rectangle correctly, and on those the
@@ -92,13 +100,15 @@ Demo::Demo(const Options& options)
     // wherever it means anything.
     if (_context->driver_name() == "Miyoo Mini") {
         _layer_only = true;
+        _options.cpu_scroller = true;
 
-        if (!_options.cpu_scroller) {
-            _options.cpu_scroller = true;
-            util::log_warning("%s draws sub-rectangles wrongly; defaulting to "
-                              "the CPU scroller and a plotted HUD",
-                              _context->driver_name().c_str());
-        }
+        // Logged whenever the driver matches, not only when something had to be
+        // overridden. On the target that omits the texture scroller at build
+        // time there is nothing left to override, and a silent run would leave
+        // no record of *why* the HUD is in the layer.
+        util::log_warning("%s draws sub-rectangles wrongly; composing "
+                          "everything into the layer",
+                          _context->driver_name().c_str());
     }
 
     if (!_options.mute) {
@@ -172,8 +182,14 @@ void Demo::handle_events()
     }
 
     if (_pad.pressed(rig::Button::B)) {
+#ifdef WREEL_COPPERS_TEXTURE_SCROLLER
         _options.cpu_scroller = !_options.cpu_scroller;
         util::log_info("scroller: %s", scroller().name());
+#else
+        util::log_info("scroller: %s only; the texture path is not built for "
+                       "this target",
+                       scroller().name());
+#endif
     }
 
     if (_pad.pressed(rig::Button::X)) {
@@ -232,13 +248,21 @@ void Demo::set_layer_height(int height)
 
 Scroller& Demo::scroller()
 {
+#ifdef WREEL_COPPERS_TEXTURE_SCROLLER
     return _options.cpu_scroller ? *_cpu_scroller : *_texture_scroller;
+#else
+    return *_cpu_scroller;
+#endif
 }
 
 double Demo::scroller_cost_us() const
 {
+#ifdef WREEL_COPPERS_TEXTURE_SCROLLER
     return _options.cpu_scroller ? _cpu_scroller->cost_us()
                                  : _texture_scroller->cost_us();
+#else
+    return _cpu_scroller->cost_us();
+#endif
 }
 
 ScrollState Demo::scroll_state(double t, int target_w, int target_h) const

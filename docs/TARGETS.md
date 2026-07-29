@@ -185,17 +185,38 @@ This is a design constraint, not a curiosity, and it is invisible everywhere els
   rather than degrading, so the symptom is a missing element rather than a
   scaled one.
 
-The related trap is that the geometry is compiled into that SDL2 — `DEF_FB_W` and
-`DEF_FB_H` in the `mmiyoo` video driver, with no runtime override — so a Mini
-Flip (750x560) needs its own build of the library, and a 640x480 build on a Flip
-will report 640x480 convincingly. See
-[planning/2026-07-27-onion-bundle](../planning/2026-07-27-onion-bundle/).
+The related trap is the Mini Flip, and the shape of it was **corrected 2026-07-31**
+by reading the driver source rather than a view of it. This section used to say
+the geometry is compiled in "with no runtime override", in the `mmiyoo` driver —
+wrong on both counts. The shipped driver is `mini`, and it *does* detect the Flip:
+
+```c
+if (strstr(buf, "752")) { FB_W = 752; FB_H = 560; ... }   /* SDL_video_mini.c */
+```
+
+**What does not follow is the texture cap.** `max_texture_width/height` are
+literals of 640 and 480 in `SDL_render_mini.c`, unrelated to `FB_W`/`FB_H`. So on
+a Flip this binary drives the 752×560 panel and then refuses to create any
+texture wider than 640 — a full-screen `Layer` is impossible, and the failure is
+`SDL_CreateTexture` returning an error rather than anything visibly geometric.
+
+The conclusion is unchanged and firmer: **the Flip needs a patched build**, not
+merely a differently-configured one. Note also 752, not the 750 this document
+carried — the number comes from the driver's own detection. See
+[MIYOO-MINI.md § 4.1](MIYOO-MINI.md) and
+[planning/2026-07-31-miyoo-sdl2-fork](../planning/2026-07-31-miyoo-sdl2-fork/).
 
 ### 3. Miyoo Mini has no GPU
 
 The SSD202D is two Cortex-A7 cores and **no 3D block**. There is no OpenGL, no
-GLES, no EGL. Everything is CPU blitting through `SDL_Renderer`'s software path
-(the vendor firmware routes this through its own `MI_GFX` layer).
+GLES, no EGL. Everything is CPU blitting through `SDL_Renderer`, which the vendor
+fork routes to its own `MI_GFX` layer.
+
+There *is* a 2D block, and it is better than this project uses. `MI_GFX` does
+scaled and rotated blits, rectangle fills, colour-keying and alpha blending in
+hardware — the SDL2 port exposes one full-screen copy and stubs the rest, which
+is a fact about the port. See [MIYOO-MINI.md § 4.6](MIYOO-MINI.md). "No GPU"
+means no programmable 3D pipeline, not no acceleration.
 
 Consequences:
 
@@ -637,8 +658,13 @@ five presets.
 
 The escape hatch is `-DWREEL_USE_SYSTEM_SDL2=ON`, for the case where a device's
 firmware ships a *patched* SDL2 that upstream cannot replace — which is exactly
-the Miyoo Mini situation if you target stock firmware rather than KMSDRM. Prefer
-the SDK's SDL2 there and let CMake find it in the sysroot.
+the Miyoo Mini situation if you target stock firmware rather than KMSDRM.
+
+Note that "system SDL2" cannot mean "found in the sysroot" on that target. The
+union toolchain predates any SDL2 on this platform and carries **SDL 1.2 only**,
+so `find_package(SDL2)` under `CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY` finds
+nothing. It means headers we supply plus the device's runtime copy, which is what
+`WREEL_SDL2_ROOT` exists for.
 
 ### The Miyoo Mini exception, which is not hypothetical — 2026-07-27
 
@@ -661,19 +687,45 @@ framebuffer backend at all** — SDL 1.2's `fbcon` has no SDL2 successor, and th
 `MI_GFX` and a framebuffer, and no DRM device. Audio is the same story: the same
 config has no ALSA, only `OSS`, `PULSEAUDIO`, `SNDIO`, `DISK` and `DUMMY`.
 
-What runs there is the firmware's patched copy, which registers an `mmiyoo`
-video driver over `libmi_gfx` and `libmi_ao`. OnionOS ships one at
-`/mnt/SDCARD/.tmp_update/lib/parasyte/libSDL2-2.0.so.0`
-([steward-fu/sdl2](https://github.com/steward-fu/sdl2), LGPL-2.1, SDL 2.0.20).
-Two consequences worth knowing before building against it:
+What runs there is an SDL2 ported to the vendor APIs, driving `libmi_gfx` and
+`libmi_ao`. **This project vendors steward-fu's prebuilt and does not borrow the
+firmware's copy** — origin, commit and licence in
+[THIRD-PARTY.md](../THIRD-PARTY.md), reasoning in decision 3 of
+[planning/2026-07-27-onion-bundle](../planning/2026-07-27-onion-bundle/). In
+short: OnionOS's `parasyte` copy has a Mesa EGL that drags in gbm, glapi, X11,
+xcb and libdrm plus its own loader and libc, and steward-fu's prebuilt is
+self-contained.
 
-- **`software` is the only render driver it registers**, which is the path
-  `gfx::renderer` takes on this target anyway.
+| | Vendored `prebuilt/640x480/` | Onion's `parasyte` |
+|---|---|---|
+| Video driver | **`mini`** | `mmiyoo` |
+| Render driver | **`Miyoo Mini`** | `software`, plus its own |
+| In this project | shipped | not used |
+
+Both are SDL 2.0.20 and both are steward-fu's work, from two different source
+trees. **The names are not interchangeable** — an earlier version of this section
+described the shipped library as registering `mmiyoo`, which is the other one, and
+setting `SDL_VIDEODRIVER` to it cost a device run. `launch.sh` now names neither.
+
+Three consequences worth knowing before building against it:
+
+- **The render driver reports as `Miyoo Mini (accelerated)`** on a device with no
+  GPU, so a driver name is not evidence of a GPU. What it accelerates is a
+  full-screen blit through `MI_GFX`, and it exposes almost nothing else — see
+  [MIYOO-MINI.md § 4.3](MIYOO-MINI.md) and defect D25. **Note the verb:** the
+  blitter itself also fills, blends, colour-keys, mirrors and rotates, and the
+  port plumbs none of that through. Corrected 2026-07-31 from "implements almost
+  nothing else", which attributed the port's omissions to the hardware;
+  [MIYOO-MINI.md § 4.6](MIYOO-MINI.md) is the API as the vendor SDK declares it.
 - **Only the core SDL2 goes shared.** SDL2_image, SDL2_ttf and SDL2_mixer stay
   pinned and statically linked, because they consume the SDL2 API rather than the
   display. All 107 SDL symbols they import exist in that 2.0.20 runtime, as do
   all 87 this codebase calls — checked by comparing the dynamic symbol table
   against `nm -u` on the static archives, not assumed.
+- **The shipped copy is modified.** One unused `DT_NEEDED` is removed at bundle
+  time, dropping 21.8 MB of SwiftShader the library references no symbol from.
+  Declared in [THIRD-PARTY.md](../THIRD-PARTY.md), because an LGPL binary we alter
+  may not be altered silently.
 
 Note also that `SDL_KMSDRM ON` in [Dependencies.cmake](../cmake/Dependencies.cmake)
 produces no KMSDRM driver in the cross build, because libdrm and gbm are absent
@@ -686,4 +738,9 @@ Full reasoning, and the bundle that carries the shared object, in
 ## See also
 
 - [DEVELOPMENT.md](DEVELOPMENT.md) — host setup, toolchain install, build commands
+- [MIYOO-MINI.md](MIYOO-MINI.md) — that platform in detail: what its SDL2 can and
+  cannot do, and what was measured on the hardware
+- [../THIRD-PARTY.md](../THIRD-PARTY.md) — shipped binaries we did not build,
+  their pins and their licences
+- [../data/PROVENANCE.md](../data/PROVENANCE.md) — where the assets came from
 - [../README.md](../README.md) — project overview

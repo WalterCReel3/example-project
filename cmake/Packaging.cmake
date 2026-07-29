@@ -65,9 +65,81 @@ define_property(TARGET PROPERTY WREEL_BUNDLE_ASSETS
 # launch_retroarch.sh. An App directory is also exactly what rig::asset_path()
 # resolves against without help.
 #
+# The layout is named for Onion because that is where it was read from, but it
+# is stock MainUI's: the same staged directory, unmodified, was listed and
+# launched by the stock firmware's Apps menu on 2026-07-30. So `onion` here is
+# narrower than what this bundle actually runs on. Renaming the firmware value
+# is deferred until a second firmware needs a genuinely different layout —
+# see docs/MIYOO-MINI.md § 6.1.
+#
 # The bundle is a directory to copy onto an SD card, plus a tarball of it. Not
 # CPack: its value is metadata and generators, and this firmware consumes
 # neither — Onion's own distribution format is a .7z of precisely this tree.
+
+# The vendored SDL2 declares libGLESv2.so as NEEDED and references not one
+# symbol from it, so the loader maps 21.8 MB of SwiftShader before main() to
+# satisfy a reference that does not exist. Dropping the entry is what
+# `ld --as-needed` would have done at link time had the vendor passed the flag.
+#
+# ON by default because the bundle is otherwise three quarters GL that nothing
+# on a device with no GPU can call. Turn it off to ship the runtime exactly as
+# the vendor built it.
+option(WREEL_ONION_DROP_GLES
+       "Drop the unused libGLESv2.so dependency from the bundled SDL2" ON)
+
+# Appends the strip step to a bundle, and takes the library out of the list of
+# files to stage. Both halves are conditional on the same thing, so they cannot
+# disagree: a bundle either carries libGLESv2.so and depends on it, or carries
+# neither.
+#
+# The removal is guarded by the symbol comparison that justifies it, evaluated
+# at build time against the library actually being shipped — see
+# scripts/drop-unused-needed.sh and planning/2026-07-29-gles-free-runtime/.
+function(_wreel_onion_drop_gles app_dir libs_var out_command)
+    set(${out_command} "" PARENT_SCOPE)
+
+    if(NOT WREEL_ONION_DROP_GLES)
+        return()
+    endif()
+
+    # Absolute, because the strip step runs from the build directory rather than
+    # from wherever WREEL_ONION_SDL2_RUNTIME was written relative to.
+    get_filename_component(runtime_dir "${WREEL_ONION_SDL2_RUNTIME}" ABSOLUTE)
+    set(provider "${runtime_dir}/libGLESv2.so")
+    if(NOT EXISTS "${provider}")
+        # A runtime that never carried it. Nothing to do, and not a problem.
+        return()
+    endif()
+
+    # Optional tools rather than requirements: a host without them ships the
+    # larger bundle, which is correct, just bigger. readelf is as load-bearing
+    # as patchelf here — without it the check cannot run, and the removal stays
+    # conditional on the check rather than on the tool that performs it.
+    find_program(WREEL_READELF NAMES readelf)
+    find_program(WREEL_PATCHELF NAMES patchelf)
+    if(NOT WREEL_READELF OR NOT WREEL_PATCHELF)
+        message(STATUS
+            "  keeping libGLESv2.so (21.8 MB) — needs readelf and patchelf, and "
+            "one of them is missing. The toolchain image carries both; rebuild "
+            "it if it predates docker/miyoomini.Dockerfile's patchelf layer.")
+        return()
+    endif()
+
+    # By name rather than by path: the glob and the normalisation above need not
+    # produce the same spelling of the same file.
+    list(FILTER ${libs_var} EXCLUDE REGEX "/libGLESv2\\.so$")
+    set(${libs_var} "${${libs_var}}" PARENT_SCOPE)
+
+    set(${out_command}
+        COMMAND "${CMAKE_COMMAND}" -E env
+                "READELF=${WREEL_READELF}" "PATCHELF=${WREEL_PATCHELF}"
+                "${CMAKE_SOURCE_DIR}/scripts/drop-unused-needed.sh"
+                "${app_dir}/lib/libSDL2-2.0.so.0" "libGLESv2.so"
+                "${provider}" "${app_dir}/lib/libGLESv2.so"
+        PARENT_SCOPE)
+
+    message(STATUS "  dropping the unused libGLESv2.so dependency (21.8 MB)")
+endfunction()
 
 function(_wreel_add_onion_bundle target)
     set(bundle_root "${CMAKE_BINARY_DIR}/bundle/onion")
@@ -128,9 +200,13 @@ function(_wreel_add_onion_bundle target)
                 "libSDL2-2.0.so.0.")
         endif()
         file(GLOB runtime_libs "${WREEL_ONION_SDL2_RUNTIME}/*.so*")
+
+        _wreel_onion_drop_gles("${app_dir}" runtime_libs gles_command)
+
         list(APPEND asset_commands
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                    ${runtime_libs} "${app_dir}/lib/")
+                    ${runtime_libs} "${app_dir}/lib/"
+            ${gles_command})
         message(STATUS "  runtime from ${WREEL_ONION_SDL2_RUNTIME}")
     else()
         message(WARNING
