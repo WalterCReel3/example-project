@@ -20,6 +20,23 @@ const char* const names[] = {"up", "down", "left", "right", "a",     "b",
 // Keyboard bindings. Letters rather than a chorded layout because the scrolling
 // message tells the reader "press a for palette", and that instruction should
 // be literally true on a keyboard as well as on a pad.
+//
+// The second group is not a convenience: on the Miyoo Mini the pad IS the
+// keyboard. Its SDL2's video driver reads /dev/input and translates Linux
+// KEY_* codes straight to keysyms, so no joystick is ever enumerated — the demo
+// logs "no pad attached, keyboard only" on a handheld covered in buttons, and
+// every face button arrives as an ordinary key press.
+//
+// Which keys those are is not a guess. They are Onion's own
+// src/common/system/keymap_sw.h, the header its whole UI is built against:
+//
+//     A = SPACE       B = LCTRL       X = LSHIFT      Y = LALT
+//     L1 = e          R1 = t          L2 = TAB        R2 = BACKSPACE
+//     SELECT = RCTRL  START = RETURN  MENU = ESCAPE
+//
+// This is why the first device run took the D-pad and Escape but ignored A, B,
+// X and Y entirely: arrows and Escape happened to coincide, and nothing else
+// did. Where the two groups collide they agree — TAB is Select in both.
 Button from_key(SDL_Keycode key, bool& found)
 {
     found = true;
@@ -33,20 +50,27 @@ Button from_key(SDL_Keycode key, bool& found)
     case SDLK_RIGHT:
         return Button::Right;
     case SDLK_a:
+    case SDLK_SPACE:
         return Button::A;
     case SDLK_b:
+    case SDLK_LCTRL:
         return Button::B;
     case SDLK_x:
+    case SDLK_LSHIFT:
         return Button::X;
     case SDLK_y:
+    case SDLK_LALT:
         return Button::Y;
     case SDLK_q:
+    case SDLK_e:
         return Button::L;
     case SDLK_w:
+    case SDLK_t:
         return Button::R;
     case SDLK_RETURN:
         return Button::Start;
     case SDLK_TAB:
+    case SDLK_RCTRL:
         return Button::Select;
     default:
         break;
