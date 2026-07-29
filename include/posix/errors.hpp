@@ -7,13 +7,18 @@
 namespace posix
 {
 
+// No trailing semicolon: the macro expands to a class definition and each use
+// site supplies the `;` that terminates it. Ending the macro with one too makes
+// every use an extra empty declaration at namespace scope, which GCC 8.3 — the
+// oldest compiler in the matrix, and the only one that ships on a device —
+// rejects under -Wpedantic.
 #define POSIX_ERROR_DECL(EID,ENAME,EBASE) \
 class ENAME : public EBASE { \
 public: \
   virtual char const * what () const throw() { \
     return "unistd_error::" #ENAME " (" #EID ")"; \
   } \
-};
+}
 
 POSIX_ERROR_DECL(EPERM, operation_not_permitted, std::exception);
 POSIX_ERROR_DECL(ENOENT, no_such_file, std::exception);

@@ -34,6 +34,12 @@ cscope.*
 # Runtime artifacts produced by the demos
 runlog.txt
 *.log
+
+# Per-device launcher overrides. cmake/templates/onion/launch.sh.in sources
+# local.env beside the binary on the SD card; it is deliberately not generated
+# and not part of the bundle, so a copy pulled back for inspection must not be
+# committed either.
+local.env
 core
 core.*
 
