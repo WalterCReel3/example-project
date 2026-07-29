@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include <gfx/renderer/layer.hpp>
+
 //============================================================================
 //
 // The glyph sheet
@@ -52,6 +54,21 @@ public:
     // [first_char, last_char] becomes a space.
     int first_char() const { return _first; }
     int last_char() const { return _first + _count - 1; }
+
+    // Plots `text` into a locked layer at (x, y), scaled and in one colour.
+    //
+    // This is the CPU path in its general form. It exists as a method rather
+    // than inside the scroller because the scroller is no longer its only
+    // caller: on the Miyoo Mini nothing drawn through SDL_RenderCopy survives
+    // the driver's rotation, so the HUD has to be plotted here too, and two
+    // copies of a glyph loop would drift.
+    //
+    // x is a double because a scroller moves sub-pixel; it is floored per
+    // glyph. Clipping is per output row rather than per pixel — hoisting that
+    // test is most of the difference between this being competitive with a
+    // driver blit and not.
+    void plot(gfx::renderer::LayerLock& pixels, const std::string& text,
+              double x, int y, int scale, std::uint32_t color) const;
 
     // Whether the glyph pixel at (x, y) within the cell for `c` is set.
     // Unchecked on x and y, which must be inside the cell.

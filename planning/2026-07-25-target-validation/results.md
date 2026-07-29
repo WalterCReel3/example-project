@@ -3,9 +3,11 @@
 Real output, per preset, rather than a summary. The deliverable this snapshot's
 checklist asks for.
 
-**Nothing here has run on a device.** Every number below comes from the dev box or
-from qemu, and the one thing qemu cannot tell you is how fast anything is. Read the
-caveats before quoting a figure.
+~~**Nothing here has run on a device.**~~ **A Miyoo Mini Plus ran this from
+2026-07-28** — see the entries from that date, which are the only ones taken on
+hardware. Everything dated 2026-07-27 comes from the dev box or from qemu, and the
+one thing qemu cannot tell you is how fast anything is. Read the caveats before
+quoting a figure, and check which machine produced it.
 
 ---
 
@@ -182,7 +184,8 @@ lock, the plotting loop, the scaled blit, present, and the BMP writer.
 ### Cross-architecture pixel equality
 
 `--screenshot` steps a fixed 1/60 per frame rather than using wall-clock time, so
-the image depends only on the frame index. That makes it comparable across builds:
+the image depends only on the frame index. That makes it comparable across builds —
+**with `--no-hud`, which the recipe originally recorded here omitted**:
 
 ```sh
 # armv7 under qemu, and native x86-64, both at frame 3
@@ -194,6 +197,181 @@ same result on both architectures, which matters more here than it looks: `char`
 signedness differs between them (D10), and a pixel format written as a packed
 `Uint32` would break on a big-endian target. This is also usable as a regression
 fixture — a future change that alters the picture will change the bytes.
+
+> **Corrected 2026-07-27, when the fixture was re-run against a third build.** The
+> conclusion stands and is now stronger; the *recipe* above was not reproducible.
+>
+> The HUD reports measured microseconds, so with it on — which is the default —
+> **the same binary does not agree with itself between two runs**:
+>
+> ```sh
+> coppers --screenshot a.bmp --frames 3     # HUD on, the default
+> coppers --screenshot b.bmp --frames 3
+> cmp a.bmp b.bmp     # -> differ at byte 1196455
+>
+> coppers --screenshot a.bmp --frames 3 --no-hud
+> coppers --screenshot b.bmp --frames 3 --no-hud
+> cmp a.bmp b.bmp     # -> identical
+> ```
+>
+> So `--no-hud` is not optional for this comparison, it is what makes it a
+> comparison. Whether the original run passed it and failed to record it, or
+> compared file sizes, cannot be recovered — but as written the check fails.
+>
+> With it, the equality now covers **three** builds rather than two, all
+> byte-identical at 1,228,922 bytes:
+>
+> | Build | Compiler | Flags |
+> |---|---|---|
+> | x86-64 | GCC 12.2 | `-g` |
+> | armv7 (Debian cross) | GCC 12.2 | `-Os` |
+> | armv7 (**device toolchain**) | **GCC 8.3** | `-Os -mcpu=cortex-a7 -mfpu=neon-vfpv4` |
+>
+> The third row is the one worth having. Same pixels out of a compiler four major
+> versions older, at `-Os`, with NEON and hard-float enabled — so nothing in the
+> bar arithmetic depends on GCC 12's codegen or on x86 floating point, which was an
+> assumption nobody had tested until there was a device toolchain to test it with.
+
+---
+
+## 2026-07-28 — step 4: it runs on a Miyoo Mini Plus
+
+**The first time any part of this project has executed on hardware.** OnionOS, via
+the `App/Coppers` bundle, launched from the Apps menu with no arguments.
+
+What worked on the first real attempt: the GCC 8.3 binary loaded, the vendored
+SDL2 resolved, assets resolved beside the executable, the mixer opened at the
+handheld profile, **tracker music played**, and **input responded**. What did not:
+nothing appeared on the panel.
+
+```
+Linux (none) 4.9.84 #1133 SMP PREEMPT Fri May  5 21:30:37 PDT 2023 armv7l
+libSDL2-2.0.so.0 => /mnt/SDCARD/App/Coppers/lib/libSDL2-2.0.so.0
+libmi_gfx.so     => /config/lib/libmi_gfx.so
+...
+[I] gfx system initialised, video driver Mini
+[I] renderer context 0x0 via Miyoo Mini (accelerated)
+[I] assets: /mnt/SDCARD/App/Coppers/data/ (beside the executable)
+[I] audio: 22050 Hz, 2 ch, 2048 sample buffer, 8 voices, driver Miyoo Mini
+[I] music: playing complications.mod
+[I] layer: 1x1
+```
+
+**`0x0`.** `SDL_GetRendererOutputSize` returns a zero size on this driver *and
+reports success*, and the return value was not checked, so the layer clamped
+itself to 1x1 and every frame drew nothing (D22). The black panel was not the
+display path failing — the display path was never asked to show anything.
+
+Underneath it, a second independent fault: 2437 frames each produced
+
+```
+[E] draw_surface: could not upload texture: Texture dimensions are limited to 640x480
+```
+
+The device caps textures at the panel size, and the HUD's single line rasterises
+to ~735px (D23). It would have been missing even with the size right.
+
+### What this run settles
+
+| Question, and where it was asked | Answer |
+|---|---|
+| Does upstream SDL2 work here? | No, and the vendored `mmiyoo` SDL2 does. `video driver Mini` |
+| Is `WREEL_USE_SYSTEM_SDL2` the right call? | Yes. Vendored runtime loaded from the bundle's `lib/`; `libmi_*` came from `/config/lib` |
+| Does `rig::asset_path()` work on a device? | **Yes** — `(beside the executable)`, first try, from a firmware launcher |
+| Does the mixer open? | Yes, at the handheld profile, once `audioserver` is stopped |
+| Is the audio contention real? | Yes — `MI_AO_SetPubAttr ... 0xa0052009` before the fix, silent after |
+| Max texture size | **640x480**, the panel exactly. New constraint, `docs/TARGETS.md § 3a` |
+| Render driver | Reports as `Miyoo Mini (accelerated)` — *not* `software`, on a device with no GPU |
+| Fill rate | **Still unmeasured.** Nothing was drawn |
+
+The last row is the point: the measurement this whole snapshot exists for did not
+happen, because the instrument was reporting a 1x1 layer. Both faults are fixed
+and the bundle rebuilt; the numbers need another trip.
+
+### Two notes worth keeping
+
+**`HOME` was `/mnt/SDCARD/RetroArch/`** before `launch.sh` overrode it — so
+decision 4 of the bundle snapshot was load-bearing rather than tidy. Without it
+the run log would have gone into RetroArch's directory.
+
+**Onion preloads `libpadsp.so`** into launched programs (`LD_PRELOAD` was set at
+entry). The launcher unsets it, as Onion's own ports launcher does.
+
+---
+
+## 2026-07-27 — step 3: GCC 8.3 compiles this codebase, after one fix
+
+**The device toolchain build, which this document has called "the single most
+valuable step" since it was written.** Run inside `union-miyoomini-toolchain` via
+`docker/miyoomini.Dockerfile`, which layers CMake 3.31.6 and Ninja over the base
+image's Debian 10 CMake 3.13.
+
+```console
+$ arm-linux-gnueabihf-g++ --version
+arm-linux-gnueabihf-g++ (GNU Toolchain for the A-profile Architecture 8.3-2019.03
+                         (arm-rel-8.36)) 8.3.0
+```
+
+**First build: 53 errors, one cause.** `POSIX_ERROR_DECL` ends in a semicolon and
+so does every use of it, making each an empty declaration at namespace scope.
+Legal since C++11, silent on GCC 12 under `-Wpedantic`, an error on GCC 8.3.
+Recorded as [D21](../2026-07-25-cxx17-modernization/defects.md) and fixed by
+dropping the semicolon from the macro.
+
+**Second build: zero errors, zero warnings, with `WREEL_WERROR=ON`.**
+
+Everything this document predicted would bite did not:
+
+| Predicted risk | Outcome on GCC 8.3 |
+|---|---|
+| `nlohmann/json` 3.12 | compiles |
+| doctest under `DOCTEST_CONFIG_SUPER_FAST_ASSERTS` | compiles, and all 15 suites pass |
+| SDL2 2.32 against a 2019 sysroot | compiles |
+| `std::from_chars` for integers | present, `util::from_string` works |
+| `inline constexpr` callables in `util/ascii.hpp` | compiles |
+| `if constexpr` in `util/number.hpp` | compiles |
+| pugixml 1.16, glm 1.0.3 | compile |
+| `std::filesystem` / `-lstdc++fs` link | resolves |
+| `-Os` codegen | see the pixel-equality note below — identical output |
+
+So the C++17 ceiling recorded in `docs/TARGETS.md` is accurate: the language level
+this project restricted itself to is the language level this compiler has. The one
+failure was not a C++17 gap at all, it was a pedantic diagnostic that four newer
+compilers had been letting through.
+
+### The binary, and why it is the first shippable one
+
+```console
+$ readelf -d build/gcc83/bin/coppers | grep NEEDED
+  libdl.so.2   libm.so.6   libpthread.so.0   libc.so.6   ld-linux-armhf.so.3
+
+$ objdump -T build/gcc83/bin/coppers | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1
+GLIBC_2.28
+```
+
+`GLIBC_2.28`, against the `GLIBC_2.36` the Debian cross-GCC build requires — which
+is the whole of `docs/TARGETS.md § 2` in two lines. The toolchain's sysroot is
+glibc 2.28, so that is the floor these binaries carry, and Onion's own SDL2 needs
+at most 2.27, which is consistent with a device at or above 2.28.
+
+### It runs
+
+15/15 doctest suites under `qemu-arm-static` against the toolchain's sysroot:
+
+```sh
+qemu-arm-static -L <sysroot> build/gcc83/bin/test_*      # 15 passed, 0 failed
+```
+
+The usual caveat applies and is worth repeating: **qemu says nothing about speed.**
+It says the code executes.
+
+**Note what this build is not.** It links the pinned static SDL2, which has no
+video driver for this device, so on hardware it will run headless and draw
+nothing. That is still a useful first artefact — `SDL_VIDEODRIVER=dummy coppers
+--screenshot` over SSH proves a GCC 8.3 binary loads and executes on the device
+without needing the display question answered first. The display needs the
+firmware's SDL2; see
+[onion-bundle](../2026-07-27-onion-bundle/).
 
 ---
 
@@ -272,3 +450,73 @@ cat ~/.local/share/wreel/coppers/coppers.log       # or the firmware's pref path
 
 That covers every open question in step 4 except whether upstream SDL2 runs on
 stock firmware at all, which is answered by whether the first command works.
+
+---
+
+## 2026-07-28 — the software renderer cannot present, and that settles the model
+
+The open question from the bundle work was whether the Miyoo Mini's crippled
+`mini` render backend could be sidestepped by asking for SDL's own software
+renderer, which is compiled into the same library. **It can be selected, and it
+cannot present.**
+
+```
+--- local.env ---
+SDL_RENDER_DRIVER=software
+[I] renderer context 640x480 via software (software)
+[I] coppers: software 320x240 layer, 640x480 window, 965 frames, 59.4 fps,
+             plot 0.838 blit 5.371 present 0.004 ms, scroller cpu 493 us
+```
+
+Black screen, 965 frames, and a **present cost of 4 microseconds** where the
+`mini` backend spends 11-13 ms waiting on the flip. Nothing reached the panel.
+The reason is three lines of the vendor driver:
+
+```c
+int Mini_UpdateWindowFramebuffer(_THIS, SDL_Window *window, const SDL_Rect *rects, int numrects)
+{
+    debug("%s\n", __func__);
+    return 0;
+}
+```
+
+SDL's software renderer composites into a window surface and presents it with
+`SDL_UpdateWindowSurface`, which routes to that function. It is a no-op. The
+surface is created correctly (`Mini_CreateWindowFramebuffer` really does make
+one), drawn into correctly, and then discarded. The only route to the panel in
+this library is `Mini_QueueCopy` -> `GFX_Copy` -> `GFX_Flip`, which belongs to
+the `mini` render backend.
+
+**So the choice that looked like a choice is not one.** On this device:
+
+- The panel can only be reached through the `mini` backend.
+- That backend implements one drawing operation, `RenderCopy`, always rotated
+  180 degrees with x mirrored (D25). Fills, points, geometry, `CopyEx` and
+  `ReadPixels` do nothing.
+- A full-screen copy survives the rotation; a sub-rectangle copy does not.
+
+Which leaves exactly one usable model, and it is the one the hardware was asking
+for all along: **compose the whole frame yourself into a single full-screen
+streaming texture, and hand it over once.** A software double buffer with a
+hardware blitter and a page flip underneath it — `yres_virtual = yres * 2`,
+`MI_GFX_BitBlit` into the back page, `FBIOPAN_DISPLAY` to flip.
+
+That is not a workaround. It is what `gfx::renderer::Layer` already is, and the
+measurements say it is comfortable: **0.84 ms to plot a 320x240 field, 1.05 ms
+for 640x480**, against a 16.7 ms frame. The fill-rate anxiety that motivated
+this whole snapshot was misplaced by a wide margin; the constraint was never
+bandwidth, it was what the driver would accept.
+
+### Two false starts worth recording, because both looked like driver bugs
+
+The first `SDL_RENDER_DRIVER=software` run had the file named `locals.env`, so it
+was never sourced. The second was sourced and still had no effect, because a
+sourced `FOO=bar` sets a **shell** variable and a child process receives the
+**environment** — the launcher echoed `software` from its own shell while
+`coppers` was never told. Fixed with `set -a` around the source.
+
+Both failures presented identically to "SDL ignored the hint", and the second
+sent this investigation into the library's symbol table to check whether
+`SW_RenderDriver` was even registered. It was. The lesson is narrow and worth
+keeping: **a diagnostic that prints a value the program was never given is worse
+than no diagnostic**, and the launcher was doing exactly that.

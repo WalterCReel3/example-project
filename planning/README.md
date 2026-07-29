@@ -40,7 +40,8 @@ Each `README.md` opens with one of:
 | [2026-07-25-software-3d-rasteriser](2026-07-25-software-3d-rasteriser/) | `snapshot` | Deliberately not scheduled. Records what a CPU rasteriser would cost, and the cheaper alternatives |
 | [2026-07-25-target-validation](2026-07-25-target-validation/) | `in-progress` | Prove the cross and Steam presets on real toolchains and hardware. Steps 1–2 done; the device toolchain, containers and hardware remain |
 | [2026-07-26-coppers-cracktro](2026-07-26-coppers-cracktro/) | `in-progress` | A copper-bar cracktro on `gfx::renderer`. Stages 0–3 landed 2026-07-27: `rig`, the locked-pixels layer, `Texture` and the source-rect blit, both scroller paths, music and input. **Stage 4 is the on-device measurement and needs hardware** |
-| [2026-07-25-packaging-distribution](2026-07-25-packaging-distribution/) | `snapshot` | Handheld bundles per firmware, Steam depot layout. **Unblocked 2026-07-27** and now the next thing to do: `coppers` is something worth putting on an SD card, so the bundle and the device validation run are one trip |
+| [2026-07-25-packaging-distribution](2026-07-25-packaging-distribution/) | `in-progress` | Handheld bundles per firmware, Steam depot layout. Its first firmware landed 2026-07-27 in the snapshot below; the remaining three layouts and the Steam depot are still open |
+| [2026-07-27-onion-bundle](2026-07-27-onion-bundle/) | `in-progress` | Getting `coppers` onto the Miyoo Mini Plus in hand. **Answers the project's largest open question — upstream SDL2 cannot drive that panel, so the firmware's patched copy is mandatory.** The `App/Coppers/` bundle is implemented and verified on the dev box; the device trip is stages 0–3 |
 | [2026-07-25-midi-live-visuals](2026-07-25-midi-live-visuals/) | `snapshot` | The secondary goal: MIDI-driven demo-style graphics |
 
 ## Ordering
@@ -155,3 +156,28 @@ Three things are recorded as carried forward, in
 [packaging-distribution](2026-07-25-packaging-distribution/): the unlicensed glyph
 sheet, the wider "every shipped asset needs a known licence" problem, and the
 `skratch` input port.
+
+## Revised 2026-07-27: the SDL2 question is answered, and it changes the order
+
+[onion-bundle](2026-07-27-onion-bundle/) went looking for a bundle layout and found
+something larger. **Upstream SDL2 cannot reach the Miyoo Mini's panel** — it builds
+`dummy`, `offscreen` and `wayland` for that preset, and SDL2 has no framebuffer
+backend anywhere in its tree, so this is a fact about which drivers exist rather
+than a configuration to correct. The firmware's patched `mmiyoo` copy is mandatory.
+
+Three consequences for the ordering above:
+
+- The question that both [target-validation](2026-07-25-target-validation/) and
+  [packaging-distribution](2026-07-25-packaging-distribution/) were deferring to the
+  first device run is settled without a device. What the device still decides is
+  narrower: whether `MI_GFX` and the audio server yield to our process.
+- **The device toolchain container was the single blocking prerequisite for
+  everything on hardware — and it is done, the same day.** GCC 8.3 builds the tree
+  with zero errors and zero warnings after one fix ([D21](2026-07-25-cxx17-modernization/defects.md)),
+  15/15 suites pass under qemu, and the binary's glibc floor is 2.28 rather than the
+  Debian cross build's 2.36. That is the first artefact this project has produced
+  that can load on a handheld. What remains before a device run is the SDL2 to link
+  against, not the compiler.
+- "Everything is static by design" is no longer true on `miyoomini`. One shared
+  object, documented, on one target — but a claim that was load-bearing in
+  packaging's reasoning, so it is corrected there rather than left to drift.

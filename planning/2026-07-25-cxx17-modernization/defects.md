@@ -802,3 +802,296 @@ the old destructor before the fix was kept: `test_audio` holds two `Music`
 objects and asserts the survivor is still playing after the other is released,
 and `test_playlist` now asserts `playing()` at every step rather than only the
 track name.
+
+## D21 — `POSIX_ERROR_DECL` ends in a semicolon, and GCC 8.3 rejects all 53 uses
+
+**HYGIENE**, in the sense that it compiles everywhere the tree had been compiled —
+and a hard build failure on the only compiler that ships on a device.
+[`include/posix/errors.hpp:10`](../../include/posix/errors.hpp)
+
+```cpp
+#define POSIX_ERROR_DECL(EID,ENAME,EBASE) \
+class ENAME : public EBASE { \
+  ...
+};                          // <- this one
+
+POSIX_ERROR_DECL(EPERM, operation_not_permitted, std::exception);
+                                                                ^  and this one
+```
+
+The macro already terminates its own class definition, so every use site's
+semicolon is a second, empty declaration at namespace scope. C++11 made that
+legal, and GCC 12 accepts it silently under `-Wpedantic`. **GCC 8.3 does not**:
+
+```
+include/posix/errors.hpp:18:64: error: extra ';' [-Werror=pedantic]
+```
+
+53 of them — one per errno — and since `errors.hpp` is included by everything
+downstream of `wreel::posix`, that is the whole tree.
+
+**Found 2026-07-27, on the first build this codebase has ever had with the device
+toolchain**, inside `union-miyoomini-toolchain`. It is the entire delta between
+GCC 12.2 and GCC 8.3 on this tree: 53 errors, one cause, zero warnings otherwise.
+Everything the target-validation snapshot predicted would bite — `nlohmann/json`
+3.12, doctest's fast-assert macros, `inline constexpr` callables in
+`util/ascii.hpp`, `std::from_chars` for integers, `if constexpr` in
+`util/number.hpp`, `decltype(&::glFoo)` — compiled without complaint.
+
+**The general lesson is about the verification, not the semicolon.** The status
+table said "zero warnings on all five presets" and it was true; the `miyoomini`
+preset had only ever been built with Debian's armhf cross-GCC 12.2 in
+compile-check mode, which is a different compiler from the one that preset
+exists to represent. A preset can be green and still have never run the toolchain
+it is named after. This is D19's shape again — the check that was believed to be
+running was running against something else.
+
+**Fixed** 2026-07-27 by dropping the trailing semicolon from the macro, which is
+the standard idiom and makes each use site exactly one declaration.
+
+Two things in this header were **not** fixed, deliberately, because they are
+separate changes that want their own commits: the include guard
+`__POSIX_ERRORS_HPP__` and the function `__dispatch_exception` are both reserved
+identifiers (leading double underscore), and `CLAUDE.md` prefers `#pragma once`
+over guards in any case.
+
+## D22 — `SDL_GetRendererOutputSize` returns 0x0 on the Miyoo Mini, unchecked
+
+**WRONG**, and it is the reason the first device run drew nothing.
+`gfx/renderer/context.cc`
+
+```cpp
+SDL_GetRendererOutputSize(_renderer, &_width, &_height);
+```
+
+The return value is discarded. On every desktop driver that call fills in a real
+size, so nothing ever exercised the other path. The Miyoo Mini's SDL2 — a vendor
+fork whose video driver talks to MI_GFX — **reports success and writes 0x0**.
+
+`_width` and `_height` are initialised to 0 in the constructor, so the failure
+left them at zero and everything downstream degraded quietly and plausibly:
+
+```
+[I] renderer context 0x0 via Miyoo Mini (accelerated)
+[I] layer: 1x1
+[I] coppers: window 0x0, layer 1x1, driver Miyoo Mini (accelerated)
+```
+
+`Demo::set_layer_height` clamps its layer to at least 1x1, which is exactly the
+kind of defensive clamp that turns a detectable error into a working program that
+does nothing. Audio played, input responded, and the panel stayed black — the
+three symptoms pointing at three different subsystems, none of them the culprit.
+
+**Fixed** 2026-07-27 by asking every question SDL can answer — renderer output,
+window size, current display mode, then the size the caller requested — taking
+the first usable one, and throwing if none of them gives a size. A renderer with
+an unknown output size is not a renderer, and continuing was worse than failing.
+
+**All four are probed and logged even after one succeeds**, at the reviewer's
+suggestion, because the comparison between devices is the useful part. The dev
+box reports:
+
+```
+[I] output size: renderer 640x480 (reported success)
+[I] output size: window 640x480
+[I] output size: display 0 mode 1024x768 @ 60 Hz
+[I] output size: requested 640x480
+```
+
+which also shows why the order matters: in a window, the display mode is the
+desktop's and would be the wrong answer.
+
+## D23 — the HUD rasterises wider than the Miyoo Mini's maximum texture
+
+**WRONG.** `coppers/demo.cc`
+
+The device's renderer reports a maximum texture size of **640x480** — the panel,
+exactly. Every desktop driver in the matrix allows 16384, so nothing had ever
+approached the limit. The HUD was one line:
+
+```
+%.1f fps  plot %.2f  blit %.2f  present %.2f  scroll %s %.0f us  %dx%d->%dx%d  %s  %s%s
+```
+
+which rasterises to roughly 735px in `Speedy.fon` at 10pt — measured after the
+split as 301px plus 434px. Over the limit, so the upload failed **every frame**:
+
+```
+2437 Texture dimensions are limited to 640x480
+2437 [E] draw_surface: could not upload texture: Texture dimensions are limited to 640x480
+```
+
+2437 frames, 2437 identical pairs of lines, and no HUD. Note that the demo was
+otherwise fine — this was on top of D22, and would have hidden the HUD even once
+the output size was correct.
+
+**Fixed** 2026-07-27 by splitting the HUD into two lines, and by logging the
+measured widths once per run so the next reader does not have to trust that the
+split was wide enough:
+
+```
+[I] hud: line widths 301px and 434px, output 640px wide
+```
+
+**The general constraint is bigger than the HUD and belongs in docs/TARGETS.md:**
+on this device *no texture may exceed the panel*. That applies to any future
+atlas, tilemap page or pre-rendered background, and it is invisible on every
+other target. `data/glyphs-16x16.png` is 320x48 and safe; a 1024-wide atlas would
+not be.
+
+## D24 — `FULLSCREEN_DESKTOP` against a driver with no desktop mode gives a 0x0 window
+
+**WRONG**, and the root cause D22 was masking. `gfx/renderer/context.cc`
+
+`Context` asked for `SDL_WINDOW_FULLSCREEN_DESKTOP` unconditionally, which sizes
+the window from the display's *desktop mode*. The Miyoo Mini's driver never sets
+one — from its `Mini_VideoInit`:
+
+```c
+SDL_VideoDisplay display = {0};        /* desktop_mode and current_mode zeroed */
+... SDL_AddDisplayMode(&display, &mode) x10 ...
+SDL_AddVideoDisplay(&display, SDL_FALSE);
+```
+
+Ten modes are added to the list and none is ever made the desktop mode. So the
+window is 0x0, and the driver's presentation callback does:
+
+```c
+SDL_Rect srt = { 0, 0, vid_win->w, vid_win->h };   /* 0x0 */
+GFX_Copy(gfx.tmp.virAddr, srt, drt, ...);          /* copies nothing, no error */
+```
+
+A zero-area blit to the panel, sixty times a second, reporting success. The
+symptom was a black screen with working audio and input, and — after D22 was
+fixed and the layer was correctly sized — a black screen with 1297 rendered
+frames and no errors at all.
+
+**Fixed** 2026-07-27 with a three-rung ladder, because the two fullscreen flags
+fail differently here and the difference is the fix:
+
+1. `FULLSCREEN_DESKTOP` where the driver reports a usable desktop mode.
+2. Otherwise plain `FULLSCREEN`, which sizes from the closest *listed* mode —
+   and this driver lists 640x480, with a `SetDisplayMode` that returns success
+   without doing anything. Exclusive fullscreen works where the desktop variant
+   cannot.
+3. Otherwise a window of the requested size. Not a degraded mode on such
+   hardware: that driver has no window manager and scales whatever the window
+   holds to the whole framebuffer, so a "windowed" surface is presented exactly
+   as a fullscreen one. Last because everywhere else the distinction is real.
+
+Which rung was taken is logged.
+
+## D25 — the Miyoo Mini's render backend implements almost nothing
+
+**Not our defect**, recorded because it constrains what `gfx::renderer` may do on
+this target and it is invisible from any other one.
+
+The `mini` render backend in the device's SDL2 — the driver that reports itself
+as `Miyoo Mini (accelerated)` — implements exactly one drawing operation:
+
+| Entry point | Implementation |
+|---|---|
+| `Mini_QueueCopy` | the only one that draws |
+| `Mini_QueueFillRects` | `return 0` — no-op |
+| `Mini_QueueDrawPoints` | `return 0` — no-op |
+| `Mini_QueueGeometry` | `return 0` — no-op |
+| `Mini_QueueCopyEx` | `return 0` — no-op, so rotation and flip silently do nothing |
+| `Mini_RenderReadPixels` | `SDL_Unsupported()` |
+| `max_texture_width/height` | 640 / 480 |
+
+And the one that does draw is not neutral:
+
+```c
+dst.x = (vid_win->w - (dstrect->x + dstrect->w)) * scale;   /* x mirrored */
+dst.y = dstrect->y * scale;                                 /* y not */
+GFX_Copy(pixels, src, dst, pitch, 0, E_MI_GFX_ROTATE_180);  /* always rotated */
+```
+
+Every `SDL_RenderCopy` is rotated 180 degrees with its x placement mirrored. A
+**full-screen** copy survives that — `dst.x` works out to 0 and a rotated field
+of horizontal bars looks like a field of horizontal bars, which is why `coppers`
+showed its copper bars correctly. Every **sub-rectangle** copy does not: each
+glyph and the HUD are individually rotated and displaced, which on a device
+reads as "the text is broken".
+
+Consequences for this project, in order of how much they cost:
+
+- **`Texture` plus a source rect — the whole of `Context::draw()` — is unusable
+  on this target.** Stage 2 of the coppers snapshot concluded the Miyoo Mini
+  should plot text by hand because it is 4.3x faster. It turns out to be a
+  correctness requirement, not a performance preference.
+- **`software-2d-sprites-tiling` is affected directly.** `Atlas`,
+  `AnimatedSprite` and `TileMap` are all source-rect blits by definition. On this
+  device they must be composited into a locked layer instead, or the module needs
+  a CPU path.
+- **`save_screenshot()` cannot work here.** `SDL_RenderReadPixels` is
+  unsupported, so the check target-validation relies on for headless verification
+  fails on the one device it was added for. The layer's pixels are ours before
+  they are uploaded, so a CPU-side fallback is possible and is the obvious fix.
+- **`SDL_RenderFillRect` does nothing**, so anything that clears or fills by
+  rectangle is a silent no-op.
+
+### D25 — read-back, mitigated 2026-07-28
+
+`save_screenshot()` still cannot work through that renderer, and nothing we do
+makes `SDL_RenderReadPixels` supported. What changed is that a screenshot no
+longer depends on it.
+
+`gfx::renderer::Layer` gained `set_readback(true)`, which plots into a buffer the
+Layer owns and uploads it on unlock instead of writing straight into SDL's
+staging memory. That is not merely a convenience: **a locked texture is
+write-only by contract**, so reading back what was just plotted is undefined even
+where it appears to work. Owning the buffer is what makes the frame readable at
+all.
+
+`coppers --screenshot` now enables it, tries the renderer first, and falls back
+to `Layer::save_bmp()`. The two images differ and the code says so: the fallback
+is the layer as plotted, before scaling to the window and without anything drawn
+over it through the renderer — which on that device is nothing that works anyway.
+
+Off by default, because it costs a full-frame copy per lock and a timed run must
+not pay for it. The screenshot path changing the numbers the demo exists to
+produce would be the same class of error as the batching one in stage 1.
+
+Covered by three cases in `tests/test_renderer.cc`, including a two-tone image
+whose halves would show a stride error as a diagonal. Tested on the dev box
+deliberately: on any machine a developer owns, the renderer answers and the
+fallback never runs, so it is exactly the kind of path that rots unobserved.
+
+### D25 — resolved as architectural, 2026-07-28
+
+The open question was whether this backend could be sidestepped by selecting
+SDL's own software renderer, which is compiled into the same library. It cannot.
+Selecting it works; presenting does not:
+
+```c
+int Mini_UpdateWindowFramebuffer(_THIS, SDL_Window *window, const SDL_Rect *rects, int numrects)
+{
+    return 0;
+}
+```
+
+SDL's software renderer composites into a window surface and presents with
+`SDL_UpdateWindowSurface`, which routes there. On the device: 965 correct frames,
+a **4 microsecond** present, and a black panel. Numbers in
+[target-validation/results.md](../2026-07-25-target-validation/results.md).
+
+So the constraints above are not a driver-selection footnote, they are the
+target. On the Miyoo Mini the only route to the panel is `Mini_QueueCopy`, and
+the only shape that survives it is a single full-screen copy. Everything drawn
+must be composited into one streaming texture first — which is what
+`gfx::renderer::Layer` is, and what `--cpu-scroller` already does.
+
+What that makes true elsewhere in the tree:
+
+- **`coppers`' HUD needs a CPU path.** Decision 2 of its snapshot pins the HUD to
+  the texture path deliberately, so the instrument does not move with the thing
+  being measured. On this device that pin makes the instrument invisible instead.
+  The decision needs revisiting rather than quietly breaking.
+- **`--cpu-scroller` is not a comparison option here, it is the only correct
+  one.** The texture path draws, and draws wrong.
+- **`software-2d-sprites-tiling` cannot assume `Context::draw()`.** `Atlas`,
+  `AnimatedSprite` and `TileMap` are source-rect blits by definition; on this
+  target they have to composite into a layer.
+- **`Layer::set_readback()` is not a nicety.** It is the only way to capture a
+  frame on the one device where a screenshot is the only way to see the output.

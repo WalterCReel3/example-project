@@ -46,9 +46,9 @@ authoritative record — this list is kept for the reasoning, not the checklist.
 
 | Preset | Blocker | Risk if wrong |
 |---|---|---|
-| `miyoomini` **device** toolchain | needs the toolchain container | **highest remaining.** GCC 8.3 C++17 library gaps, `-Os` codegen. The armv7 compile-check pass proves the flags, not the compiler |
+| ~~`miyoomini` **device** toolchain~~ | ~~needs the toolchain container~~ | **DONE 2026-07-27.** GCC 8.3.0 builds the tree with zero errors and zero warnings after one fix (D21), 15/15 under qemu, `GLIBC_2.28` floor. None of the predicted C++17 library gaps materialised — see [results.md](results.md) |
 | `steam` | needs the sniper container | glibc targeting, static libstdc++ |
-| `docker/miyoomini.Dockerfile` | needs Docker + upstream base image | CMake/Ninja layering |
+| ~~`docker/miyoomini.Dockerfile`~~ | ~~needs Docker + upstream base image~~ | **DONE 2026-07-27.** Both images build; the CMake/Ninja layering works and is needed exactly as predicted, since buster's CMake 3.13 cannot read the presets. One wrinkle worth knowing: run commands with `bash -c`, not `bash -lc` — a login shell re-reads `/etc/profile` and discards the image's `PATH`, so the layered CMake loses to buster's |
 | any real hardware | needs a device | display path, SDL video driver, gamepad enumeration |
 | Mali GLES2 on `rk3326` / `h700` | needs a device | **new since 2026-07-26.** Both now request an accelerated render driver and can build `gfx::gles2`. If a firmware's vendor blobs do not expose a working GLES2 context, `gfx::renderer` degrades to software and the game still runs — that is what `PreferAccelerated` is for — but `gfx::gles2` cannot, and would throw at context creation |
 
@@ -196,10 +196,17 @@ glibc symbol versioning, which `objdump -T | grep GLIBC_` can confirm directly.
 
 ## Open questions
 
-- Is upstream SDL2 viable on Miyoo Mini stock firmware, or is
+- ~~Is upstream SDL2 viable on Miyoo Mini stock firmware, or is
   `WREEL_USE_SYSTEM_SDL2=ON` mandatory there? This is the largest single unknown
-  in the project, and it decides whether the hermetic-FetchContent approach holds
-  for the hardest target or needs a documented exception.
+  in the project.~~ **Answered 2026-07-27: mandatory.** It is not viable, and no
+  device was needed to establish it — the generated `SDL_config.h` for this preset
+  builds `dummy`, `offscreen` and `wayland`, and SDL2 has no framebuffer backend
+  anywhere in its tree to build instead. The hermetic-FetchContent approach holds
+  for four of five presets and takes a documented exception on the fifth, which is
+  what the escape hatch was put there for. What the *device* still has to say is
+  narrower and more practical: whether the firmware's `mmiyoo` SDL2 gets the display
+  away from MainUI, and whether the audio server yields the mixer. See
+  [onion-bundle](../2026-07-27-onion-bundle/).
 - ~~**What is the software driver's fill rate at 320×240 on two Cortex-A7 cores?**~~
   **Method built and measured on the dev box, 2026-07-27** — see
   [results.md](results.md). Still open on hardware, but the question was posed

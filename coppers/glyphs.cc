@@ -2,6 +2,7 @@
 
 #include <SDL.h>
 
+#include <cmath>
 #include <stdexcept>
 
 #include <loaders/image.hpp>
@@ -183,6 +184,66 @@ std::string to_sheet_text(const std::string& text, const GlyphSheet& sheet)
     }
 
     return out;
+}
+
+void GlyphSheet::plot(gfx::renderer::LayerLock& pixels, const std::string& text,
+                      double x, int y, int scale, std::uint32_t color) const
+{
+    if (scale < 1) {
+        scale = 1;
+    }
+
+    const int step = _cell_w * scale;
+    const int layer_w = pixels.width();
+    const int layer_h = pixels.height();
+
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const int origin_x = static_cast<int>(
+            std::floor(x + static_cast<double>(i) * static_cast<double>(step)));
+
+        if (origin_x + step <= 0) {
+            continue;
+        }
+        if (origin_x >= layer_w) {
+            break;
+        }
+        if (text[i] == ' ') {
+            continue;
+        }
+
+        for (int gy = 0; gy < _cell_h; ++gy) {
+            for (int sy = 0; sy < scale; ++sy) {
+                const int py = y + gy * scale + sy;
+                // Clipped per output row rather than per pixel: the row pointer
+                // is only valid inside the layer, and hoisting the test out of
+                // the inner loop is most of the difference between this being
+                // competitive with a driver blit and not.
+                if (py < 0 || py >= layer_h) {
+                    continue;
+                }
+
+                std::uint32_t* row = pixels.row(py);
+
+                for (int gx = 0; gx < _cell_w; ++gx) {
+                    if (!pixel(text[i], gx, gy)) {
+                        continue;
+                    }
+                    const int base = origin_x + gx * scale;
+                    for (int sx = 0; sx < scale; ++sx) {
+                        const int px = base + sx;
+                        if (px < 0 || px >= layer_w) {
+                            continue;
+                        }
+                        // Opaque store, not a blend. The sheet is 1-bit, so
+                        // there is no partial coverage to composite and a
+                        // read-modify-write per pixel would be paid for
+                        // nothing.
+                        row[px] = color;
+                    }
+                }
+            }
+        }
+    }
 }
 
 } // namespace coppers

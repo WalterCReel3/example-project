@@ -61,10 +61,14 @@ same trip.
   Plus. Same preset, 37% more pixels, so it is the binding target for anything
   fill-rate bound and the more valuable of the two to test first.
   `docs/TARGETS.md § Target matrix` has the panel table.
-- **Whether upstream SDL2 runs on stock firmware is still the largest single
+- ~~**Whether upstream SDL2 runs on stock firmware is still the largest single
   unknown in the project**, and it is answered by whether the very first run
-  works. If it does not, `WREEL_USE_SYSTEM_SDL2=ON` against the firmware's patched
-  copy is the documented exception, and that decision belongs here.
+  works.~~ **Answered 2026-07-27, and it did not need the device.** It does not run:
+  the pinned SDL2 builds `dummy`, `offscreen` and `wayland` for this target and SDL2
+  has no framebuffer backend to build, so `WREEL_USE_SYSTEM_SDL2=ON` against the
+  firmware's patched `mmiyoo` copy is mandatory rather than contingent. The decision
+  did belong here, and is taken in
+  [2026-07-27-onion-bundle](../2026-07-27-onion-bundle/) § decision 3.
 - `coppers --screenshot` needs no display and no keyboard, so the first check is
   runnable over SSH before anything is known about the panel.
 
@@ -74,7 +78,7 @@ Each of these needs confirming against a real SD card, not documentation.
 
 | Firmware | Devices | Expected shape |
 |---|---|---|
-| **OnionOS** | Miyoo Mini | `Roms/` or `App/<Name>/` with `config.json` + `launch.sh` |
+| **OnionOS** | Miyoo Mini | **Established 2026-07-27** — `App/<Name>/` with `config.json` + `launch.sh`, implemented in [Packaging.cmake](../../cmake/Packaging.cmake). The Ports alternative (`Roms/PORTS/` across three trees) was considered and rejected; see [onion-bundle](../2026-07-27-onion-bundle/) § decision 1 |
 | **muOS** | H700 Anbernics | `mnt/mmc/MUOS/application/<Name>/` |
 | **ArkOS** | RK3326 | `roms/ports/<name>/` plus a `.sh` in `ports/` |
 | **ROCKNIX** / Batocera | both | `/userdata/roms/ports/` |
@@ -95,13 +99,25 @@ Common requirements across all of them:
   **Done 2026-07-26.** The log goes to `SDL_GetPrefPath("wreel", "skratch")`, which
   also took `<fstream>` out of a shipped executable — it had its own
   `std::ofstream logging` global, against docs/TARGETS.md § 1a.
-- No dynamic libraries to install — everything is static by design, which is one
-  problem packaging does *not* have here. **This survived the GL work
-  deliberately**: `gfx::gles2` resolves its entry points through
-  `SDL_GL_GetProcAddress` rather than linking `libGLESv2`, so binaries still list
-  only `libm` and `libc` as `NEEDED`. Linking it would also have meant a 2D-only
-  game failing to *start* on a firmware with no GLES blob, since the loader resolves
-  `DT_NEEDED` before `main()`.
+- ~~No dynamic libraries to install — everything is static by design, which is one
+  problem packaging does *not* have here.~~ **False on `miyoomini` as of
+  2026-07-27**, and it was never going to survive contact with that device. Upstream
+  SDL2 has no video driver for the SSD202D — no framebuffer backend exists in SDL2
+  at all — so the core SDL2 there is the firmware's patched `mmiyoo` copy, loaded as
+  a shared object from the bundle's `lib/`. Evidence and consequences in
+  [2026-07-27-onion-bundle](../2026-07-27-onion-bundle/).
+
+  It remains true everywhere else, and the two parts of it that were *reasoned*
+  rather than accidental both still hold: `gfx::gles2` resolves its entry points
+  through `SDL_GL_GetProcAddress` rather than linking `libGLESv2`, so binaries list
+  only `libm` and `libc` as `NEEDED`; and linking it would have meant a 2D-only game
+  failing to *start* on a firmware with no GLES blob, since the loader resolves
+  `DT_NEEDED` before `main()`. Note the shape of the correction: the claim held for
+  the reason given, and was falsified by a different one.
+
+  SDL2_image, SDL2_ttf and SDL2_mixer stay static even there — they consume the
+  SDL2 API, not the display — so the bundle gains one shared object rather than
+  five, and libxmp, `stb_image` and FreeType stay pinned.
 
 ## Steam depot
 
@@ -141,17 +157,31 @@ that has to care about them.
       deliberately, so the realtime-services module was created for this and for
       frame timing; see docs/TARGETS.md § Modules
 - [x] Move `runlog.txt` to `SDL_GetPrefPath()` — done 2026-07-26 with the skratch port
-- [ ] Confirm one firmware's layout against a real device, and implement it
-- [ ] Flesh out `wreel_add_handheld_bundle()` per firmware
-- [ ] Add a `WREEL_TARGET_FIRMWARE` option if layouts diverge enough to need it
+- [~] Confirm one firmware's layout against a real device, and implement it.
+      **Implemented 2026-07-27 for OnionOS** — `App/Coppers/` with `config.json` and
+      `launch.sh`, taken from real packages in OnionUI/Onion rather than from a
+      guide, and verified on the dev box: a bundle-shaped tree launched from `/`
+      logs `assets: … (beside the executable)` and writes its log inside the bundle.
+      **Not confirmed against a device**, which is the half that remains
+- [ ] Flesh out `wreel_add_handheld_bundle()` for the remaining firmwares. Onion is
+      done; muOS, ArkOS and ROCKNIX are still guesses and stay unwritten
+- [x] Add a `WREEL_TARGET_FIRMWARE` option if layouts diverge enough to need it —
+      added 2026-07-27. Justified sooner than expected: one target id can boot more
+      than one firmware, since a Miyoo Mini runs stock or Onion and the Flip may run
+      something else again on the same SSD202D. `onion` and `none`; anything else is
+      rejected by name rather than silently ignored
 - [ ] Verify the Steam build's glibc floor
 - [~] Port input to `SDL_GameController`. **Half done 2026-07-27**: `rig::Pad`
       exists and `coppers` uses it — `SDL_GameController` with a raw-joystick
       fallback, keyboard equivalents, and full enumeration logged.
       `skratch/input.cc` still hard-codes Xbox 360 axis indices and has *not* been
       ported; that is a change to a working demo and wants its own commit
-- [ ] Decide whether CPack is the right tool or a plain `install()` + `tar` is
-      simpler for handheld bundles
+- [x] Decide whether CPack is the right tool or a plain `install()` + `tar` is
+      simpler for handheld bundles — **plain staging plus `tar`, decided
+      2026-07-27**. CPack's value is metadata and generators, and no handheld
+      firmware consumes either; Onion's own distribution format is a `.7z` of
+      exactly the directory tree. CPack stays for source and desktop tarballs and is
+      out of the handheld path
 
 ## Open questions
 

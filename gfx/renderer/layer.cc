@@ -15,12 +15,13 @@ namespace renderer
 {
 
 LayerLock::LayerLock(SDL_Texture* texture, std::uint32_t* pixels, int stride,
-                     int width, int height)
+                     int width, int height, bool upload)
     : _texture(texture)
     , _pixels(pixels)
     , _stride(stride)
     , _width(width)
     , _height(height)
+    , _upload(upload)
 {
 }
 
@@ -30,6 +31,7 @@ LayerLock::LayerLock(LayerLock&& other) noexcept
     , _stride(other._stride)
     , _width(other._width)
     , _height(other._height)
+    , _upload(other._upload)
 {
     // The moved-from guard must not unlock in its destructor, or the texture is
     // unlocked while this one still holds a pointer into it.
@@ -48,6 +50,7 @@ LayerLock& LayerLock::operator=(LayerLock&& other) noexcept
         _stride = other._stride;
         _width = other._width;
         _height = other._height;
+        _upload = other._upload;
         other._texture = nullptr;
         other._pixels = nullptr;
     }
@@ -56,7 +59,16 @@ LayerLock& LayerLock::operator=(LayerLock&& other) noexcept
 
 LayerLock::~LayerLock()
 {
-    if (_texture) {
+    if (!_texture) {
+        return;
+    }
+
+    if (_upload) {
+        // The pixels are the Layer's own buffer rather than SDL's staging
+        // memory, so this is the point at which the frame reaches the texture.
+        SDL_UpdateTexture(_texture, nullptr, _pixels,
+                          _stride * static_cast<int>(sizeof(std::uint32_t)));
+    } else {
         SDL_UnlockTexture(_texture);
     }
 }
@@ -66,6 +78,7 @@ Layer::Layer(Context& context, int width, int height)
     , _texture(nullptr)
     , _width(width)
     , _height(height)
+    , _readback(false)
 {
     if (width <= 0 || height <= 0) {
         throw std::runtime_error("layer dimensions must be positive");
@@ -102,12 +115,20 @@ Layer::~Layer()
 
 LayerLock Layer::lock()
 {
+    // Readback mode hands out the Layer's own buffer and uploads it on unlock.
+    // No SDL_LockTexture at all: what the caller plots stays readable, which is
+    // the whole point, and a locked texture's contents are not.
+    if (_readback) {
+        return LayerLock(_texture, _pixels.data(), _width, _width, _height,
+                         true);
+    }
+
     void* pixels = nullptr;
     int pitch = 0;
 
     if (SDL_LockTexture(_texture, nullptr, &pixels, &pitch) != 0) {
         util::log_error("could not lock layer: %s", SDL_GetError());
-        return LayerLock(nullptr, nullptr, 0, _width, _height);
+        return LayerLock(nullptr, nullptr, 0, _width, _height, false);
     }
 
     // SDL reports the pitch in bytes; the guard hands out std::uint32_t*, so it
@@ -116,7 +137,62 @@ LayerLock Layer::lock()
     const int stride = pitch / static_cast<int>(sizeof(std::uint32_t));
 
     return LayerLock(_texture, static_cast<std::uint32_t*>(pixels), stride,
-                     _width, _height);
+                     _width, _height, false);
+}
+
+void Layer::set_readback(bool enabled)
+{
+    if (enabled == _readback) {
+        return;
+    }
+
+    _readback = enabled;
+
+    if (enabled) {
+        _pixels.assign(static_cast<std::size_t>(_width) *
+                           static_cast<std::size_t>(_height),
+                       0);
+    } else {
+        // swap with an empty vector rather than clear(): clear() keeps the
+        // capacity, and this is 1.2 MB on a device with 128 MB total.
+        std::vector<std::uint32_t>().swap(_pixels);
+    }
+}
+
+bool Layer::save_bmp(const std::string& path) const
+{
+    if (!_readback || _pixels.empty()) {
+        util::log_error(
+            "layer: save_bmp needs set_readback(true); a locked texture cannot "
+            "be read back");
+        return false;
+    }
+
+    // Const-correct at our end: SDL's surface-from-pixels takes a non-const
+    // pointer because a surface is writable in general, but SDL_SaveBMP only
+    // reads.
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(
+        const_cast<std::uint32_t*>(_pixels.data()), _width, _height, 32,
+        _width * static_cast<int>(sizeof(std::uint32_t)),
+        SDL_PIXELFORMAT_ARGB8888);
+
+    if (!surface) {
+        util::log_error("layer: could not wrap pixels for %s: %s", path.c_str(),
+                        SDL_GetError());
+        return false;
+    }
+
+    const bool ok = SDL_SaveBMP(surface, path.c_str()) == 0;
+    if (!ok) {
+        util::log_error("layer: could not write %s: %s", path.c_str(),
+                        SDL_GetError());
+    } else {
+        util::log_info("layer: wrote %s (%dx%d)", path.c_str(), _width,
+                       _height);
+    }
+
+    SDL_FreeSurface(surface);
+    return ok;
 }
 
 void Layer::draw(const Rect* dst)

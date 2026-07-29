@@ -55,63 +55,14 @@ public:
     }
 
 private:
+    // One line, because the glyph loop now lives on GlyphSheet: the HUD needs
+    // the same plotting on the Miyoo Mini, where nothing drawn through
+    // SDL_RenderCopy survives the driver's rotation, and two copies of it would
+    // drift. dx and dy shift the whole string for the drop shadow.
     void pass(gfx::renderer::LayerLock& pixels, const ScrollState& s,
               std::uint32_t color, int dx, int dy)
     {
-        const int cell_w = _sheet.cell_width();
-        const int cell_h = _sheet.cell_height();
-        const int scale = s.scale < 1 ? 1 : s.scale;
-        const int step = cell_w * scale;
-        const int layer_w = pixels.width();
-        const int layer_h = pixels.height();
-
-        for (std::size_t i = 0; i < s.text.size(); ++i) {
-            const int origin_x = static_cast<int>(std::floor(
-                s.x + static_cast<double>(i) * static_cast<double>(step)));
-
-            if (origin_x + step <= 0) {
-                continue;
-            }
-            if (origin_x >= layer_w) {
-                break;
-            }
-            if (s.text[i] == ' ') {
-                continue;
-            }
-
-            for (int gy = 0; gy < cell_h; ++gy) {
-                for (int sy = 0; sy < scale; ++sy) {
-                    const int y = s.y + dy + gy * scale + sy;
-                    // Clipped per output row rather than per pixel: the row
-                    // pointer is only valid inside the layer, and hoisting the
-                    // test out of the inner loop is most of the difference
-                    // between this being competitive and not.
-                    if (y < 0 || y >= layer_h) {
-                        continue;
-                    }
-
-                    std::uint32_t* row = pixels.row(y);
-
-                    for (int gx = 0; gx < cell_w; ++gx) {
-                        if (!_sheet.pixel(s.text[i], gx, gy)) {
-                            continue;
-                        }
-                        const int base = origin_x + dx + gx * scale;
-                        for (int sx = 0; sx < scale; ++sx) {
-                            const int x = base + sx;
-                            if (x < 0 || x >= layer_w) {
-                                continue;
-                            }
-                            // Opaque store, not a blend. The sheet is 1-bit, so
-                            // there is no partial coverage to composite and a
-                            // read-modify-write per pixel would be paid for
-                            // nothing.
-                            row[x] = color;
-                        }
-                    }
-                }
-            }
-        }
+        _sheet.plot(pixels, s.text, s.x + dx, s.y + dy, s.scale, color);
     }
 
     const GlyphSheet& _sheet;

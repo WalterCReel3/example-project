@@ -142,6 +142,12 @@ public:
     bool save_screenshot(const std::string& path) const;
 
 private:
+    // Sets _width and _height from whichever of the renderer, the window, the
+    // display mode or the caller's request can answer, logging all four. The
+    // Miyoo Mini's SDL2 reports a 0x0 renderer output and claims success, so
+    // trusting one query is not enough. Throws if none of them gives a size.
+    void resolve_output_size(int requested_width, int requested_height);
+
     SDL_Window* _window;
     SDL_Renderer* _renderer;
     int _width;

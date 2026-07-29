@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 //============================================================================
 //
@@ -100,13 +102,18 @@ public:
 private:
     friend class Layer;
     LayerLock(SDL_Texture* texture, std::uint32_t* pixels, int stride,
-              int width, int height);
+              int width, int height, bool upload);
 
     SDL_Texture* _texture; // not owned; the Layer owns it
     std::uint32_t* _pixels;
     int _stride;
     int _width;
     int _height;
+
+    // False: _pixels is SDL's locked staging buffer and the destructor unlocks.
+    // True: _pixels is the Layer's own buffer and the destructor uploads it.
+    // See Layer::set_readback().
+    bool _upload;
 };
 
 // A streaming texture sized independently of the window, plotted by the CPU.
@@ -138,6 +145,28 @@ public:
     // Linear is available for a soft upscale.
     void set_smooth(bool smooth);
 
+    // Plot into a buffer this Layer owns, uploading it on unlock, instead of
+    // plotting straight into SDL's locked staging memory.
+    //
+    // WHY THIS IS NOT JUST A SCREENSHOT SWITCH. A locked texture is write-only
+    // by contract — SDL may hand back uninitialised staging memory, so reading
+    // what you just wrote is undefined even where it happens to work. Owning
+    // the buffer is what makes the frame readable at all, and read-back is the
+    // one thing this project cannot get from the renderer on its most important
+    // target: the Miyoo Mini's SDL2 returns SDL_Unsupported from
+    // SDL_RenderReadPixels, so save_screenshot() has nothing to read.
+    //
+    // It costs one extra full-frame copy per lock, so it is off by default and
+    // measurement runs are unaffected. Turn it on for a screenshot, or wherever
+    // a frame has to be inspected rather than only displayed.
+    void set_readback(bool enabled);
+    bool readback() const { return _readback; }
+
+    // Writes the last plotted frame as a BMP. Requires set_readback(true);
+    // returns false and logs otherwise, rather than writing a file of
+    // undefined pixels.
+    bool save_bmp(const std::string& path) const;
+
     // Composes a packed pixel for row(). Named rather than left to the caller
     // because getting the channel order wrong yields a picture that looks right
     // in greyscale and has red and blue swapped in colour.
@@ -155,6 +184,11 @@ private:
     SDL_Texture* _texture;   // owned
     int _width;
     int _height;
+
+    // Empty unless set_readback(true). Sized _width * _height, tightly packed,
+    // so its stride is _width.
+    bool _readback;
+    std::vector<std::uint32_t> _pixels;
 };
 
 } // namespace renderer

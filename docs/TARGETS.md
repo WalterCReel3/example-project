@@ -161,6 +161,36 @@ against a matching (old) glibc. Static-linking `libstdc++` and `libgcc`
 (`-static-libstdc++ -static-libgcc`) removes the *C++* runtime half of the
 problem but not the libc half.
 
+> **The Miyoo Mini has its own reference document.** Everything learned about
+> that platform from running on it — the vendor SDL2 forks and what they can and
+> cannot do, the presentation pipeline, the firmware's audio and input
+> behaviour, the measured costs, and the alternatives that were considered and
+> rejected — is in [MIYOO-MINI.md](MIYOO-MINI.md), with sources. The two
+> constraints below are the ones that change decisions elsewhere in this file.
+
+### 3a. On the Miyoo Mini, no texture may be larger than the panel
+
+Measured on hardware 2026-07-27, not inferred. The device's `SDL_Renderer`
+reports a **maximum texture size of 640x480** — the panel exactly. Every desktop
+driver in this matrix allows 16384, so nothing in the tree had ever come near it.
+
+This is a design constraint, not a curiosity, and it is invisible everywhere else:
+
+- Any atlas, tilemap page or pre-rendered background wider than 640 or taller
+  than 480 **cannot be uploaded on this target**. `data/glyphs-16x16.png` is
+  320x48 and safe; a 1024-wide sheet would fail.
+- A single line of rasterised text can exceed it. `coppers`' HUD did, at ~735px,
+  and failed to upload on all 2437 frames of the first device run (D23).
+- `SDL_CreateTexture` fails with `Texture dimensions are limited to 640x480`
+  rather than degrading, so the symptom is a missing element rather than a
+  scaled one.
+
+The related trap is that the geometry is compiled into that SDL2 — `DEF_FB_W` and
+`DEF_FB_H` in the `mmiyoo` video driver, with no runtime override — so a Mini
+Flip (750x560) needs its own build of the library, and a 640x480 build on a Flip
+will report 640x480 convincingly. See
+[planning/2026-07-27-onion-bundle](../planning/2026-07-27-onion-bundle/).
+
 ### 3. Miyoo Mini has no GPU
 
 The SSD202D is two Cortex-A7 cores and **no 3D block**. There is no OpenGL, no
@@ -609,6 +639,49 @@ The escape hatch is `-DWREEL_USE_SYSTEM_SDL2=ON`, for the case where a device's
 firmware ships a *patched* SDL2 that upstream cannot replace — which is exactly
 the Miyoo Mini situation if you target stock firmware rather than KMSDRM. Prefer
 the SDK's SDL2 there and let CMake find it in the sysroot.
+
+### The Miyoo Mini exception, which is not hypothetical — 2026-07-27
+
+`WREEL_USE_SYSTEM_SDL2=ON` is **mandatory** on `miyoomini`, not a contingency. The
+pinned upstream SDL2 has no video driver that can reach that panel, and this is
+checkable without a device:
+
+```console
+$ grep -E "define SDL_VIDEO_DRIVER_" \
+    build/miyoomini/_deps/sdl2-build/include-config-release/SDL2/SDL_config.h
+#define SDL_VIDEO_DRIVER_DUMMY 1
+#define SDL_VIDEO_DRIVER_OFFSCREEN 1
+#define SDL_VIDEO_DRIVER_WAYLAND 1
+```
+
+Nor is it a detection failure to be fixed by turning something on. **SDL2 has no
+framebuffer backend at all** — SDL 1.2's `fbcon` has no SDL2 successor, and the
+2.32 tree's `src/video/` offers `kmsdrm`, `x11`, `wayland`, `vivante`,
+`raspberry`, `directfb` and nothing that fits. The SSD202D exposes SigmaStar's
+`MI_GFX` and a framebuffer, and no DRM device. Audio is the same story: the same
+config has no ALSA, only `OSS`, `PULSEAUDIO`, `SNDIO`, `DISK` and `DUMMY`.
+
+What runs there is the firmware's patched copy, which registers an `mmiyoo`
+video driver over `libmi_gfx` and `libmi_ao`. OnionOS ships one at
+`/mnt/SDCARD/.tmp_update/lib/parasyte/libSDL2-2.0.so.0`
+([steward-fu/sdl2](https://github.com/steward-fu/sdl2), LGPL-2.1, SDL 2.0.20).
+Two consequences worth knowing before building against it:
+
+- **`software` is the only render driver it registers**, which is the path
+  `gfx::renderer` takes on this target anyway.
+- **Only the core SDL2 goes shared.** SDL2_image, SDL2_ttf and SDL2_mixer stay
+  pinned and statically linked, because they consume the SDL2 API rather than the
+  display. All 107 SDL symbols they import exist in that 2.0.20 runtime, as do
+  all 87 this codebase calls — checked by comparing the dynamic symbol table
+  against `nm -u` on the static archives, not assumed.
+
+Note also that `SDL_KMSDRM ON` in [Dependencies.cmake](../cmake/Dependencies.cmake)
+produces no KMSDRM driver in the cross build, because libdrm and gbm are absent
+from that environment and the probe fails silently. Moot on this device, which has
+no DRM node — but a flag whose failure is invisible is worth knowing about.
+
+Full reasoning, and the bundle that carries the shared object, in
+[planning/2026-07-27-onion-bundle](../planning/2026-07-27-onion-bundle/).
 
 ## See also
 

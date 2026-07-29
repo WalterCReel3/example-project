@@ -1,0 +1,6 @@
+{
+	"label":	"@WREEL_BUNDLE_LABEL@",
+	"icon":	"@WREEL_BUNDLE_ICON@",
+	"launch":	"launch.sh",
+	"description":	"@WREEL_BUNDLE_DESCRIPTION@"
+}
