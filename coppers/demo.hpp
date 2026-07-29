@@ -119,7 +119,12 @@ private:
     // One sheet, two consumers: the texture scroller uploads it and the CPU one
     // reads its mask. Declared before them because both hold a reference to it.
     std::unique_ptr<GlyphSheet> _glyphs;
+    // Absent on targets whose renderer cannot draw a sub-rectangle; see
+    // coppers/CMakeLists.txt. Guarded rather than left null so that a use of it
+    // there is a compile error instead of a crash.
+#ifdef WREEL_COPPERS_TEXTURE_SCROLLER
     std::unique_ptr<Scroller> _texture_scroller;
+#endif
     std::unique_ptr<Scroller> _cpu_scroller;
     std::string _message;
 
