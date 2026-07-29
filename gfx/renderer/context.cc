@@ -2,6 +2,7 @@
 
 #include <SDL.h>
 #include <SDL_ttf.h>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 
@@ -56,11 +57,58 @@ Context::Context(const std::string& title, int width, int height,
 {
     Uint32 flags = 0;
     if (fullscreen) {
+        SDL_ShowCursor(SDL_DISABLE);
+
         // FULLSCREEN_DESKTOP rather than FULLSCREEN: it takes the panel's
         // native mode instead of asking for a mode switch the device may not
-        // support.
-        flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-        SDL_ShowCursor(SDL_DISABLE);
+        // support. It takes that mode from the display's *desktop mode*, and
+        // that is only safe where the driver sets one.
+        //
+        // The Miyoo Mini's driver does not. It builds its display with
+        // `SDL_VideoDisplay display = {0}`, adds ten modes to it and calls
+        // SDL_AddVideoDisplay without ever assigning desktop_mode, so the mode
+        // stays zeroed. A FULLSCREEN_DESKTOP window then sizes itself to 0x0 —
+        // and its presentation callback blits `{0, 0, window->w, window->h}` to
+        // the panel every frame, which is a no-op that reports no error. The
+        // symptom is a black screen with audio and input working normally.
+        //
+        // So there are three rungs, and the second is the Miyoo Mini's.
+        //
+        // FULLSCREEN_DESKTOP and FULLSCREEN fail differently on a driver like
+        // that, which is the useful part: DESKTOP sizes the window from the
+        // desktop mode and gets 0x0, while plain FULLSCREEN sizes it from the
+        // closest *listed* mode — and that driver lists ten, 640x480 among
+        // them, with a SetDisplayMode that returns success without doing
+        // anything. Exclusive fullscreen therefore works where the desktop
+        // variant cannot.
+        //
+        // The last rung is not a degraded mode on such hardware, whatever it
+        // looks like from a desktop. That driver has no window manager and no
+        // window concept: its presentation callback scales whatever the window
+        // holds to the entire framebuffer, so a "windowed" surface is shown
+        // exactly as a fullscreen one. It is last because on every other target
+        // the distinction is real.
+        SDL_DisplayMode mode;
+
+        if (SDL_GetDesktopDisplayMode(0, &mode) == 0 && mode.w > 0 &&
+            mode.h > 0) {
+            flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+        } else if (SDL_GetNumVideoDisplays() > 0 &&
+                   SDL_GetNumDisplayModes(0) > 0 &&
+                   SDL_GetDisplayMode(0, 0, &mode) == 0 && mode.w > 0 &&
+                   mode.h > 0) {
+            flags |= SDL_WINDOW_FULLSCREEN;
+            util::log_warning(
+                "no desktop mode reported; using exclusive fullscreen against "
+                "the driver's own mode list (%d modes, first %dx%d)",
+                SDL_GetNumDisplayModes(0), mode.w, mode.h);
+        } else {
+            util::log_warning(
+                "fullscreen requested, but the video driver reports neither a "
+                "desktop mode nor a mode list; creating a %dx%d window, which "
+                "such a driver still presents full screen",
+                width, height);
+        }
     }
 
     _window = SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_CENTERED,
@@ -81,7 +129,7 @@ Context::Context(const std::string& title, int width, int height,
         throw std::runtime_error("could not create renderer: " + error);
     }
 
-    SDL_GetRendererOutputSize(_renderer, &_width, &_height);
+    resolve_output_size(width, height);
 
     // Blend so text and sprites composite rather than punching holes.
     SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_BLEND);
@@ -92,6 +140,89 @@ Context::Context(const std::string& title, int width, int height,
     util::log_info("renderer context %dx%d via %s (%s)", _width, _height,
                    driver_name().c_str(),
                    accelerated() ? "accelerated" : "software");
+}
+
+// Four ways of asking how big the output is, in decreasing order of authority,
+// because on a real device the first one answers 0x0 and reports success.
+//
+// The Miyoo Mini's SDL2 — a vendor fork with an MI_GFX video driver — returns a
+// zero size from SDL_GetRendererOutputSize. Nothing downstream can work with
+// that: coppers' layer clamped itself to 1x1, every frame drew nothing, and the
+// only symptom was a black panel with the audio still playing. A renderer whose
+// output size is unknown is not a renderer, so this asks the other questions
+// SDL can answer and refuses to continue if none of them can.
+//
+// ALL FOUR are probed even once one has answered, and each is logged. One line
+// per query costs nothing at startup and makes the device's answers directly
+// comparable with the dev box's — which is how the 0x0 was identified, and is
+// the only way to know whether the next firmware or the next device is broken
+// in the same place or a different one.
+void Context::resolve_output_size(int requested_width, int requested_height)
+{
+    int renderer_w = 0, renderer_h = 0;
+    const bool renderer_ok =
+        SDL_GetRendererOutputSize(_renderer, &renderer_w, &renderer_h) == 0;
+    util::log_info("output size: renderer %dx%d (%s)", renderer_w, renderer_h,
+                   renderer_ok ? "reported success" : SDL_GetError());
+
+    int window_w = 0, window_h = 0;
+    SDL_GetWindowSize(_window, &window_w, &window_h);
+    util::log_info("output size: window %dx%d", window_w, window_h);
+
+    int mode_w = 0, mode_h = 0;
+    SDL_DisplayMode mode;
+    const int display = SDL_GetWindowDisplayIndex(_window);
+    if (display >= 0 && SDL_GetCurrentDisplayMode(display, &mode) == 0) {
+        mode_w = mode.w;
+        mode_h = mode.h;
+        util::log_info("output size: display %d mode %dx%d @ %d Hz", display,
+                       mode_w, mode_h, mode.refresh_rate);
+    } else {
+        util::log_info("output size: display mode unavailable (%s)",
+                       SDL_GetError());
+    }
+
+    util::log_info("output size: requested %dx%d", requested_width,
+                   requested_height);
+
+    const char* source = nullptr;
+
+    if (renderer_ok && renderer_w > 0 && renderer_h > 0) {
+        _width = renderer_w;
+        _height = renderer_h;
+        source = "renderer output";
+    } else if (window_w > 0 && window_h > 0) {
+        _width = window_w;
+        _height = window_h;
+        source = "window";
+    } else if (mode_w > 0 && mode_h > 0) {
+        _width = mode_w;
+        _height = mode_h;
+        source = "display mode";
+    } else if (requested_width > 0 && requested_height > 0) {
+        // Right for a windowed run by construction; for a fullscreen one it is
+        // a guess — but a guess that draws beats a certainty that does not, and
+        // the lines above say which happened.
+        _width = requested_width;
+        _height = requested_height;
+        source = "requested size";
+    }
+
+    if (!source) {
+        SDL_DestroyRenderer(_renderer);
+        _renderer = nullptr;
+        SDL_DestroyWindow(_window);
+        _window = nullptr;
+        throw std::runtime_error(
+            "no usable output size: renderer, window, display mode and "
+            "requested size all reported zero");
+    }
+
+    if (std::strcmp(source, "renderer output") != 0) {
+        util::log_warning("output size: taken from the %s, because the "
+                          "renderer did not give one",
+                          source);
+    }
 }
 
 Context::~Context()

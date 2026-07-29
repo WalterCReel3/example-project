@@ -23,6 +23,7 @@
 #include <doctest/doctest.h>
 
 #include <gfx/renderer/context.hpp>
+#include <gfx/renderer/layer.hpp>
 #include <gfx/system.hpp>
 
 #include <SDL.h>
@@ -114,4 +115,94 @@ TEST_CASE("clear and present run against the software driver")
     // that the calls are wired to a live renderer and do not crash. A real
     // pixel assertion needs the Texture work in software-2d-sprites-tiling.
     CHECK(context.driver_name() == "software");
+}
+
+// ---------------------------------------------------------------------------
+// Layer read-back
+// ---------------------------------------------------------------------------
+//
+// This is the path that exists because a renderer cannot always be read back.
+// The Miyoo Mini's SDL2 returns SDL_Unsupported from SDL_RenderReadPixels, so
+// on the one device where a screenshot is the only way to see the output,
+// Context::save_screenshot() has nothing to read and the Layer's own copy is
+// what gets saved.
+//
+// It is tested here rather than left to that device because the fallback runs
+// nowhere else: on any machine a developer has, the renderer answers and this
+// code never executes. A path that only runs where it cannot be observed is
+// exactly the kind that rots.
+
+TEST_CASE("a layer without read-back refuses to save rather than writing "
+          "undefined pixels")
+{
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, false);
+    gfx::renderer::Layer layer(context, 32, 16);
+
+    CHECK_FALSE(layer.readback());
+    CHECK_FALSE(layer.save_bmp("/tmp/wreel-test-should-not-exist.bmp"));
+}
+
+TEST_CASE("a layer with read-back saves what was plotted")
+{
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, false);
+    gfx::renderer::Layer layer(context, 32, 16);
+
+    layer.set_readback(true);
+    CHECK(layer.readback());
+
+    const std::uint32_t red = gfx::renderer::Layer::pack(255, 0, 0);
+    const std::uint32_t blue = gfx::renderer::Layer::pack(0, 0, 255);
+
+    {
+        gfx::renderer::LayerLock pixels = layer.lock();
+        REQUIRE(pixels.valid());
+
+        // Two solid halves, so a stride error shows up as a diagonal rather
+        // than being invisible in a uniform fill.
+        for (int y = 0; y < pixels.height(); ++y) {
+            std::uint32_t* row = pixels.row(y);
+            for (int x = 0; x < pixels.width(); ++x) {
+                row[x] = y < pixels.height() / 2 ? red : blue;
+            }
+        }
+    }
+
+    const std::string path = "/tmp/wreel-test-layer.bmp";
+    REQUIRE(layer.save_bmp(path));
+
+    SDL_Surface* loaded = SDL_LoadBMP(path.c_str());
+    REQUIRE(loaded != nullptr);
+    CHECK(loaded->w == 32);
+    CHECK(loaded->h == 16);
+
+    SDL_Surface* argb =
+        SDL_ConvertSurfaceFormat(loaded, SDL_PIXELFORMAT_ARGB8888, 0);
+    SDL_FreeSurface(loaded);
+    REQUIRE(argb != nullptr);
+
+    const std::uint32_t* read = static_cast<const std::uint32_t*>(argb->pixels);
+    const int stride = argb->pitch / static_cast<int>(sizeof(std::uint32_t));
+
+    // Alpha is not preserved by a 24-bit BMP, so compare the colour channels.
+    const std::uint32_t rgb = 0x00ffffffu;
+    CHECK((read[0] & rgb) == (red & rgb));
+    CHECK((read[static_cast<std::ptrdiff_t>(15) * stride + 31] & rgb) ==
+          (blue & rgb));
+
+    SDL_FreeSurface(argb);
+}
+
+TEST_CASE("turning read-back off releases the buffer and disables saving")
+{
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, false);
+    gfx::renderer::Layer layer(context, 32, 16);
+
+    layer.set_readback(true);
+    layer.set_readback(false);
+
+    CHECK_FALSE(layer.readback());
+    CHECK_FALSE(layer.save_bmp("/tmp/wreel-test-should-not-exist.bmp"));
 }
