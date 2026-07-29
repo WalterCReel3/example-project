@@ -635,9 +635,12 @@ container works, but it is a second container in the loop rather than one comman
 
 **Follow-ups, none blocking a first run**
 
-- [ ] Build an `mmiyoo` SDL2 with the GL backend compiled out, removing 21 MB of
-      SwiftShader the demo never calls. Needs `configure` generated outside the
-      buster container, which has no autoconf
+- [~] Build an `mmiyoo` SDL2 with the GL backend compiled out, removing 21 MB of
+      SwiftShader the demo never calls. **Scoped 2026-07-29 as
+      [gles-free-runtime](../2026-07-29-gles-free-runtime/), and it turns out not
+      to need a rebuild at all**: the vendored `libSDL2` references *zero*
+      symbols from `libGLESv2.so`, so the dependency is a link-time artefact and
+      dropping it is a build step. 30 MB → ~8.4 MB
 - [ ] A Flip build of that library with `DEF_FB_W`/`DEF_FB_H` at 750×560, without
       which no measurement from a Flip means anything (decision 4a)
 - [ ] Pin the runtime the way every other dependency is pinned — `docs/TARGETS.md`
