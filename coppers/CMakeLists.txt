@@ -42,6 +42,17 @@ target_compile_definitions(coppers PRIVATE
 set_target_properties(coppers PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${WREEL_RUNTIME_OUTPUT_DIRECTORY}")
 
+# Everything under data/ this demo opens, and nothing else — a firmware bundle
+# carries exactly this list rather than all twenty files in data/. Kept here
+# because it has to change whenever the code below opens a new file: the glyph
+# sheet in demo.cc, the HUD font in demo.cc, and the playlist in playlist.cc.
+set_property(TARGET coppers PROPERTY WREEL_BUNDLE_ASSETS
+    "glyphs-16x16.png"
+    "Speedy.fon"
+    "complications.mod"
+    "complications ii.mod"
+    "her bloody weekend.mod")
+
 install(TARGETS coppers
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
         COMPONENT runtime)

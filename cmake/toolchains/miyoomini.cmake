@@ -111,6 +111,33 @@ set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
+# WREEL_SDL2_ROOT — a prefix holding an SDL2 built FOR THIS DEVICE, searched in
+# addition to the sysroot.
+#
+# This exists because WREEL_USE_SYSTEM_SDL2=ON is mandatory here (upstream SDL2
+# has no video driver for the SSD202D — docs/TARGETS.md § The Miyoo Mini
+# exception) and was unusable without it. The union toolchain's sysroot carries
+# SDL 1.2 and no SDL2, so the SDL2 to build against necessarily lives outside
+# the sysroot — and `PACKAGE ONLY` above means find_package() will not look
+# there. Passing -DCMAKE_FIND_ROOT_PATH does not help either: the line below is
+# a normal variable, so it shadows the cache entry a -D creates.
+#
+#   cmake --preset miyoomini -DWREEL_USE_SYSTEM_SDL2=ON \
+#         -DWREEL_SDL2_ROOT=/path/to/sdl2-prefix
+if(NOT WREEL_SDL2_ROOT AND DEFINED ENV{WREEL_SDL2_ROOT})
+    set(WREEL_SDL2_ROOT "$ENV{WREEL_SDL2_ROOT}")
+endif()
+
+if(WREEL_SDL2_ROOT)
+    if(NOT EXISTS "${WREEL_SDL2_ROOT}")
+        message(FATAL_ERROR
+            "WREEL_SDL2_ROOT='${WREEL_SDL2_ROOT}' does not exist.")
+    endif()
+    # Ahead of the sysroot: an SDL2 named explicitly should win over anything a
+    # future sysroot happens to ship.
+    list(PREPEND CMAKE_FIND_ROOT_PATH "${WREEL_SDL2_ROOT}")
+endif()
+
 # ---------------------------------------------------------------------------
 # Running cross-built tests
 # ---------------------------------------------------------------------------
