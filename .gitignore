@@ -40,6 +40,12 @@ runlog.txt
 # and not part of the bundle, so a copy pulled back for inspection must not be
 # committed either.
 local.env
+
+# Per-machine working notes: where the SDL2 runtime tree happens to sit, the
+# container invocation with its mounts, and anything else true of one box rather
+# than of the project. Facts about the project belong in docs/ instead.
+local.md
+
 core
 core.*
 

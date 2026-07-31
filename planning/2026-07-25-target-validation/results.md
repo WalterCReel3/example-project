@@ -11,6 +11,136 @@ quoting a figure, and check which machine produced it.
 
 ---
 
+## 2026-07-30 — the bundle loses 21.8 MB of GL, and runs on two firmwares
+
+The staged bundle, before and after `bundle-onion` learned to drop the unused
+`libGLESv2.so` dependency. Container build, GCC 8.3 `coppers`, steward-fu's
+`prebuilt/640x480/` runtime:
+
+```console
+$ du -sb App/Coppers                       # before: 30,946,413   after:
+9170485
+$ ls -l App/Coppers/lib/
+-rw-r--r-- 1   55100 libEGL.so
+-rw-r--r-- 1   50884 libjson-c.so.5
+-rw-r--r-- 1 5736116 libSDL2-2.0.so.0      # libGLESv2.so, 21,775,928, is gone
+$ stat -c %s pkg/coppers-0.2.0-onion.tar.gz
+3617572                                    # was ~13 MB
+```
+
+**Staged 29.5 MiB → 8.7 MiB; tarball ~13 MB → 3.6 MB.** The three checks in
+[gles-free-runtime § Verification](../2026-07-29-gles-free-runtime/README.md)
+all pass: nothing references the removed library, it is no longer in `NEEDED`,
+and `coppers` still resolves every SDL symbol it imports from the staged copy.
+
+### It runs, and on stock firmware as well as OnionOS
+
+From `App/Coppers/stdout.log` off the stock card. This is the first run of this
+project on a firmware other than Onion, and the first that got all the way
+through with the display working:
+
+```
+Linux (none) 4.9.84 #1136 SMP PREEMPT Wed Jun 28 21:28:40 HKT 2023 armv7l
+pwd=/mnt/SDCARD/App/Coppers
+HOME=/
+LD_PRELOAD=/mnt/SDCARD/miyoo354/app/../lib/libpadsp.so
+--- /mnt/SDCARD/.tmp_update/script/stop_audioserver.sh not found; audio will likely fail ---
+--- library resolution ---
+	libSDL2-2.0.so.0 => /mnt/SDCARD/App/Coppers/lib/libSDL2-2.0.so.0
+	libEGL.so        => /mnt/SDCARD/App/Coppers/lib/libEGL.so
+	libjson-c.so.5   => /mnt/SDCARD/App/Coppers/lib/libjson-c.so.5
+	libmi_gfx.so     => /config/lib/libmi_gfx.so
+	libz.so.1        => /customer/lib/libz.so.1
+	libstdc++.so.6   => /lib/libstdc++.so.6
+	libgcc_s.so.1    => /lib/libgcc_s.so.1
+[I] gfx system initialised, video driver Mini
+[I] input: no pad attached, keyboard only
+[W] no desktop mode reported; using exclusive fullscreen against the driver's own mode list (10 modes, first 800x600)
+[I] output size: renderer 640x480 (reported success)
+[I] renderer context 640x480 via Miyoo Mini (accelerated)
+[I] assets: /mnt/SDCARD/App/Coppers/data/ (beside the executable)
+[W] Miyoo Mini draws sub-rectangles wrongly; composing everything into the layer
+[I] coppers: Miyoo Mini 640x480 layer, 640x480 window, 863 frames, 59.7 fps,
+             plot 2.813 blit 4.428 present 9.450 ms, scroller cpu 1035 us
+--- exited 0 ---
+```
+
+**Sixteen libraries resolved and no `libGLESv2.so` among them.** That is stage 2
+of [gles-free-runtime](../2026-07-29-gles-free-runtime/) settled on hardware: the
+loader never wanted it, exactly as the symbol table said.
+
+Three of this document's own fixes are visible working: `output size: renderer
+640x480 (reported success)` where the 2026-07-28 run got `0x0` (D22), the
+fullscreen fallback against the driver's mode list (D24), and the layer-composition
+path that D25 forced. `exited 0`.
+
+| Question | Answer |
+|---|---|
+| Does the bundle run on non-Onion firmware? | **Yes**, unmodified, from the stock Apps menu |
+| Is `libGLESv2.so` needed at load? | **No** — 16 libraries resolved, it is not one |
+| Does the GL-free bundle draw? | Yes. 863 frames, 59.7 fps, vsync-bound |
+| Are the three base libraries present on stock? | Yes — `libstdc++.so.6`, `libz.so.1`, `libgcc_s.so.1` all resolved, the last two out of `/customer/lib` |
+| `HOME` on stock | `/` — unusable, and a *different* wrong value from Onion's `/mnt/SDCARD/RetroArch/` |
+| Is `libpadsp.so` an Onion thing? | **No.** Stock preloads it too, from `miyoo354/lib/` |
+| Audio | Fails. Same MI_AO contention as Onion, and stock ships no remedy |
+
+The stock-firmware result is the surprising one. Every firmware-specific
+decision in [onion-bundle](../2026-07-27-onion-bundle/) was made for Onion, and
+`docs/MIYOO-MINI.md § 6` was written as if Onion were the only firmware this
+bundle targets.
+
+**It launched the same way**: the same `App/Coppers/` directory at the same
+path, `config.json` unmodified, listed and started by the stock Apps menu. So
+the App layout is stock MainUI's and Onion inherited it — the bundle is not
+Onion-specific, and `WREEL_TARGET_FIRMWARE=onion` is a narrower name than what
+it builds. Recorded in `docs/MIYOO-MINI.md § 6.1` and in the layout's comment in
+`cmake/Packaging.cmake`; the firmware value is left alone until a second
+firmware needs a layout that actually differs.
+
+### The audio: same fault, no remedy shipped
+
+The HUD's `silent` is `Playlist::current()` being empty, which
+[playlist.cc](../../coppers/playlist.cc) reaches three ways. The log picks one:
+
+```
+[MI ERR ]: MI_AO_SetPubAttr[3364]: Dev0 failed to set pub attr!!! error number:0xa0052009!!!
+[MI ERR ]: MI_AO_DisableChn[3667]: Dev0 has not been enabled.
+[W] audio: Mix_OpenAudio failed (); continuing without sound
+[W] music: no audio device, running in silence
+```
+
+**The device never opened, and the error number is identical to Onion's.** So it
+is not a stock-specific fault; it is the same single-owner MI_AO contention, on a
+firmware that ships no `stop_audioserver.sh` to release it.
+
+One hypothesis is disposed of without a device trip. `libpadsp.so` is preloaded
+on stock as well as Onion, so "keep the shim and let it proxy the audio" is the
+obvious thing to try — and it cannot work. The vendored SDL2 compiles in exactly
+one audio driver and has no OSS path for a dsp shim to intercept:
+
+```console
+$ strings -a libSDL2-2.0.so.0 | grep -xiE 'mmiyoo|mini|Miyoo Mini|dsp|oss|alsa|pulseaudio|dummy|disk' | sort -u
+mini
+Mini
+Miyoo Mini
+$ strings -a libSDL2-2.0.so.0 | grep -iE '/dev/dsp|/dev/audio|soundcard\.h|SDL_PATH_DSP'
+(nothing)
+```
+
+Unsetting `LD_PRELOAD` is therefore right on both firmwares, and the remaining
+question is narrow: **which process holds MI_AO on stock, and is stopping it
+advisable?** The process table answers the first and nothing on a dev box can.
+Onion's script is firmware-supplied and MainUI restarts what it stops; a
+hand-rolled kill on stock would be neither, which is why this is not simply
+"port the Onion branch".
+
+Also found here, and recorded as **D26**: `Mix_OpenAudio failed ()` — the vendor
+driver fails without calling `SDL_SetError`, so the logger has nothing to print
+and the only description of the failure went to stdout. The launcher capturing
+stdout is what preserved it.
+
+---
+
 ## 2026-07-27 — fill rate, and the internal-resolution lever
 
 Taken with `coppers`, the demo added for exactly this

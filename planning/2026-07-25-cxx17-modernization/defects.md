@@ -986,6 +986,35 @@ Which rung was taken is logged.
 **Not our defect**, recorded because it constrains what `gfx::renderer` may do on
 this target and it is invisible from any other one.
 
+> **Reclassified 2026-07-31 — and not the hardware's defect either.** This entry
+> was written on the understanding that the backend implements one operation
+> because `MI_GFX` offers one operation. Reading the vendor SDK in the toolchain
+> sysroot shows that is wrong: `libmi_gfx.so` exports nine entry points including
+> `MI_GFX_QuickFill`, a hardware rectangle fill, and `MI_GFX_Opt_t` carries
+> `eRotate`, `eMirror`, a clip rect, colour-keying and eleven DirectFB blend
+> operands — all **per call**. The shipped `libSDL2-2.0.so.0` imports four
+> symbols: `Open`, `Close`, `BitBlit`, `WaitAllDone`.
+>
+> So `Mini_QueueFillRects` returning `0` is an omission, and the hardcoded
+> `E_MI_GFX_ROTATE_180` below is a constant in a 371-line source file rather than
+> a property of the blitter. The only stub that is certainly not an omission is
+> `QueueGeometry`: there is no triangle primitive. `RenderReadPixels` is
+> unresolved rather than impossible — GFX cannot read a surface back, but the
+> port's textures are `SDL_calloc`'d CPU buffers and the framebuffer is
+> `MI_SYS_Mmap`-able, and the shipped library already imports `MI_SYS_Mmap`.
+>
+> The consequences listed below still hold **for the binary we ship**, which is
+> what matters to `gfx::renderer` today. What changes is that they are fixable
+> rather than permanent — see
+> [docs/MIYOO-MINI.md § 4.6](../../docs/MIYOO-MINI.md) for the API and
+> [2026-07-31-miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/) for what fixing
+> them would cost.
+>
+> One thing this does **not** settle: whether the fixed 180° rotation is a bug or
+> is correct compensation for a panel mounted inverted. `coppers`' full-screen
+> content is horizontal bars and looks identical either way, so no run taken so
+> far distinguishes them.
+
 The `mini` render backend in the device's SDL2 — the driver that reports itself
 as `Miyoo Mini (accelerated)` — implements exactly one drawing operation:
 
@@ -1095,3 +1124,130 @@ What that makes true elsewhere in the tree:
   target they have to composite into a layer.
 - **`Layer::set_readback()` is not a nicety.** It is the only way to capture a
   frame on the one device where a screenshot is the only way to see the output.
+
+## D26 — the audio failure that matters most describes itself as `()`
+
+**MINOR — diagnostics.** `audio/device.cc`
+
+On the Miyoo Mini the vendor audio driver fails without calling `SDL_SetError`,
+so `Mix_GetError()` returns the empty string and the warning reads:
+
+```
+[W] audio: Mix_OpenAudio failed (); continuing without sound
+```
+
+The parenthesis is not a formatting slip, it is the whole of what SDL knows. The
+actual description of the failure goes straight to stdout from the vendor layer,
+outside the logger entirely:
+
+```
+[MI ERR ]: MI_AO_SetPubAttr[3364]: Dev0 failed to set pub attr!!! error number:0xa0052009!!!
+```
+
+Found 2026-07-30 on stock firmware, where MI_AO is contended and no
+`stop_audioserver.sh` exists to release it. The same call fails the same way on
+OnionOS without the remedy script.
+
+This is a real cost rather than an untidiness: `audio::Device` is deliberately
+non-fatal, so a bad `Mix_OpenAudio` is meant to be diagnosed from the log rather
+than from a crash — and on the one platform where it fails, the log says nothing.
+A reader who has only `coppers.log` cannot tell contention from a missing codec
+from a bad sample rate.
+
+Worth fixing by saying so explicitly when SDL has no error to give, and pointing
+at where the real one went. Not by inventing a cause: the empty string is
+accurate, it is just useless on its own.
+
+**Not fixed.** Recorded 2026-07-30. Two things depend on the fix being honest
+about scope — `launch.sh` capturing stdout is what preserved the evidence here
+and must stay, and the stock MI_AO owner is still unidentified, so a future
+reader hitting this warning needs to be sent somewhere useful rather than
+reassured.
+
+## D27 — the Miyoo Mini's SDL2 renders textures from a pointer it does not own
+
+**Not our defect**, but it fires on our code path, and unlike D25 it is a
+memory-safety bug rather than a missing feature.
+
+Found 2026-07-31 by reading `steward-fu/sdl2` from a local checkout — the first
+time the port's source had been read rather than viewed.
+`sdl2/src/render/mini/SDL_render_mini.c:121`:
+
+```c
+static int Mini_UpdateTexture(SDL_Renderer *renderer, SDL_Texture *texture,
+                              const SDL_Rect *rect, const void *pixels, int pitch)
+{
+    update_texture(texture, texture, pixels, pitch);   /* stores the pointer */
+    return 0;
+}
+```
+
+`update_texture` records `pixels` in a 100-entry table and returns. **Nothing is
+copied.** `Mini_QueueCopy` later retrieves that pointer with `get_pixels()` and
+hands it to `GFX_Copy`, which `memcpy`s from it into MMA memory at draw time.
+
+The driver does allocate its own buffer — `t->data` in `Mini_CreateTexture` — but
+only the lock/unlock path ever registers it. `Mini_UnlockTexture` calls
+`Mini_UpdateTexture(..., t->data, t->pitch)`, so a locked texture is safe.
+
+**`SDL_CreateTextureFromSurface` is not**, and its worse path is the one this
+project takes. Traced through SDL 2.0.20's own `src/render/SDL_render.c`, since
+the mechanism matters more than the conclusion:
+
+```c
+    /* format matches the renderer's */
+    SDL_UpdateTexture(texture, NULL, surface->pixels, surface->pitch);
+
+    /* format does not match — the else branch */
+    temp = SDL_ConvertSurface(surface, dst_fmt, 0);
+    SDL_UpdateTexture(texture, NULL, temp->pixels, temp->pitch);
+    SDL_FreeSurface(temp);                      /* freed here, before returning */
+```
+
+`SDL_UpdateTexture` reaches the driver directly — `texture->native` is only set
+when the driver cannot handle the format, and the format was chosen *from*
+`renderer->info.texture_formats`, so it is null and the call lands in
+`Mini_UpdateTexture` unmodified.
+
+On the matching path the pointer dangles when the caller frees its surface. **On
+the converting path it dangles before `SDL_CreateTextureFromSurface` returns**,
+because `temp` is freed inside the function. And the converting path is not the
+exotic one here: the `mini` driver advertises exactly two formats, `RGB565` and
+`ARGB8888`, while `loaders::load_image` converts everything to `ABGR8888`. Any
+surface that is not already one of those two is a guaranteed use-after-free.
+
+That is `gfx::renderer::Context::draw_surface()`, which is how text and every
+surface-derived texture reach the screen on this target.
+
+Consequences, in the order they matter:
+
+- **`draw_surface()` is a use-after-free on this target.** It has not visibly
+  failed on device across ~2400 frames of the first runs, which is what reading
+  recently-freed heap normally looks like rather than evidence that it is fine.
+- **`Layer` is unaffected**, because it locks and unlocks. That is now a
+  correctness reason to prefer the layer path here, not only the D25 one.
+- **The table is 100 entries with no overflow handling.** `update_texture`
+  returns `-1` when full and the caller ignores it, so the 101st live texture is
+  never registered, `get_pixels` returns `NULL`, and `Mini_QueueCopy` returns 0
+  without drawing. A silent missing sprite rather than an error.
+
+Two further bugs in the same path, recorded here rather than as separate entries
+because they share a cause — nobody has exercised a sub-rectangle blit:
+
+- `GFX_Copy` stages `srt.h * pitch` bytes from the **start** of the texture and
+  then tells the blitter to read from row `srt.y`, so the last `srt.y` rows are
+  whatever the staging buffer held before.
+- the pixel format is inferred as `(pitch / srt.w) == 2 ? RGB565 : ARGB8888`,
+  using the **sub-rectangle's** width against the **whole texture's** pitch, so
+  any sub-rect narrower than its texture is misidentified.
+
+Together with D25's fixed rotation, that is three independent reasons an atlas
+blit cannot be correct on this device, and it is why
+[software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/) must
+composite into a layer here rather than calling `Context::draw()`.
+
+**Not fixed, and not fixable from this side** — the mitigation is to avoid
+`SDL_CreateTextureFromSurface` on this target or to re-upload every frame so the
+borrowed pointer is never stale. The actual fix is a `memcpy` in a library we do
+not build, which is one of the five correctness patches scoped in
+[2026-07-31-miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/).

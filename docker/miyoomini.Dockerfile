@@ -22,6 +22,7 @@ FROM ${BASE_IMAGE}
 # Pin so image rebuilds are reproducible.
 ARG CMAKE_VERSION=3.31.6
 ARG NINJA_VERSION=1.12.1
+ARG PATCHELF_VERSION=0.19.1
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -32,14 +33,21 @@ ENV DEBIAN_FRONTEND=noninteractive
 #
 #   wget, unzip, tar  — from union-miyoomini-toolchain's own Dockerfile
 #   working TLS       — its setup-toolchain.sh already wgets over https
+#   readelf           — binutils, this being a toolchain image
 #
 # Official upstream binaries, no compiling, and buster's ancient system CMake
 # (3.13) is left in place untouched rather than replaced.
+#
+# patchelf is here for the bundle rather than for the build: the vendored SDL2
+# runtime declares a 21.8 MB libGLESv2.so it references no symbol from, and
+# `cmake --build --target bundle-onion` drops that dependency. Without patchelf
+# the step skips and the bundle ships at 30 MB instead of 8.4 MB. Its release
+# binaries are static-pie with no libc floor at all, so buster is a non-issue.
 RUN set -eux; \
     arch="$(uname -m)"; \
     case "$arch" in \
-        x86_64)  cm_arch=x86_64;  nj=ninja-linux.zip ;; \
-        aarch64) cm_arch=aarch64; nj=ninja-linux-aarch64.zip ;; \
+        x86_64)  cm_arch=x86_64;  nj=ninja-linux.zip;         pe_arch=x86_64 ;; \
+        aarch64) cm_arch=aarch64; nj=ninja-linux-aarch64.zip; pe_arch=aarch64 ;; \
         *) echo "unsupported host arch: $arch" >&2; exit 1 ;; \
     esac; \
     wget -q -O /tmp/cmake.tar.gz \
@@ -51,7 +59,11 @@ RUN set -eux; \
         "https://github.com/ninja-build/ninja/releases/download/v${NINJA_VERSION}/${nj}"; \
     unzip -q /tmp/ninja.zip -d /usr/local/bin; \
     chmod +x /usr/local/bin/ninja; \
-    rm /tmp/ninja.zip
+    rm /tmp/ninja.zip; \
+    wget -q -O /tmp/patchelf.tar.gz \
+        "https://github.com/NixOS/patchelf/releases/download/${PATCHELF_VERSION}/patchelf-${PATCHELF_VERSION}-${pe_arch}.tar.gz"; \
+    tar -xzf /tmp/patchelf.tar.gz -C /usr/local ./bin/patchelf; \
+    rm /tmp/patchelf.tar.gz
 
 # Ahead of /usr/bin so the modern CMake wins over buster's 3.13.
 ENV PATH="/opt/cmake/bin:${PATH}"
@@ -60,7 +72,7 @@ ENV PATH="/opt/cmake/bin:${PATH}"
 ENV MIYOOMINI_TOOLCHAIN_ROOT=/opt/miyoomini-toolchain
 ENV UNION_PLATFORM=miyoomini
 
-RUN cmake --version && ninja --version \
+RUN cmake --version && ninja --version && patchelf --version && readelf --version \
     && "${MIYOOMINI_TOOLCHAIN_ROOT}/usr/bin/arm-linux-gnueabihf-g++" --version
 
 WORKDIR /src
