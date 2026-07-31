@@ -41,7 +41,9 @@ Each `README.md` opens with one of:
 | [2026-07-25-target-validation](2026-07-25-target-validation/) | `in-progress` | Prove the cross and Steam presets on real toolchains and hardware. Steps 1–2 done; the device toolchain, containers and hardware remain |
 | [2026-07-26-coppers-cracktro](2026-07-26-coppers-cracktro/) | `in-progress` | A copper-bar cracktro on `gfx::renderer`. Stages 0–3 landed 2026-07-27: `rig`, the locked-pixels layer, `Texture` and the source-rect blit, both scroller paths, music and input. **Stage 4 is the on-device measurement and needs hardware** |
 | [2026-07-25-packaging-distribution](2026-07-25-packaging-distribution/) | `in-progress` | Handheld bundles per firmware, Steam depot layout. Its first firmware landed 2026-07-27 in the snapshot below; the remaining three layouts and the Steam depot are still open |
+| [2026-07-29-gles-free-runtime](2026-07-29-gles-free-runtime/) | `in-progress` | Drop the 21.8 MB SwiftShader GL blob from the handheld bundle. **The vendored SDL2 references zero symbols from it** — the dependency is a link-time artefact, so this was a build step rather than a rebuild. Stages 1–2 done: **29.5 MiB → 8.7 MiB staged, ~13 MB → 3.6 MB compressed**, and it runs on hardware — on stock firmware as well as Onion. Stage 3, pinning what we ship, remains |
 | [2026-07-27-onion-bundle](2026-07-27-onion-bundle/) | `in-progress` | Getting `coppers` onto the Miyoo Mini Plus in hand. **Answers the project's largest open question — upstream SDL2 cannot drive that panel, so the firmware's patched copy is mandatory.** The `App/Coppers/` bundle is implemented and verified on the dev box; the device trip is stages 0–3 |
+| [2026-07-31-miyoo-sdl2-fork](2026-07-31-miyoo-sdl2-fork/) | `snapshot` | Build and maintain our own SDL2 for the Miyoo Mini — **decided 2026-07-31 and revised the same day**, gated on first proving the drivers build. Reading the port's source found a use-after-free on our own `draw_surface` path, two independent reasons atlas blits cannot work, a Flip with no valid configuration, and a driver that **discards SDL2's state model wholesale** — so `RenderClear`, blend modes and colour/alpha mod are silent no-ops. The revision: **rebase the 1,480 driver lines onto the SDL 2.32.10 we already pin** rather than fork a dead 2.0.20, because the backend interface turned out to have moved in three signatures. Tier 1 correctness; tier 2 now contested by the engine-side alternative |
 | [2026-07-25-midi-live-visuals](2026-07-25-midi-live-visuals/) | `snapshot` | The secondary goal: MIDI-driven demo-style graphics |
 
 ## Ordering
@@ -181,3 +183,79 @@ Three consequences for the ordering above:
 - "Everything is static by design" is no longer true on `miyoomini`. One shared
   object, documented, on one target — but a claim that was load-bearing in
   packaging's reasoning, so it is corrected there rather than left to drift.
+
+## Revised 2026-07-31: the vendor SDL2 was never actually read
+
+Not a re-ordering — a correction to what several of the snapshots above rest on.
+
+Six documents describe what the Miyoo Mini's SDL2 can do, and until 2026-07-31
+every one of them was written from files viewed through GitHub's web interface
+and from the *absence* of capability in the ports. Two things were checked
+properly for the first time: the vendor SDK in the toolchain sysroot, and a local
+checkout of the port.
+
+Both said something different from what was recorded.
+
+- **`MI_GFX` is not a one-operation blitter.** It fills rectangles, blends with
+  eleven DirectFB operands, colour-keys, mirrors and rotates — all per call. The
+  ports use `BitBlit` and nothing else. [MIYOO-MINI.md § 4.6](../docs/MIYOO-MINI.md)
+  is read from the header and is now the authority; § 3.1, § 4.3, § 5 and § 8 are
+  corrected where they attributed the ports' omissions to the hardware.
+- **The port has correctness bugs, not just gaps.** `SDL_UpdateTexture` stores
+  the caller's pointer without copying, which makes
+  `Context::draw_surface()` a use-after-free on this target; the staging copy
+  ignores a source rect's `y`; the pixel format is inferred from the sub-rect's
+  width. The last two are independent reasons an atlas cannot render correctly —
+  on top of D25's rotation, which was the only one known.
+- **The Mini Flip has no working configuration.** Its 752×560 framebuffer is
+  detected at runtime, but `max_texture_width/height` are literals of 640×480
+  that do not follow, so a full-screen layer cannot be created there.
+- **The driver discards SDL2's state model.** It draws during queueing and its
+  `RunCommandQueue` returns 0, so clear, viewport, clip rect, draw colour and
+  blend state are built by SDL and thrown away. `Context::clear()`,
+  `Texture::set_blend()`, `set_color_mod()` and `set_alpha_mod()` are ordinary
+  SDL2, are already in the tree, and do nothing on this target. An alpha sprite
+  renders as an opaque rectangle — which nothing has caught because nothing has
+  drawn one on the device yet.
+
+[2026-07-31-miyoo-sdl2-fork](2026-07-31-miyoo-sdl2-fork/) scopes what to do about
+it. The short version is that the case for building our own SDL2 is now
+*correctness* rather than capability, and that it is gated on first proving the
+drivers can be built at all.
+
+**The transferable lesson is about method, not about this device.** These
+conclusions were reachable at any point in the last four days: the SDK was in a
+container we already build, and the source is a `git clone`. What was in the way
+was reading a summary of a file instead of the file. `CLAUDE.md` already says
+fresh documentation reads beat recalled knowledge — this extends it to *fetched*
+knowledge, which reads like a source and is not one.
+
+### And the same lesson again, later the same day
+
+The fork snapshot was written from the port's sources and decided on them. It was
+not written from the *build*, the SDK in our own toolchain image, or upstream
+SDL2's current backend interface — and each of those overturned something:
+
+- **`libEGL.so` is never called on this target.** `Mini_CreateWindow` calls
+  `glUpdateBufferSettings`, a static function in the port's own file;
+  `eglUpdateBufferSettings`, one letter away, is called only from
+  `glCreateContext`. Three documents recorded the wrong one as load-bearing —
+  [THIRD-PARTY.md](../THIRD-PARTY.md), [MIYOO-MINI § 4.5](../docs/MIYOO-MINI.md)
+  and [gles-free-runtime § 2](2026-07-29-gles-free-runtime/) — all now corrected.
+  The shipped binary of unknown licence can be replaced by a stub, which
+  unblocks [packaging-distribution](2026-07-25-packaging-distribution/) with no
+  rebuild at all.
+- **"Rebasing onto current SDL2 is a port" did not survive checking.** Every
+  backend member the mini drivers assign still exists in the pinned 2.32.10, and
+  three have changed signature. The rejection had been written from a diff
+  statistic rather than from the interface.
+- **The inventory was short by a driver.** `src/audio/mini/` — where D26 lives,
+  and the only reason the bundle carries `libjson-c.so.5`.
+- **The toolchain sysroot's SigmaStar headers are byte-identical to the vendor
+  tree's**, so the SDK was never the risk. The risk is json-c, which the sysroot
+  does not have.
+
+Three of the four were a `grep` away in files already on this disk. The first
+lesson was about preferring the source to a summary of it; this one is narrower
+and sharper — **a symbol table is not a call site**, and the two documents that
+got this wrong both had the symbol list in front of them.

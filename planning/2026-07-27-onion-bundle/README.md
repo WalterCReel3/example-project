@@ -283,6 +283,26 @@ Two consequences:
 
 - **For a Mini Plus this is a non-issue** — 640×480 is the panel, and the prebuilt
   and Onion copies are both that build.
+> **Corrected 2026-07-31.** The two `#define`s above are real and are still the
+> *defaults*, but they are not the whole story, and the conclusion drawn from
+> them below — that a Flip needs its own build — is wrong. `Mini_VideoInit`
+> probes the panel at runtime and overrides both:
+>
+> ```c
+> fd = popen("fbset | grep \"mode \"", "r");
+> if (fd) { fgets(buf, sizeof(buf), fd); pclose(fd);
+>     if (strstr(buf, "752")) { FB_W = 752; FB_H = 560; ... } }
+> ```
+>
+> **This is in the binary we ship**, not only in the source — `strings -a` on the
+> pinned blob `7dba96fb` finds `fbset | grep "mode "`. What does *not* follow the
+> probe is the render driver's `max_texture_width/height`, which are literals of
+> 640×480, so a Flip gets a correct framebuffer and cannot create a full-screen
+> texture to fill it. That is a one-line defect rather than a separate build.
+> Read from source in
+> [miyoo-sdl2-fork § 1.4](../2026-07-31-miyoo-sdl2-fork/), which also notes that
+> this settles a contradiction between two of our own documents.
+
 - **It is a trap for the Flip**, and a subtle one. That device is 750×560, no
   prebuilt matches it, and a library compiled for 640×480 will happily report
   640×480 to `SDL_GetDesktopDisplayMode`. So
@@ -635,9 +655,14 @@ container works, but it is a second container in the loop rather than one comman
 
 **Follow-ups, none blocking a first run**
 
-- [ ] Build an `mmiyoo` SDL2 with the GL backend compiled out, removing 21 MB of
-      SwiftShader the demo never calls. Needs `configure` generated outside the
-      buster container, which has no autoconf
+- [x] Build an `mmiyoo` SDL2 with the GL backend compiled out, removing 21 MB of
+      SwiftShader the demo never calls. **Scoped 2026-07-29 as
+      [gles-free-runtime](../2026-07-29-gles-free-runtime/), and it turns out not
+      to need a rebuild at all**: the vendored `libSDL2` references *zero*
+      symbols from `libGLESv2.so`, so the dependency is a link-time artefact and
+      dropping it is a build step. Landed the same day — `bundle-onion` now
+      drops it behind the symbol check that justifies it, and the staged bundle
+      is **8.8 MiB** where it was 30 MB. Still unrun on a device
 - [ ] A Flip build of that library with `DEF_FB_W`/`DEF_FB_H` at 750×560, without
       which no measurement from a Flip means anything (decision 4a)
 - [ ] Pin the runtime the way every other dependency is pinned — `docs/TARGETS.md`
