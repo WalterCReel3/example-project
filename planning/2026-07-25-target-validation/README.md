@@ -211,7 +211,7 @@ glibc symbol versioning, which `objdump -T | grep GLIBC_` can confirm directly.
   **Method built and measured on the dev box, 2026-07-27** — see
   [results.md](results.md). Still open on hardware, but the question was posed
   wrongly: 320×240 is not any device's resolution (the Mini Plus is 640×480 and the
-  Flip is 750×560), and a lower *internal* resolution turns out to be a **net loss**
+  Flip is 752×560), and a lower *internal* resolution turns out to be a **net loss**
   on the software driver, because SDL's scaling blit costs more than the plotting it
   saves. It is a 2.8× win on an accelerated driver. So the answer inverts between
   the two drivers this project ships on, and `coppers --seconds` is how it gets

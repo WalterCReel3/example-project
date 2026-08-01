@@ -57,7 +57,7 @@ same trip.
 
 ### Read before starting
 
-- **The Miyoo Mini Flip is 750×560, not 640×480**, on the same SSD202D as the
+- **The Miyoo Mini Flip is 752×560, not 640×480**, on the same SSD202D as the
   Plus. Same preset, 37% more pixels, so it is the binding target for anything
   fill-rate bound and the more valuable of the two to test first.
   `docs/TARGETS.md § Target matrix` has the panel table.

@@ -36,7 +36,7 @@ Six snapshots' worth of work has been verified by compiling and by tests.
 | Device | SoC | CPU | RAM | Panel | Pixels |
 |---|---|---|---|---|---|
 | **Miyoo Mini Plus** | SigmaStar SSD202D | Cortex-A7 ×2 @ 1.2 GHz | 128 MB DDR3 | 3.5", **640×480** | 307,200 |
-| **Miyoo Mini Flip** | SigmaStar SSD202D | Cortex-A7 ×2 @ 1.2 GHz | 128 MB DDR3 | 2.8", **750×560** | 420,000 |
+| **Miyoo Mini Flip** | SigmaStar SSD202D | Cortex-A7 ×2 @ 1.2 GHz | 128 MB DDR3 | 2.8", **752×560** | 421,120 |
 
 "Emulator" mode is `desktop-software`, windowed — the same code path, since that
 preset sets `WREEL_TARGET_HAS_GPU=OFF` and forces the software driver.
@@ -49,15 +49,15 @@ the opposite showcase — see
 **Checked rather than assumed, and the second row is the surprise.** Both devices
 are the *same SoC*, so the existing `miyoomini` preset covers both and no new
 toolchain row is needed — `docs/TARGETS.md` only needs its device list widened.
-But the Flip's panel is **750×560**, not 640×480: a non-standard mode with **37%
+But the Flip's panel is **752×560**, not 640×480: a non-standard mode with **37%
 more pixels than the Mini Plus, on identical silicon**.
 
 That inverts the intuition. The Flip is the smaller screen and the newer device,
 and it is the **binding target for anything fill-rate bound** — which this demo
-is by construction. Design against 750×560 and the Plus has headroom; design
+is by construction. Design against 752×560 and the Plus has headroom; design
 against 640×480 and the Flip is 37% over budget.
 
-750×560 is unusual enough that the firmware may well present SDL a different
+752×560 is unusual enough that the firmware may well present SDL a different
 logical mode than the physical panel, which several of these devices do. That is
 exactly what `wreel-probe`'s display-mode section answers, and it makes running the
 probe on a Flip a higher priority than on a Plus.
@@ -108,7 +108,7 @@ it.** [target-validation](../2026-07-25-target-validation/README.md) and
 their cost questions at 320×240, while
 [`gfx/gles2/context.cc:40`](../../gfx/gles2/context.cc) budgets its depth buffer at
 640×480. Neither describes the hardware: the Mini Plus is 640×480 and the Mini Flip
-is **750×560** (sourced in Targets above). So the fill-cost questions those
+is **752×560** (sourced in Targets above). So the fill-cost questions those
 documents ask are out by **4×** and **5.5×** respectively, and the two target
 devices do not even agree with each other.
 
@@ -585,7 +585,7 @@ number below is arithmetic, not evidence, and the demo exists to replace it.
 
 **The frame budget is the whole question, and the Flip sets it.** At 32 bpp the bar
 field alone writes 1.2 MB per frame on the Mini Plus (640×480) and **1.7 MB on the
-Flip** (750×560), so 60 fps needs roughly 74 MB/s and **101 MB/s** of write
+Flip** (752×560), so 60 fps needs roughly 74 MB/s and **101 MB/s** of write
 bandwidth respectively — before the scale-blit, before the present, before a single
 glyph. Add those and it is plausibly 150–200 MB/s on two Cortex-A7 cores that are
 also mixing audio. A 320×240 internal layer cuts *our plotting* to ~18 MB/s but the
@@ -635,15 +635,15 @@ demo advertises.
 
 - ~~**What SoC and panel does the Miyoo Mini Flip have?**~~ **Answered while
   writing this**, see Targets: same SSD202D, so one preset covers both, but
-  750×560 rather than 640×480. Still open is which firmware the Flip ships and
+  752×560 rather than 640×480. Still open is which firmware the Flip ships and
   whether OnionOS layouts apply to it, which
   [packaging-distribution](../2026-07-25-packaging-distribution/) will need.
-- **Does the Flip's firmware report 750×560 to SDL, or a scaled logical mode?** A
+- **Does the Flip's firmware report 752×560 to SDL, or a scaled logical mode?** A
   non-standard panel is exactly where a vendor scaler tends to sit. `wreel-probe`
   on a Flip answers it, and the answer decides whether the demo sizes itself from
   `SDL_GetDesktopDisplayMode` or is told.
 - ~~**Is `320×240` in the older snapshots wrong?**~~ **Yes.** No device in the
-  matrix has a 320×240 panel; the two this demo targets are 640×480 and 750×560.
+  matrix has a 320×240 panel; the two this demo targets are 640×480 and 752×560.
   Those documents should be corrected to say "an internal render resolution" if
   that is what was meant, because as written they read as panel claims and the cost
   questions built on them are out by 4× and 5.5× respectively.
