@@ -1,0 +1,93 @@
+# The Miyoo Mini's SDL2 drivers
+
+The SSD202D video, render and audio drivers, compiled into this project's pinned
+upstream SDL2. Where they came from, what we changed and why is
+[PROVENANCE.md](PROVENANCE.md) — read that first if the question is licensing or
+correctness. This file is how the build works.
+
+## What is here
+
+```
+src/video/mini/     SDL_video_mini.c   the MI_GFX context, the fbdev present, display modes
+                    SDL_event_mini.c   evdev on a thread; the pad is a keyboard here
+                    SDL_fb_mini.c      window framebuffer — Update is a no-op, see PROVENANCE
+src/render/mini/    SDL_render_mini.c  the "Miyoo Mini" render backend
+src/audio/mini/     SDL_audio_mini.c   MI_AO
+patches/            0001-register-mini-drivers.patch
+graft.cmake         copies src/ into the fetched SDL2 and applies the patch
+```
+
+The sources are not upstream SDL2's and are not ours either: they are
+steward-fu's, LGPL-2.1, listed with their original blob hashes in PROVENANCE.md
+so the import is verifiable byte-for-byte.
+
+## How it builds
+
+`WREEL_MINI_SDL2` — defaulted ON by `cmake/toolchains/miyoomini.cmake`, and
+meaningless elsewhere, since no other target has an MI SDK to compile against.
+When it is on, `cmake/Dependencies.cmake` declares SDL2 with a `PATCH_COMMAND`
+that runs `graft.cmake` after FetchContent populates the tree:
+
+1. `src/` is copied over SDL2's `src/`, adding `{video,render,audio}/mini/` and
+   touching nothing else.
+2. `patches/0001-register-mini-drivers.patch` is applied — 42 inserted lines
+   across 8 upstream files, none removed or changed. It adds an `SDL_MINI`
+   option, a build block, three `#cmakedefine` entries, and one bootstrap-array
+   entry plus one `extern` for each of video, render and audio.
+
+Both steps are idempotent: `PATCH_COMMAND` is not guaranteed to run exactly once,
+and a reconfigure after an interrupted populate would otherwise fail on an
+already-applied patch.
+
+The vendor SDK needs no vendoring. The toolchain sysroot's `mi_gfx.h`,
+`mi_sys.h`, `mi_common.h` and `mi_ao.h` are byte-identical to the copies in
+steward-fu's tree, and the matching `libmi_*.so` are there too.
+
+```sh
+docker run --rm -v "$PWD":/src -w /src wreel-miyoomini \
+    bash -c 'cmake --preset miyoomini && cmake --build build/miyoomini -j4'
+```
+
+## Regenerating the patch when the SDL2 pin moves
+
+`graft.cmake` fails the build rather than forcing a patch that no longer fits,
+because a half-applied registration produces link errors a long way from the
+cause. To move the pin:
+
+1. Configure once with `WREEL_MINI_SDL2=OFF` so the tree is populated unpatched.
+2. Redo the eight edits by hand — the existing patch is the specification, and
+   every hunk is an insertion.
+3. Regenerate:
+
+   ```sh
+   cd build/<preset>/_deps/sdl2-src
+   git -c safe.directory="$PWD" diff > <repo>/platform/miyoomini/sdl2/patches/0001-register-mini-drivers.patch
+   ```
+
+   The `safe.directory` override is needed because the container creates that
+   tree as root.
+
+4. Re-check the backend signatures. Six changed between 2.0.20 and 2.32.10 and
+   the survey that found five of them missed one, so this is a compile-and-read
+   exercise rather than a diff-the-header one. PROVENANCE.md lists what moved.
+
+## Verifying a change on the device
+
+`wreel-diag` is the regression suite. It draws known content and reads
+`/dev/fb0` back, so it measures what reached the panel rather than what SDL
+returned:
+
+```sh
+cmake --build build/miyoomini --target bundle-onion
+# copy pkg/coppers-*-onion.tar.gz onto the card, run "Wreel Diagnostics"
+# from the Apps menu, then read App/WreelDiag/diag.txt
+```
+
+Run it before and after a driver change and diff the two reports. The same
+binary on `desktop-software` runs against SDL's own software renderer and is the
+control: a line that reads OK there and IGNORED here is a gap in this driver, and
+one that reads IGNORED in both is a bug in the check.
+
+Findings so far, and the traps that produced wrong ones first, are in
+[planning/2026-07-31-miyoo-sdl2-fork](../../../planning/2026-07-31-miyoo-sdl2-fork/)
+§ 8.
