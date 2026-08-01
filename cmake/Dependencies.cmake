@@ -45,11 +45,88 @@ endif()
 # SDL2
 # ---------------------------------------------------------------------------
 #
-# WREEL_USE_SYSTEM_SDL2 exists for devices whose firmware ships a *patched* SDL2
-# that upstream cannot replace — notably Miyoo Mini stock firmware, which routes
-# video through SigmaStar's MI_GFX layer.
+# Three ways to get an SDL2, and they are alternatives:
+#
+#   WREEL_MINI_SDL2       pinned upstream + the Miyoo Mini drivers grafted in
+#   WREEL_USE_SYSTEM_SDL2 a copy somebody else built — the escape hatch for a
+#                         firmware whose SDL2 genuinely cannot be replaced
+#   neither               pinned upstream, unmodified — every other target
+#
+# WREEL_SDL2_LINKAGE is orthogonal to all three and is resolved in
+# cmake/ProjectOptions.cmake. Read the note there before changing it: on
+# miyoomini it is a licence term rather than a packaging preference.
 
-if(WREEL_USE_SYSTEM_SDL2)
+if(WREEL_SDL2_LINKAGE STREQUAL "SHARED")
+    set(_wreel_sdl_shared ON)
+    set(_wreel_sdl_static OFF)
+    set(_wreel_sdl_target SDL2::SDL2)
+else()
+    set(_wreel_sdl_shared OFF)
+    set(_wreel_sdl_static ON)
+    set(_wreel_sdl_target SDL2::SDL2-static)
+endif()
+
+if(WREEL_MINI_SDL2)
+    # The Miyoo Mini path: pinned upstream SDL2, with the SSD202D drivers
+    # grafted in and registered. See platform/miyoomini/sdl2/PROVENANCE.md and
+    # planning/2026-07-31-miyoo-sdl2-fork/.
+    message(STATUS "SDL2: building pinned ${WREEL_PIN_SDL2} with the Miyoo Mini drivers")
+
+    set(SDL_SHARED  ${_wreel_sdl_shared} CACHE BOOL "" FORCE)
+    set(SDL_STATIC  ${_wreel_sdl_static} CACHE BOOL "" FORCE)
+    set(SDL_TEST    OFF CACHE BOOL "" FORCE)
+    set(SDL2_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
+
+    set(SDL_MINI    ON  CACHE BOOL "" FORCE)
+
+    # No GPU, and no GL of any kind. The SSD202D has no 3D block, so the only
+    # GL reachable here is SwiftShader through a libEGL of unknown licence —
+    # which is what the vendor build linked and never called. See § 1.7 of the
+    # fork snapshot.
+    set(SDL_OPENGL   OFF CACHE BOOL "" FORCE)
+    set(SDL_OPENGLES OFF CACHE BOOL "" FORCE)
+    set(SDL_KMSDRM   OFF CACHE BOOL "" FORCE)
+    set(SDL_WAYLAND  OFF CACHE BOOL "" FORCE)
+    set(SDL_X11      OFF CACHE BOOL "" FORCE)
+    set(SDL_VULKAN   OFF CACHE BOOL "" FORCE)
+
+    # Audio is MI_AO through the mini driver. Everything else upstream offers
+    # here is either absent from the device or a silent fallback that would
+    # make a failure look like success.
+    set(SDL_OSS        OFF CACHE BOOL "" FORCE)
+    set(SDL_ALSA       OFF CACHE BOOL "" FORCE)
+    set(SDL_PULSEAUDIO OFF CACHE BOOL "" FORCE)
+    set(SDL_PIPEWIRE   OFF CACHE BOOL "" FORCE)
+    set(SDL_SNDIO      OFF CACHE BOOL "" FORCE)
+    set(SDL_JACK       OFF CACHE BOOL "" FORCE)
+    set(SDL_DISKAUDIO  OFF CACHE BOOL "" FORCE)
+    set(SDL_DUMMYAUDIO OFF CACHE BOOL "" FORCE)
+
+    # The pad is a keyboard on this device (MIYOO-MINI.md § 6.3) and the mini
+    # video driver reads evdev itself, so SDL's joystick and haptic layers have
+    # nothing to bind to.
+    set(SDL_HIDAPI     OFF CACHE BOOL "" FORCE)
+    set(SDL_LIBUDEV    OFF CACHE BOOL "" FORCE)
+    set(SDL_DBUS       OFF CACHE BOOL "" FORCE)
+    set(SDL_IME        OFF CACHE BOOL "" FORCE)
+
+    # Left ON deliberately: a dummy video driver is a diagnostic, not a
+    # fallback. If the mini driver fails to initialise, SDL_VIDEODRIVER=dummy
+    # is how you find out whether the failure is the driver or everything else.
+    set(SDL_DUMMYVIDEO ON CACHE BOOL "" FORCE)
+
+    FetchContent_Declare(SDL2
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG        ${WREEL_PIN_SDL2}
+        GIT_SHALLOW    TRUE
+        PATCH_COMMAND  ${CMAKE_COMMAND}
+            -DWREEL_MINI_DIR=${CMAKE_SOURCE_DIR}/platform/miyoomini/sdl2
+            -P ${CMAKE_SOURCE_DIR}/platform/miyoomini/sdl2/graft.cmake)
+    FetchContent_MakeAvailable(SDL2)
+
+    set(WREEL_SDL2_TARGET ${_wreel_sdl_target})
+
+elseif(WREEL_USE_SYSTEM_SDL2)
     find_package(SDL2 REQUIRED)
     message(STATUS "SDL2: using system/sysroot copy")
 
@@ -61,12 +138,11 @@ if(WREEL_USE_SYSTEM_SDL2)
     endif()
     set(WREEL_SDL2_TARGET SDL2::SDL2)
 else()
-    message(STATUS "SDL2: building pinned ${WREEL_PIN_SDL2} from source")
+    message(STATUS "SDL2: building pinned ${WREEL_PIN_SDL2} from source, "
+                   "${WREEL_SDL2_LINKAGE}")
 
-    # Static everywhere: handhelds have no sane place to drop a shared object,
-    # and Steam builds are simpler to ship self-contained.
-    set(SDL_SHARED  OFF CACHE BOOL "" FORCE)
-    set(SDL_STATIC  ON  CACHE BOOL "" FORCE)
+    set(SDL_SHARED  ${_wreel_sdl_shared} CACHE BOOL "" FORCE)
+    set(SDL_STATIC  ${_wreel_sdl_static} CACHE BOOL "" FORCE)
     set(SDL_TEST    OFF CACHE BOOL "" FORCE)
     set(SDL2_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
 
@@ -97,7 +173,41 @@ else()
         GIT_SHALLOW    TRUE)
     FetchContent_MakeAvailable(SDL2)
 
-    set(WREEL_SDL2_TARGET SDL2::SDL2-static)
+    set(WREEL_SDL2_TARGET ${_wreel_sdl_target})
+endif()
+
+# ---------------------------------------------------------------------------
+# One SDL2, two spellings
+# ---------------------------------------------------------------------------
+#
+# SDL2_image, SDL2_ttf and SDL2_mixer each choose which SDL2 target to look for
+# from their OWN linkage, not from SDL2's: a static satellite asks for
+# SDL2::SDL2-static, a shared one for SDL2::SDL2. Ours are static on every
+# target (see below), so a SHARED SDL2 leaves them looking for a name that does
+# not exist. Their fallback is find_package(SDL2), which on the miyoomini
+# sysroot finds SDL 1.2 and reports a missing SDL2_LIBRARY — an error that names
+# neither the satellite nor the linkage.
+#
+# `sdl_find_sdl2()` is guarded by `if(NOT TARGET ${TARGET})`, so supplying the
+# target under the name it looks for is the intended way to satisfy it from a
+# parent build. This aliases a *name*; it does not link anything, and there is
+# exactly one SDL2 in the build either way.
+#
+# It is safe in the direction it is used, and worth knowing why: the satellites
+# link SDL2 `PRIVATE $<BUILD_INTERFACE:...>`, so a static satellite uses SDL2
+# for its own compilation and propagates nothing to the final link — our
+# executables link SDL2 themselves, through WREEL_SDL2_TARGET. Upstream's
+# `SDL2_SHARED` COMPATIBLE_INTERFACE_BOOL guard is only set when the satellite
+# itself is shared, so it does not fire here.
+#
+# What would NOT be safe is building SDL2 both ways and letting a static copy
+# reach the final link beside the shared one. Two copies of SDL's global state
+# in one process is a different class of problem, and it is why SDL_SHARED and
+# SDL_STATIC are set from one variable above rather than independently.
+if(TARGET SDL2 AND NOT TARGET SDL2::SDL2-static)
+    add_library(SDL2::SDL2-static ALIAS SDL2)
+elseif(TARGET SDL2-static AND NOT TARGET SDL2::SDL2)
+    add_library(SDL2::SDL2 ALIAS SDL2-static)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -109,12 +219,19 @@ endif()
 # only ships PNG and JPEG assets (data/*.png, data/test-pattern.jpg), so the
 # rest of the formats are switched off to keep the build small.
 
-# The SDL satellite libraries must match SDL2's linkage. Left to their defaults
-# they build shared and link SDL2::SDL2, while we link SDL2::SDL2-static — which
-# CMake catches at generate time as a COMPATIBLE_INTERFACE_BOOL conflict:
+# The satellites are static on every target, whatever SDL2's own linkage is.
+# They are zlib-licensed and consume the SDL2 API rather than the display, so
+# none of the reasoning that makes SDL2 shared on miyoomini applies to them.
+#
+# Left to their defaults they build SHARED, and a shared satellite does assert
+# that SDL2 is shared too — CMake catches the disagreement at generate time as a
+# COMPATIBLE_INTERFACE_BOOL conflict:
 #
 #   The INTERFACE_SDL2_SHARED property of "SDL2_ttf" does not agree with the
 #   value of SDL2_SHARED already determined for "wreel_gfx".
+#
+# Static satellites make no such assertion, which is what lets SDL2's linkage
+# vary underneath them — see "One SDL2, two spellings" above.
 #
 # BUILD_SHARED_LIBS is the switch both projects actually consult; the explicit
 # per-project options below are belt and braces.
