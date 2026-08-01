@@ -17,7 +17,7 @@ cd "$(dirname "$0")" || exit 1
 # and the stale half was read as current.
 exec >stdout.log 2>&1
 
-echo "=== coppers launch ==="
+echo "=== @WREEL_BUNDLE_LABEL@ launch ==="
 date 2>/dev/null
 uname -a
 echo "pwd=$PWD"
@@ -44,15 +44,25 @@ unset LD_PRELOAD
 # survives redeploying. Create it beside this script with a text editor on
 # whatever machine has the SD card in it:
 #
-#     # App/Coppers/local.env
+#     # App/@WREEL_BUNDLE_DIR@/local.env
 #     SDL_RENDER_DRIVER=software
 #     COPPERS_ARGS="--cpu-scroller --no-hud --seconds 20 --fps 0"
 #
 # SDL_RENDER_DRIVER is SDL's own hint, read straight from the environment. This
 # device's SDL2 carries two render backends: `mini`, which is MI_GFX-accelerated
 # but implements only a full-screen copy and rotates it, and `software`, which
-# is SDL's real one — slower per pixel, but correct for sub-rect blits, fills
-# and read-back. Naming one here is how they get compared without a rebuild.
+# is SDL's real one and correct for sub-rect blits, fills and read-back.
+#
+# Corrected 2026-08-01: naming `software` here does NOT give a working
+# comparison. SDL's software renderer draws into the window surface and presents
+# it with SDL_UpdateWindowSurface, and this video driver's
+# Mini_UpdateWindowFramebuffer is `return 0` — so the frame is rendered
+# correctly and never reaches the panel. Expect a black screen, not a slow one.
+# Fixing it is a one-function job in the video driver and is not done yet.
+#
+# SDL_VIDEODRIVER=dummy does work, and is the useful isolation: a run that fails
+# with `mini` and survives with `dummy` puts the fault in the video driver
+# rather than in everything above it.
 if [ -f local.env ]; then
     echo "--- local.env ---"
     cat local.env
@@ -113,16 +123,20 @@ fi
 # ---------------------------------------------------------------------------
 #
 # Upstream SDL2 has no video driver that can reach this panel: the SSD202D has
-# no DRM device and SDL2 has no framebuffer backend, so a statically linked
-# upstream build can only select `dummy`. What works here is an SDL2 with the
-# mmiyoo driver, which talks to SigmaStar's MI_GFX.
+# no DRM device and SDL2 has no framebuffer backend, so an unmodified upstream
+# build can only select `dummy`. What works here is an SDL2 carrying a driver
+# written against SigmaStar's MI_GFX.
 #
-# That library ships in lib/ beside this script rather than being borrowed from
-# the firmware. The firmware's own copy, under .tmp_update/lib/parasyte, needs a
+# Since 2026-08-01 that library is ours: pinned upstream SDL2 with the SSD202D
+# video, render and audio drivers compiled in. It registers video `Mini` and
+# render `Miyoo Mini`. See platform/miyoomini/sdl2/PROVENANCE.md and
+# planning/2026-07-31-miyoo-sdl2-fork/.
+#
+# It ships in lib/ beside this script rather than being borrowed from the
+# firmware. The firmware's own copy, under .tmp_update/lib/parasyte, needs a
 # Mesa/X11/libdrm stack and a matched loader and libc — it is an alternate
 # userland for binaries built against a newer glibc, and this one is built
-# against the device's own 2.28. Onion's native SDL2 ports vendor their runtime
-# the same way for the same reason.
+# against the device's own 2.28.
 #
 # /customer/lib stays on the path because libmi_gfx, libmi_ao, libmi_sys and
 # libshmvar are the firmware's, and must be.
@@ -134,15 +148,17 @@ fi
 
 export LD_LIBRARY_PATH="$PWD/lib:/customer/lib:$LD_LIBRARY_PATH"
 
-# SDL_VIDEODRIVER and SDL_AUDIODRIVER are deliberately NOT set. The two mmiyoo
-# SDL2 builds in circulation disagree on the name — Onion's copy registers
-# `mmiyoo`, steward-fu's prebuilt registers `mini` — and each compiles in
-# exactly one video and one audio driver, so letting SDL choose selects the only
-# candidate there is. coppers logs which one it got.
+# SDL_VIDEODRIVER and SDL_AUDIODRIVER are deliberately NOT set. Three SDL2
+# builds for this device are in circulation and they disagree on the name —
+# Onion's parasyte copy registers `mmiyoo`, steward-fu's prebuilt registers
+# `mini`, ours registers `Mini` — and each compiles in one MI_GFX video driver,
+# so letting SDL choose selects the right one whichever library is in lib/.
+# Naming one by hand has already cost a device run.
 #
-# There is no headless option with any of them: `dummy` and `offscreen` are
-# disabled in these builds, so every run goes through MI_GFX. The statically
-# linked binary is the one that can run headless.
+# Our build DOES compile in `dummy`, which the prebuilt did not. That is a
+# diagnostic rather than a fallback: SDL will not select it on its own, and
+# setting SDL_VIDEODRIVER=dummy by hand is how to tell a fault in the MI_GFX
+# driver apart from a fault in everything above it.
 
 # What the loader resolves, before anything tries to use it. An unresolved
 # library shows up here as "not found" instead of as a silent failure to start.
@@ -164,26 +180,27 @@ export HOME="$PWD"
 
 echo "--- running ---"
 echo "SDL_RENDER_DRIVER=${SDL_RENDER_DRIVER:-<unset, SDL picks>}"
-echo "COPPERS_ARGS=${COPPERS_ARGS:-<none>}"
+echo "args=@WREEL_BUNDLE_ARGS@"
 
-# COPPERS_ARGS is unquoted on purpose: it holds a command line, and MainUI has
-# no way to pass one. Arguments given to this script still win, since they come
+# The argument list is filled in when this file is generated, and left unquoted
+# on purpose: for the demo it is $COPPERS_ARGS, a whole command line that MainUI
+# has no way to pass. Arguments given to this script still win, since they come
 # afterwards.
 # shellcheck disable=SC2086
-./@WREEL_BUNDLE_BINARY@ $COPPERS_ARGS "$@"
+./@WREEL_BUNDLE_BINARY@ @WREEL_BUNDLE_ARGS@ "$@"
 status=$?
 echo "--- exited $status ---"
 
-# coppers logs to a dotted directory, which is invisible in most file managers
-# and easy to miss over SFTP. Fold it into this file so one download has
-# everything.
-runlog=".local/share/wreel/coppers/coppers.log"
-
-if [ -f "$runlog" ]; then
-    echo "--- $runlog ---"
-    cat "$runlog"
-else
-    echo "--- no $runlog was written ---"
-fi
+# Anything the program wrote to a file of its own gets folded into this log, so
+# one download has everything. coppers logs to a dotted directory that is
+# invisible in most file managers and easy to miss over SFTP; wreel-diag writes
+# its report beside this script.
+for runlog in ".local/share/wreel/coppers/coppers.log" "@WREEL_BUNDLE_REPORT@"; do
+    [ -n "$runlog" ] || continue
+    if [ -f "$runlog" ]; then
+        echo "--- $runlog ---"
+        cat "$runlog"
+    fi
+done
 
 exit $status
