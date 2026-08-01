@@ -1,7 +1,27 @@
 # Delivering `coppers` to a Miyoo Mini Plus on OnionOS
 
-**Status:** `in-progress`
+**Status:** `delivered` — launched from the Apps menu and ran, 2026-08-01
 **Written:** 2026-07-27
+
+> **It runs.** MainUI lists the App and launches it; `coppers` played 859 frames
+> at 59.7 fps with audio and wrote its log back to the card. That closes this
+> snapshot's largest open question — the layout was taken from real OnionUI
+> packages and had never been put in front of the firmware that reads them.
+>
+> Two things about the bundle are no longer as described below:
+>
+> - **`lib/` holds one file, and we built it.** Decision 3 chose to vendor
+>   steward-fu's prebuilt rather than borrow Onion's `parasyte` copy, and that
+>   reasoning still holds against `parasyte`. It is moot against the third
+>   option nobody had costed: compiling the SSD202D drivers into our own pinned
+>   SDL2. No EGL, no SwiftShader, no json-c; **8.8 MiB staged → 4.7 MB**. See
+>   [miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/).
+> - **There are two App directories**, `Coppers` and `WreelDiag`. MainUI builds
+>   its menu from one `config.json` per directory, so a second launchable thing
+>   needs a second directory — there is no way to put it behind the first one's
+>   config, and a switch in `local.env` would have meant editing a file on the
+>   SD card to reach the diagnostics at the moment the device is misbehaving.
+>   Both are self-contained, including a copy of `libSDL2` each.
 **Serves:** [packaging-distribution](../2026-07-25-packaging-distribution/),
 [target-validation](../2026-07-25-target-validation/) steps 3 and 4,
 [coppers-cracktro](../2026-07-26-coppers-cracktro/) stage 4
@@ -303,11 +323,11 @@ Two consequences:
 > [miyoo-sdl2-fork § 1.4](../2026-07-31-miyoo-sdl2-fork/), which also notes that
 > this settles a contradiction between two of our own documents.
 
-- **It is a trap for the Flip**, and a subtle one. That device is 750×560, no
+- **It is a trap for the Flip**, and a subtle one. That device is 752×560, no
   prebuilt matches it, and a library compiled for 640×480 will happily report
   640×480 to `SDL_GetDesktopDisplayMode`. So
   [coppers-cracktro](../2026-07-26-coppers-cracktro/)'s open question — "does the
-  Flip report 750×560 to SDL, or interpose a scaler?" — **cannot be answered by
+  Flip report 752×560 to SDL, or interpose a scaler?" — **cannot be answered by
   running `wreel-probe` against a borrowed SDL2**. It would answer confidently and
   wrongly, and the wrong answer looks exactly like a firmware scaler. A Flip needs
   its own build with those two constants changed, and the probe result is worthless
@@ -663,8 +683,14 @@ container works, but it is a second container in the loop rather than one comman
       dropping it is a build step. Landed the same day — `bundle-onion` now
       drops it behind the symbol check that justifies it, and the staged bundle
       is **8.8 MiB** where it was 30 MB. Still unrun on a device
-- [ ] A Flip build of that library with `DEF_FB_W`/`DEF_FB_H` at 750×560, without
-      which no measurement from a Flip means anything (decision 4a)
+- [ ] ~~A Flip build of that library with `DEF_FB_W`/`DEF_FB_H` at 752×560~~
+      **Revised 2026-07-31: not what is needed.** Those two `#define`s are
+      defaults the driver overrides at startup from `fbset`, so the framebuffer
+      is already right on a Flip. What is wrong is the render driver's
+      `max_texture_width/height`, literals of 640×480 that the detection does not
+      touch — so no full-screen texture can be created there. See the correction
+      to decision 4a above, and item 4 of
+      [miyoo-sdl2-fork § 3](../2026-07-31-miyoo-sdl2-fork/)
 - [ ] Pin the runtime the way every other dependency is pinned — `docs/TARGETS.md`
       records a version and a reason for each, and right now the bundle's SDL2 is
       "whatever was in that directory"
@@ -700,7 +726,7 @@ would link fine on the desktop and fail to load only on the device. Compiling
 against the 2.0.20 headers makes it a compile error instead, which is why stage 0
 builds them.
 
-**The Flip is not covered by any of this.** Same preset, same SoC, 750×560, and
+**The Flip is not covered by any of this.** Same preset, same SoC, 752×560, and
 possibly a different firmware. Everything here is written for a Plus on Onion and
 should be assumed wrong for the Flip until it is checked — including whether the
 parasyte SDL2 is present at all.

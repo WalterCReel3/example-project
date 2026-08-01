@@ -43,7 +43,7 @@ Each `README.md` opens with one of:
 | [2026-07-25-packaging-distribution](2026-07-25-packaging-distribution/) | `in-progress` | Handheld bundles per firmware, Steam depot layout. Its first firmware landed 2026-07-27 in the snapshot below; the remaining three layouts and the Steam depot are still open |
 | [2026-07-29-gles-free-runtime](2026-07-29-gles-free-runtime/) | `in-progress` | Drop the 21.8 MB SwiftShader GL blob from the handheld bundle. **The vendored SDL2 references zero symbols from it** — the dependency is a link-time artefact, so this was a build step rather than a rebuild. Stages 1–2 done: **29.5 MiB → 8.7 MiB staged, ~13 MB → 3.6 MB compressed**, and it runs on hardware — on stock firmware as well as Onion. Stage 3, pinning what we ship, remains |
 | [2026-07-27-onion-bundle](2026-07-27-onion-bundle/) | `in-progress` | Getting `coppers` onto the Miyoo Mini Plus in hand. **Answers the project's largest open question — upstream SDL2 cannot drive that panel, so the firmware's patched copy is mandatory.** The `App/Coppers/` bundle is implemented and verified on the dev box; the device trip is stages 0–3 |
-| [2026-07-31-miyoo-sdl2-fork](2026-07-31-miyoo-sdl2-fork/) | `snapshot` | Build and maintain our own SDL2 for the Miyoo Mini — **decided 2026-07-31 and revised the same day**, gated on first proving the drivers build. Reading the port's source found a use-after-free on our own `draw_surface` path, two independent reasons atlas blits cannot work, a Flip with no valid configuration, and a driver that **discards SDL2's state model wholesale** — so `RenderClear`, blend modes and colour/alpha mod are silent no-ops. The revision: **rebase the 1,480 driver lines onto the SDL 2.32.10 we already pin** rather than fork a dead 2.0.20, because the backend interface turned out to have moved in three signatures. Tier 1 correctness; tier 2 now contested by the engine-side alternative |
+| [2026-07-31-miyoo-sdl2-fork](2026-07-31-miyoo-sdl2-fork/) | `in-progress` | Build and maintain our own SDL2 for the Miyoo Mini. **Stage 0 passed on hardware 2026-08-01**: the drivers are grafted onto the pinned SDL 2.32.10, and `coppers` ran 859 frames at 59.7 fps with audio, indistinguishable from the prebuilt it replaces. The bundle's `lib/` went from four binaries we did not build to one we do — no EGL of unknown licence, no 21.8 MB SwiftShader, no unidentifiable json-c. `wreel-diag` then measured the conformance gap instead of inferring it: **D27's use-after-free confirmed** (it crashed the tool first), blend mode, colour mod and `FillRect` all silently ignored, and **the 180° rotation settled as correct panel compensation** — the question § 6 called the most expensive one to get wrong. Tier 1 next; tier 2 contested by one function, `Mini_UpdateWindowFramebuffer` |
 | [2026-07-25-midi-live-visuals](2026-07-25-midi-live-visuals/) | `snapshot` | The secondary goal: MIDI-driven demo-style graphics |
 
 ## Ordering
@@ -145,7 +145,7 @@ What that trip settles, in rough order of how much rests on it:
   not predictable from the ones already taken.
 - **What the pad enumerates as**, which `skratch/input.cc`'s hard-coded Xbox 360
   axis indices certainly get wrong and which `rig::Pad` now logs in full.
-- **Whether the Flip reports 750×560 to SDL or interposes a scaler.** It is the
+- **Whether the Flip reports 752×560 to SDL or interposes a scaler.** It is the
   binding target for anything fill-rate bound — same SSD202D as the Plus, 37% more
   pixels — so it is the more valuable of the two to test first.
 
@@ -259,3 +259,43 @@ Three of the four were a `grep` away in files already on this disk. The first
 lesson was about preferring the source to a summary of it; this one is narrower
 and sharper — **a symbol table is not a call site**, and the two documents that
 got this wrong both had the symbol list in front of them.
+
+## 2026-08-01: it runs, and the instrument was wrong twice
+
+The rebuilt SDL2 went onto hardware. `coppers` played 859 frames at 59.7 fps
+with audio, indistinguishable from the prebuilt it replaces, and the bundle it
+shipped in has no binary we did not build. Details in
+[miyoo-sdl2-fork § 8](2026-07-31-miyoo-sdl2-fork/).
+
+**The library was right on the first run. The diagnostics tool was not**, and
+that is the part worth carrying forward. Three of its first verdicts were its
+own faults dressed as the driver's:
+
+- It sized its window from the driver's mode list and got 800×600 on a 640×480
+  panel, because `SDL_GetDesktopDisplayMode` returns *success* with a zeroed
+  mode. `gfx::renderer::Context` probes four sources for exactly this reason,
+  and the tool did not link `gfx` on purpose.
+- It measured a no-op `SDL_RenderClear` across two presents, on a driver that
+  presents by panning between two halves of a framebuffer — so it read the
+  frame from two presents ago and reported a colour the previous check had left.
+- Its sub-rectangle check passed **by accident**, because the previous check had
+  filled the driver's staging buffer with the same colour it expected. § 1.2 of
+  that snapshot predicts precisely this — "reads whatever the staging buffer
+  last held" — and the check was written without poisoning it.
+
+A fourth tested nothing at all: `SDL_GetRenderTarget` returns the frontend's own
+bookkeeping, so it reports success whatever the backend does.
+
+It also crashed, and that was the most useful thing it did. The tool's upload
+buffer went out of scope while the driver still held a pointer to it — **D27,
+demonstrated by SIGSEGV** after four days of being recorded as a defect that had
+never visibly fired.
+
+**The lesson is about instruments, not this device.** A test whose precondition
+silently fails reports a verdict about the wrong thing, and on a driver that
+returns success from calls it does not implement, "the call succeeded" and "the
+check ran" are both worthless. Every check now reads the framebuffer back,
+poisons what the previous one left, and reports SKIPPED rather than guessing.
+The control run on `desktop-software` — where SDL's own software renderer is a
+correct implementation of the same contract — is what makes any of it
+interpretable.

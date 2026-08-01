@@ -29,10 +29,10 @@ but their displays differ, and the newest is the most expensive:
 |---|---|---|
 | Miyoo Mini | 2.8", 640×480 | 307,200 |
 | Miyoo Mini Plus | 3.5", 640×480 | 307,200 |
-| Miyoo Mini Flip | 2.8", **750×560** | **420,000** |
+| Miyoo Mini Flip | 2.8", **752×560** | **421,120** |
 
 The Flip is therefore the binding target for anything fill-rate bound: 37% more
-pixels than the other two on identical silicon. 750×560 is also a non-standard
+pixels than the other two on identical silicon. 752×560 is also a non-standard
 mode, so whether the firmware reports it to SDL or interposes a scaler is a real
 unknown — ask `wreel-probe` on the device rather than assuming. Note that several
 planning documents pose cost questions at "320×240", which matches no device here;
@@ -444,13 +444,28 @@ library versions. Tags verified upstream.
 
 Three things about this that are easy to get wrong, and are settled here:
 
-- **Everything links static.** `BUILD_SHARED_LIBS=OFF` is forced before the SDL
-  satellites are populated. Left to their defaults they build shared and link
-  `SDL2::SDL2` while we link `SDL2::SDL2-static`, which CMake rejects at generate
-  time as a `COMPATIBLE_INTERFACE_BOOL` conflict on `SDL2_SHARED`. Static builds
-  also rename the targets to `SDL2_ttf::SDL2_ttf-static` and
+- **The satellites link static everywhere; SDL2 itself is a per-target choice.**
+  `BUILD_SHARED_LIBS=OFF` is forced before the SDL satellites are populated. Left
+  to their defaults they build shared and link `SDL2::SDL2` while a static build
+  links `SDL2::SDL2-static`, which CMake rejects at generate time as a
+  `COMPATIBLE_INTERFACE_BOOL` conflict on `SDL2_SHARED`. Static builds also
+  rename the targets to `SDL2_ttf::SDL2_ttf-static` and
   `SDL2_image::SDL2_image-static`, so [Dependencies.cmake](../cmake/Dependencies.cmake)
   resolves the names rather than hard-coding them.
+
+  **`WREEL_SDL2_LINKAGE`** (added 2026-08-01) carries the SDL2 half, and the two
+  values are not the same kind of decision:
+
+  | | | |
+  |---|---|---|
+  | four targets | `STATIC` | a **preference**. One binary is easier to put in a Steam depot or on an SD card, and it keeps us off whatever library set a firmware ships while we hold a glibc floor |
+  | `miyoomini` | `SHARED`, forced | an **obligation**. The SSD202D drivers grafted into that build carry steward-fu's LGPL-2.1 header, and the licence requires that a user can relink against a modified copy. It does not relax because packaging tooling improves |
+
+  The satellites are unaffected either way: SDL2_image, SDL2_ttf and SDL2_mixer
+  are zlib-licensed and consume the SDL2 API rather than the display, so none of
+  that reasoning reaches them. They link SDL2 `PRIVATE` and behind
+  `$<BUILD_INTERFACE:>`, and a static satellite asserts nothing about SDL2's
+  linkage — which is what lets one vary under the other.
 - **FreeType is vendored on all targets, not just cross builds.** There is no
   `stb` fallback for font rasterising, so keying vendoring on
   `CMAKE_CROSSCOMPILING` would make desktop builds require `libfreetype-dev` and
@@ -688,13 +703,43 @@ framebuffer backend at all** — SDL 1.2's `fbcon` has no SDL2 successor, and th
 config has no ALSA, only `OSS`, `PULSEAUDIO`, `SNDIO`, `DISK` and `DUMMY`.
 
 What runs there is an SDL2 ported to the vendor APIs, driving `libmi_gfx` and
-`libmi_ao`. **This project vendors steward-fu's prebuilt and does not borrow the
-firmware's copy** — origin, commit and licence in
-[THIRD-PARTY.md](../THIRD-PARTY.md), reasoning in decision 3 of
-[planning/2026-07-27-onion-bundle](../planning/2026-07-27-onion-bundle/). In
-short: OnionOS's `parasyte` copy has a Mesa EGL that drags in gbm, glapi, X11,
-xcb and libdrm plus its own loader and libc, and steward-fu's prebuilt is
-self-contained.
+`libmi_ao`.
+
+> **Revised 2026-08-01: we build that SDL2 now.** This section used to say the
+> project vendors steward-fu's prebuilt binary. It vendors his ~1,290 lines of
+> *driver source* instead, compiled into the same pinned upstream SDL2 every
+> other target gets — 2.32.10, not the prebuilt's 2.0.20.
+>
+> `WREEL_MINI_SDL2` is defaulted ON by the miyoomini toolchain file. It grafts
+> `src/{video,render,audio}/mini` into the FetchContent'd tree and applies a
+> 42-line additive patch registering them. Provenance and the complete list of
+> our modifications are in
+> [platform/miyoomini/sdl2/PROVENANCE.md](../platform/miyoomini/sdl2/PROVENANCE.md);
+> the decision is § 5 of
+> [planning/2026-07-31-miyoo-sdl2-fork](../planning/2026-07-31-miyoo-sdl2-fork/),
+> and it passed its device gate — `coppers` ran 859 frames at 59.7 fps against
+> it, indistinguishable from the prebuilt.
+>
+> What that changes, beyond provenance:
+>
+> - **The bundle's `lib/` is one file.** No `libEGL.so` of unknown licence, no
+>   21.8 MB `libGLESv2.so`, no `libjson-c.so.5` of unidentifiable version — the
+>   first two because the driver's GL path is not compiled, the third because
+>   the audio driver no longer reads a firmware config file. 8.8 MiB staged
+>   becomes 4.7 MB.
+> - **The headers match the library.** The old arrangement compiled against
+>   headers of unrecorded provenance and linked a 2.0.20 runtime, verifying only
+>   that the symbols resolved.
+> - **`WREEL_USE_SYSTEM_SDL2` is the escape hatch now**, not the route. It stays
+>   for a firmware whose SDL2 genuinely cannot be replaced.
+>
+> The table below still describes the two prebuilts, and is why we do not borrow
+> the firmware's own copy.
+
+The reasoning against borrowing is unchanged and is in decision 3 of
+[planning/2026-07-27-onion-bundle](../planning/2026-07-27-onion-bundle/):
+OnionOS's `parasyte` copy has a Mesa EGL that drags in gbm, glapi, X11, xcb and
+libdrm plus its own loader and libc.
 
 | | Vendored `prebuilt/640x480/` | Onion's `parasyte` |
 |---|---|---|

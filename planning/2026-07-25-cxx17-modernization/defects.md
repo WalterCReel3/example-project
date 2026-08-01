@@ -1015,6 +1015,40 @@ this target and it is invisible from any other one.
 > content is horizontal bars and looks identical either way, so no run taken so
 > far distinguishes them.
 
+> **Settled 2026-08-01, on the device: the rotation is correct compensation.**
+>
+> `wreel-diag` drew four coloured quadrants full-screen and read `/dev/fb0` back:
+> the framebuffer holds the image rotated 180°. That alone is still ambiguous —
+> a rotated framebuffer displays upright on an inverted panel — so it was settled
+> by looking at the panel. `coppers`' HUD text reads left-to-right from the top
+> left. **The panel is mounted inverted and `E_MI_GFX_ROTATE_180` compensates for
+> it.**
+>
+> So the rotation is not the defect, and removing it would break the one path
+> that works today. That reverses the reading of this entry's `GFX_Copy` snippet
+> below, and it is the mistake
+> [miyoo-sdl2-fork § 6](../2026-07-31-miyoo-sdl2-fork/) called the most expensive
+> one available here.
+>
+> **The placement is the defect, and it is one line.** For the viewer to see
+> content at `dstrect` on an inverted panel, the framebuffer rect must be
+> mirrored in *both* axes. The driver mirrors x and not y:
+>
+> ```c
+> dst.x = (vid_win->w - (dstrect->x + dstrect->w)) * scale;   /* correct */
+> dst.y = dstrect->y * scale;                                 /* missing the same */
+> ```
+>
+> Full-screen, `dst.x` is 0 and `dst.y` is 0 and the omission is invisible —
+> which is exactly why `coppers` has always looked right. Every sub-rectangle
+> destination lands vertically mirrored. The fix is to mirror `dst.y` the same
+> way, not to remove the x mirror.
+>
+> **Measured the same day.** A 160×120 block asked for at y=60 on a 480-tall
+> panel landed at y=300 — `480 − 60 − 120` — with x correct. So the two halves of
+> "rotated and displaced" split cleanly: the rotation is right and the
+> displacement is one missing mirror.
+
 The `mini` render backend in the device's SDL2 — the driver that reports itself
 as `Miyoo Mini (accelerated)` — implements exactly one drawing operation:
 
@@ -1110,6 +1144,25 @@ target. On the Miyoo Mini the only route to the panel is `Mini_QueueCopy`, and
 the only shape that survives it is a single full-screen copy. Everything drawn
 must be composited into one streaming texture first — which is what
 `gfx::renderer::Layer` is, and what `--cpu-scroller` already does.
+
+> **Reopened 2026-08-01, because the premise changed.** This conclusion was
+> correct for a library we did not build. Since that date the SSD202D drivers are
+> compiled from source in this tree
+> ([platform/miyoomini/sdl2/](../../platform/miyoomini/sdl2/)), so
+> `Mini_UpdateWindowFramebuffer` returning `0` is a function we own rather than a
+> property of the target.
+>
+> Implementing it is roughly ten lines — `GFX_Copy` the window surface, then
+> `GFX_Flip` — and it makes **SDL's own software renderer work on this device**.
+> That renderer is the reference implementation of the contract this whole entry
+> is about: correct sub-rectangles, blend modes, colour modulation, fills and
+> render-to-texture, at CPU cost this project already pays for `Layer`.
+>
+> That reframes the fork snapshot's tier 2. Six items plumbing `MI_GFX` state
+> through the `mini` render backend buy what one function buys through SDL's own,
+> with `MI_GFX` still carrying the full-screen blit that `coppers` actually uses.
+> The measurement above — 965 correct frames, a 4 µs present, a black panel —
+> says every part of that path already works except the present.
 
 What that makes true elsewhere in the tree:
 
@@ -1221,9 +1274,28 @@ surface-derived texture reach the screen on this target.
 
 Consequences, in the order they matter:
 
-- **`draw_surface()` is a use-after-free on this target.** It has not visibly
+- **`draw_surface()` is a use-after-free on this target.** ~~It has not visibly
   failed on device across ~2400 frames of the first runs, which is what reading
-  recently-freed heap normally looks like rather than evidence that it is fine.
+  recently-freed heap normally looks like rather than evidence that it is fine.~~
+  **Confirmed on hardware 2026-08-01, twice, and it is not benign.**
+
+  First by accident: `wreel-diag`'s texture helper built its pixels in a local
+  `std::vector`, uploaded, and returned — leaving the driver holding a pointer
+  into freed heap. The first check that actually drew took a **SIGSEGV**, in
+  `GFX_Copy`'s `memcpy` out of the 480 KB the driver no longer owned. So the
+  failure mode is a crash, not a smear.
+
+  Then deliberately, without touching freed memory. Upload a green buffer,
+  overwrite it in place with red, do *not* upload again, draw. A conforming
+  driver shows green; this one showed **red**:
+
+  ```
+  SDL_UpdateTexture copies  WRONG  the driver kept the caller's pointer and
+                                   read it at draw time
+  ```
+
+  That is the whole defect, proven directly rather than inferred from the
+  source, and it is the check that guards the fix.
 - **`Layer` is unaffected**, because it locks and unlocks. That is now a
   correctness reason to prefer the layer path here, not only the D25 one.
 - **The table is 100 entries with no overflow handling.** `update_texture`

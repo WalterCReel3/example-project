@@ -42,7 +42,12 @@ for the raw device output.
 | Panels | Mini and Mini Plus 640×480; Mini Flip 752×560 |
 
 The Flip's 752×560 is from the driver's own runtime detection (§4.1), not from a
-spec sheet; `docs/TARGETS.md` previously recorded 750×560.
+spec sheet. Every document in this repository recorded **750**×560 until
+2026-07-31, from the spec sheets; the driver tests for `"752"` and sets 752×560,
+and that is the number the panel is actually driven at. Swept repository-wide the
+same day — the derived figures did not move, because 750×560 and 752×560 are
+0.3% apart and every calculation that used them was quoted to two significant
+figures.
 
 **The toolchain sysroot is glibc 2.28**, and carries the complete MI SDK —
 `mi_gfx.h`, `mi_ao.h`, `mi_sys.h` and friends, with both `.so` and `.a`. Anything
@@ -79,8 +84,17 @@ $ grep -E "define SDL_VIDEO_DRIVER_" build/miyoomini/_deps/sdl2-build/include-co
 ```
 
 No display path, and no ALSA either — audio comes out as `OSS`, `PULSEAUDIO`,
-`SNDIO`, `DISK` and `DUMMY`. So `WREEL_USE_SYSTEM_SDL2=ON` is **mandatory** on
-this target, against an SDL2 that someone has ported to the vendor APIs.
+`SNDIO`, `DISK` and `DUMMY`. **Unmodified upstream SDL2 cannot run here**, and
+that has not changed.
+
+What changed on 2026-08-01 is the answer to it. This section used to conclude
+that `WREEL_USE_SYSTEM_SDL2=ON` is mandatory — link a library someone else
+ported. The project now compiles the vendor drivers into the same pinned
+upstream SDL2 every other target gets: `WREEL_MINI_SDL2`, defaulted ON by the
+miyoomini toolchain file. The `SDL_config.h` above is what upstream produces
+*without* those drivers; with them it also carries `SDL_VIDEO_DRIVER_MINI`,
+`SDL_VIDEO_RENDER_MINI` and `SDL_AUDIO_DRIVER_MINI`. See §3 and
+[platform/miyoomini/sdl2/](../platform/miyoomini/sdl2/).
 
 ---
 
@@ -91,12 +105,18 @@ Three builds of `libSDL2-2.0.so.0` for this device have been examined:
 | Build | Source | Video driver | Render driver | Notes |
 |---|---|---|---|---|
 | Onion `parasyte` | ships in OnionOS at `/mnt/SDCARD/.tmp_update/lib/parasyte/` | `mmiyoo` | `software`, plus its own | Mesa/X11/libdrm dependency cascade, own loader and libc |
-| steward-fu prebuilt | [steward-fu/sdl2](https://github.com/steward-fu/sdl2) `prebuilt/640x480/` | `mini` | `Miyoo Mini` | Self-contained. **What this project vendors** |
+| steward-fu prebuilt | [steward-fu/sdl2](https://github.com/steward-fu/sdl2) `prebuilt/640x480/` | `mini` | `Miyoo Mini` | Self-contained. What this project vendored until 2026-08-01 |
 | XK9274 fork | [XK9274/sdl2_miyoo](https://github.com/XK9274/sdl2_miyoo) | `mmiyoo` | `MMIYOO` | Actively maintained; 800px textures, threaded present |
+| **ours** | pinned upstream **2.32.10** + steward-fu's drivers, [platform/miyoomini/sdl2/](../platform/miyoomini/sdl2/) | `Mini` | `Miyoo Mini` | **What this project ships since 2026-08-01.** Built from source, no EGL, no GLESv2, no json-c |
 
-All are based on **SDL 2.0.20**, LGPL-2.1. Bracketed by symbol presence rather
+The first three are **SDL 2.0.20**. Ours is 2.32.10 carrying the same driver
+sources, which is why it registers the same names and why `coppers` could not
+tell the difference. All four are LGPL-2.1 — the licence comes from steward-fu's
+driver files, not from SDL2, which is zlib.
+
+For the three prebuilts, the base version is bracketed by symbol presence rather
 than a version string: `SDL_SoftStretchLinear` (2.0.16) present,
-`SDL_RenderGetWindow` (2.0.22) absent.
+`SDL_RenderGetWindow` (2.0.22) absent. Ours answers `SDL_GetVersion` honestly.
 
 ### 3.1 The finding that matters, and the reason it is not what it looked like
 
@@ -265,11 +285,32 @@ full-width HUD lines at `y = 0`.
 **That rotation is a constant in the port, not a property of the blitter.**
 `eRotate` and `eMirror` are per-call fields of `MI_GFX_Opt_t` (§4.6), so the
 value is chosen once per `GFX_Copy` and could as easily be composed with a
-caller's. Two readings of why it is there — compensation for a panel mounted
-inverted, or simply wrong — and **the runs taken so far cannot distinguish
-them**, because `coppers`' full-screen content is a field of horizontal bars and
-looks the same either way. A `--screenshot` of deliberately asymmetric
-full-screen content settles it in one run and has not been taken.
+caller's.
+
+> **Settled on hardware 2026-08-01: the rotation is correct compensation.** This
+> paragraph used to end by saying two readings were possible — compensation for
+> an inverted panel, or simply wrong — and that no run distinguished them.
+>
+> `wreel-diag` drew four coloured quadrants and read `/dev/fb0`: the framebuffer
+> holds the image rotated 180°. That is still ambiguous on its own, so it was
+> closed by looking at the panel — `coppers`' HUD text reads left-to-right from
+> the top left. **The panel is mounted inverted and `E_MI_GFX_ROTATE_180`
+> compensates.** Removing it would break the only path that works.
+>
+> **The `dst.y` line above is the defect.** For content to appear at `dstrect`
+> on an inverted panel the framebuffer rect must be mirrored in *both* axes.
+> Mirroring x and not y is invisible full-screen — both work out to 0 — and
+> puts every sub-rectangle at a vertically mirrored position. So the paragraph
+> above this one is right that sub-rect copies land "rotated and displaced", and
+> wrong about which half is the bug: the rotation is correct and the
+> displacement is not.
+>
+> **Measured, not just derived.** A 160×120 block requested at y=60 landed at
+> y=300 on the 480-tall panel, `480 − 60 − 120`, with x correct.
+>
+> Scoped as item 20 in
+> [miyoo-sdl2-fork](../planning/2026-07-31-miyoo-sdl2-fork/), which is a
+> one-line fix.
 
 `max_texture_width/height` is **640×480** — the panel exactly. Any texture wider
 or taller simply fails to upload.
@@ -291,6 +332,25 @@ int Mini_UpdateWindowFramebuffer(_THIS, SDL_Window *window, const SDL_Rect *rect
 Measured on device: 965 correct frames, a **4 µs** present where the `mini`
 backend spends 11–13 ms, and a black panel. **The only route to the display is
 `Mini_QueueCopy`.**
+
+> **Still true, and no longer permanent — 2026-08-01.** That last sentence was
+> written about a library we did not build. We build it now
+> ([platform/miyoomini/sdl2/](../platform/miyoomini/sdl2/)), so this is a
+> function we own that returns 0, not a property of the device.
+>
+> Filling it in is roughly ten lines — `GFX_Copy` the window surface, then
+> `GFX_Flip` — and the measurement above says everything else on that path
+> already works: 965 frames rendered *correctly* before being dropped on the
+> floor. What it would buy is SDL's own software renderer, which is the
+> reference implementation of the contract § 5 is a list of gaps in: correct
+> sub-rectangles, blend modes, colour modulation, fills and render-to-texture,
+> at CPU cost this project already pays for `Layer`.
+>
+> Scoped as item 21 in
+> [miyoo-sdl2-fork § 8.5](../planning/2026-07-31-miyoo-sdl2-fork/). Until it
+> lands, `SDL_RENDER_DRIVER=software` on this device produces a black screen
+> rather than a slow one, which is worth knowing before reaching for it as a
+> comparison.
 
 ### 4.5 What the runtime drags in, and the 21.8 MB that it does not
 
@@ -461,6 +521,24 @@ rect, draw colour and blend state are all built by SDL and discarded unread.
 `Texture::set_blend()`, `set_color_mod()` and `set_alpha_mod()` are ordinary
 SDL2 and do nothing here, silently. Nothing has caught it because nothing has yet
 drawn a blended sprite on the device.
+
+> **Measured on hardware 2026-08-01**, and the table below is no longer inferred
+> from source. `wreel-diag` draws known content and reads `/dev/fb0` back; the
+> run is in
+> [miyoo-sdl2-fork § 8.3](../planning/2026-07-31-miyoo-sdl2-fork/). Blend mode,
+> colour mod and `SDL_RenderFillRect` all report IGNORED exactly as this table
+> predicted. Two rows are now *more* than the table said:
+>
+> - **`SDL_UpdateTexture` does not copy.** Not a missing feature — a
+>   use-after-free, D27, confirmed by a SIGSEGV and then measured deliberately.
+> - **The rotation is correct compensation, not a defect.** The panel is mounted
+>   inverted. What *is* wrong is that `Mini_QueueCopy` mirrors destination x and
+>   not destination y, so sub-rectangle *placement* is vertically mirrored while
+>   full-screen output is right. See § 4.3.
+>
+> Also confirmed here: this project builds its own copy of this library now, and
+> the rows below hold for it as well as for the prebuilt — they are the same
+> driver sources. See [TARGETS.md](TARGETS.md) § The Miyoo Mini exception.
 
 | Capability | Status through the shipped SDL2 | Whose limit |
 |---|---|---|
