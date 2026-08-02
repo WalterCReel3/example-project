@@ -924,14 +924,46 @@ diagnostics tool before its own results could be trusted, for the reasons in
       the prebuilt separates "the drivers do not build here" from "2.32 is the
       problem", which is the one thing stage 0 cannot tell you on its own
 
-**Stage 1 — tier 1, the correctness patches**, only if stage 0 passes
+**Stage 1 — tier 1, the correctness patches.** Stage 0 passed, so this is next.
+Ordered, because the order is not obvious and two items were added after the
+device runs.
 
-- [ ] Items 1–6 from §3 plus item 13, each as its own commit naming the defect it
-      fixes
-- [ ] The `MI_SYS_Munmap` under-unmap from `9eff61a4` (§7.1), which is a seventh
-      tier-1 item the source found rather than the reading
-- [ ] A device run per item, or per pair where one cannot mask the other
-- [ ] Withdraw D27, and revise D25 to whatever survives
+- [ ] **Item 1 — copy the pixels in `Mini_UpdateTexture`.** First, alone, and
+      before anything else touches the driver. It is a `memcpy` into the
+      `t->data` the driver already allocates, it is the only item here that is a
+      *memory-safety* fix rather than a rendering one, and it changes the
+      lifetime rules every other check depends on. Guarded by `wreel-diag`'s
+      `SDL_UpdateTexture copies`, which currently reads WRONG and must read OK.
+      Withdraws D27, and lets `Context::draw_surface()` be used here at all
+- [ ] **Item 21 — implement `Mini_UpdateWindowFramebuffer`.** §8.5. About ten
+      lines, and the largest capability-per-line in the inventory: it makes SDL's
+      own software renderer work on this device, which is the reference
+      implementation of everything tier 2 wants. Do it before tier 2 is costed
+      again, because it may retire most of it. Guarded by running with
+      `SDL_RENDER_DRIVER=software` and getting a picture rather than a black
+      screen
+- [ ] **Item 20 — mirror `dst.y`.** One line, §8.2, measured. Guarded by
+      `partial destination`, which must go from WRONG to OK
+- [ ] **Items 2 and 3 — the source rect's `y`, and the format inference.** The
+      atlas blockers, and the reason
+      [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/)
+      cannot start. Guarded by `SDL_RenderCopy sub-rect` and `sub-rect, RGB565`
+- [ ] **Items 5, 6, 13 and 19** — drop `TARGETTEXTURE` from the advertised
+      flags, bounds-check `update_texture`'s 100-entry table, advertise
+      `ABGR8888`, and the `MI_SYS_Munmap` size from `9eff61a4` (§7.1). Small,
+      self-contained, no capability change
+- [ ] **Item 4 — `max_texture_*` from `FB_W`/`FB_H`.** Correct, and
+      **unverifiable without a Mini Flip in hand**. Land it saying so rather
+      than implying it was tested
+- [ ] Revise D25 to whatever survives, and withdraw D27 when item 1 lands
+
+**How each one is verified.** Run `wreel-diag` before and after and diff the two
+reports — it is a regression suite, not just a survey, and § 8.4 is the record of
+how easily it produced confident wrong answers before its own checks were right.
+A patch that changes a verdict it was not aiming at is the interesting case.
+
+**One device trip can carry items 1, 21 and 20** — they are independent and have
+separate checks. Item 1 still wants to be its own commit.
 
 **Stage 2 — tier 2, and it is a comparison rather than a task list**
 

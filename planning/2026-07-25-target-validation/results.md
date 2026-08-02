@@ -650,3 +650,98 @@ sent this investigation into the library's symbol table to check whether
 `SW_RenderDriver` was even registered. It was. The lesson is narrow and worth
 keeping: **a diagnostic that prints a value the program was never given is worse
 than no diagnostic**, and the launcher was doing exactly that.
+
+---
+
+## 2026-08-01 — our own SDL2 on the device, and the conformance baseline
+
+Two runs, both from `pkg/coppers-0.2.0-onion.tar.gz` built with
+`WREEL_MINI_SDL2=ON` — pinned upstream SDL 2.32.10 with the SSD202D drivers
+compiled in. Reasoning and the full account are in
+[miyoo-sdl2-fork § 8](../2026-07-31-miyoo-sdl2-fork/); this is the raw output,
+kept because it is the baseline every subsequent driver patch is diffed against.
+
+### `coppers` — the gate
+
+```
+[I] gfx system initialised, video driver Mini
+[W] no desktop mode reported; using exclusive fullscreen against the driver's own mode list (10 modes, first 800x600)
+[I] output size: renderer 640x480 (reported success)
+[I] renderer context 640x480 via Miyoo Mini (accelerated)
+[W] Miyoo Mini draws sub-rectangles wrongly; composing everything into the layer
+[I] audio: 22050 Hz, 2 ch, 2048 sample buffer, 8 voices, driver Miyoo Mini
+[I] coppers: Miyoo Mini 640x480 layer, 640x480 window, 859 frames, 59.7 fps,
+    plot 2.920 blit 4.425 present 9.348 ms, scroller cpu 1054 us
+```
+
+Indistinguishable from the prebuilt it replaces. The loader resolves six
+non-system libraries and **none of them is EGL, GLESv2 or json-c**:
+
+```
+libSDL2-2.0.so.0 => /mnt/SDCARD/App/Coppers/lib/libSDL2-2.0.so.0
+libmi_gfx.so, libmi_ao.so, libmi_sys.so, libmi_common.so => /config/lib/
+libshmvar.so => /customer/lib/
+```
+
+Note `/config/lib`, which is not a path `launch.sh` adds — it is already on the
+default search path on this firmware.
+
+### `wreel-diag` — the conformance baseline
+
+Machine: `INFINITY2M SSC011A-S01A-S`, Linux 4.9.84 armv7l, 2 cores, 100 MB RAM
+reported, `/dev/fb0` 640x480 at 32 bpp, stride 2560.
+
+```
+== Orientation ==
+  drawing size             640x480
+  readback via             /dev/fb0
+  expected                 TL=red TR=green BL=blue BR=white
+  observed                 TL=ffffff TR=0000e0 BL=00e000 BR=e00000
+  screen transform         info      content reaches the panel rotated 180
+
+== Renderer conformance ==
+  SDL_UpdateTexture copies WRONG     the driver kept the caller's pointer and read it at draw time
+  SDL_RenderClear          IGNORED   screen still holds the previous frame
+  SDL_RenderCopy full      OK
+  SDL_RenderCopy sub-rect  WRONG     read past the rows that were staged, returned the previous blit's leftovers
+  sub-rect, RGB565         WRONG     80x60 sub-rect of solid green arrived as e007e0; pitch/rect.w is 16
+  requested dst            80,60 160x120
+  in the framebuffer       400,60 160x120
+  as seen on the panel     80,300 160x120
+  partial destination      WRONG     x is right and y is mirrored — expected y=60, got y=300
+  SDL_SetTextureBlendMode  IGNORED   sprite is opaque (00ff00); mode accepted (mode=1), never applied
+  SDL_SetTextureColorMod   IGNORED   texture arrived unmodulated
+  SDL_RenderFillRect       IGNORED   returned success and drew nothing
+
+== Texture limits ==
+  advertised max           640x480
+  create at the limit      OK
+  create over the limit    OK        refused, as advertised
+  render to texture        IGNORED   the target texture is empty; TARGETTEXTURE is advertised anyway
+
+== Audio ==
+  driver                   Miyoo Mini
+  SDL_OpenAudioDevice      OK        22050 Hz, 2 ch, 2048 samples
+```
+
+**Every row above matches what § 1 and § 2 of the fork snapshot predicted from
+source.** The two that read `OK` are the two that should: a full-screen copy is
+the one operation this backend implements, and the texture cap is both advertised
+and enforced.
+
+`SDL_GetDesktopDisplayMode` and `SDL_GetDisplayBounds` both returned **success
+with zeroed structures** — D22 and D24, unfixed, on our build as much as on the
+prebuilt.
+
+### How to reproduce, and what to compare against
+
+```sh
+cmake --build build/miyoomini --target bundle-onion
+# copy pkg/*.tar.gz over the SD card root; run "Wreel Diagnostics" from Apps
+# read App/WreelDiag/diag.txt
+```
+
+The control is the same binary on `desktop-software`, which runs against SDL's
+own software renderer and returns `OK` on all eleven checks. A line that reads
+`OK` there and `IGNORED` here is a gap in this driver; `IGNORED` in both is a bug
+in the check — and three of them were, first time round. See § 8.4.
