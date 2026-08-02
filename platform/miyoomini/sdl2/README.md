@@ -30,7 +30,7 @@ that runs `graft.cmake` after FetchContent populates the tree:
 
 1. `src/` is copied over SDL2's `src/`, adding `{video,render,audio}/mini/` and
    touching nothing else.
-2. `patches/0001-register-mini-drivers.patch` is applied — 42 inserted lines
+2. `patches/0001-register-mini-drivers.patch` is applied — 46 inserted lines
    across 8 upstream files, none removed or changed. It adds an `SDL_MINI`
    option, a build block, three `#cmakedefine` entries, and one bootstrap-array
    entry plus one `extern` for each of video, render and audio.

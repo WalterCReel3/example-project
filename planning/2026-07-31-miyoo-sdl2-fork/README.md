@@ -726,7 +726,7 @@ control.
 
 The build landed as §5.2 described: driver sources in
 [platform/miyoomini/sdl2/](../../platform/miyoomini/sdl2/), upstream fetched at
-its existing pin and patched with 42 additive lines across 8 files, one
+its existing pin and patched with 46 additive lines across 8 files, one
 `WREEL_MINI_SDL2` option, `WREEL_SDL2_LINKAGE` forced to SHARED for the LGPL
 reason. Provenance and the complete list of modifications are in that
 directory's `PROVENANCE.md`.

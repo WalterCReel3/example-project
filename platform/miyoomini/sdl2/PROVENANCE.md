@@ -149,7 +149,7 @@ It stays until the unmodified graft has run on hardware.
 
 ## Rebuilding the registration patch
 
-`patches/0001-register-mini-drivers.patch` is additive only — 42 lines inserted
+`patches/0001-register-mini-drivers.patch` is additive only — 46 lines inserted
 across 8 upstream files, none removed or changed — and it is applied by
 [graft.cmake](graft.cmake) from FetchContent's `PATCH_COMMAND`. If the SDL2 pin
 moves and it stops applying, regenerate rather than force it:
