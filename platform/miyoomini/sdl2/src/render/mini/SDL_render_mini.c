@@ -120,22 +120,39 @@ static int Mini_LockTexture(SDL_Renderer *renderer, SDL_Texture *texture, const 
 
 static int Mini_UpdateTexture(SDL_Renderer *renderer, SDL_Texture *texture, const SDL_Rect *rect, const void *pixels, int pitch)
 {
+    Mini_TextureData *t = (Mini_TextureData *)texture->driverdata;
+    const int bpp = SDL_BYTESPERPIXEL(t->fmt);
+    const size_t row = (size_t)rect->w * bpp;
+    const Uint8 *src = (const Uint8 *)pixels;
+    Uint8 *dst = (Uint8 *)t->data + (rect->y * t->pitch) + (rect->x * bpp);
+    int cc = 0;
+
     debug("%s, texture=%p, pixels=%p\n", __func__, texture, pixels);
-    update_texture(texture, texture, pixels, pitch);
+
+    /* The caller keeps ownership of `pixels` and may release it as soon as this
+       returns — SDL_CreateTextureFromSurface frees its converted surface inside
+       the same call — so the blit at draw time has to read the driver's own
+       buffer. SDL_UpdateTexture clips `rect` to the texture before dispatching
+       here, so it needs no bounds check. */
+    for (cc = 0; cc < rect->h; cc++) {
+        SDL_memcpy(dst, src, row);
+        src += pitch;
+        dst += t->pitch;
+    }
+
+    update_texture(texture, texture, t->data, t->pitch);
     return 0;
 }
 
 static void Mini_UnlockTexture(SDL_Renderer *renderer, SDL_Texture *texture)
 {
-    SDL_Rect rect = {0};
     Mini_TextureData *t = (Mini_TextureData *)texture->driverdata;
 
     debug("%s\n", __func__);
-    rect.x = 0;
-    rect.y = 0;
-    rect.w = texture->w;
-    rect.h = texture->h;
-    Mini_UpdateTexture(renderer, texture, &rect, t->data, t->pitch);
+
+    /* The lock handed out t->data itself, so the pixels are already in place
+       and only the registration has to name them. */
+    update_texture(texture, texture, t->data, t->pitch);
 }
 
 static void Mini_SetTextureScaleMode(SDL_Renderer *renderer, SDL_Texture *texture, SDL_ScaleMode scaleMode)
