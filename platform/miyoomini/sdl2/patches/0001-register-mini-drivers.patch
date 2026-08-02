@@ -1,0 +1,157 @@
+Register the Miyoo Mini video, render and audio drivers with SDL2.
+
+Generated against SDL release-2.32.10. Additive only: 42 lines inserted,
+no upstream line removed or changed. Regenerate per
+platform/miyoomini/sdl2/README.md if the SDL2 pin moves.
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e45b53e2..adbdde7b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -489,6 +489,7 @@ set_option(SDL_METAL               "Enable Metal support" ${APPLE})
+ set_option(SDL_KMSDRM              "Use KMS DRM video driver" ${UNIX_SYS})
+ dep_option(SDL_KMSDRM_SHARED       "Dynamically load KMS DRM support" ON "SDL_KMSDRM" OFF)
+ set_option(SDL_OFFSCREEN           "Use offscreen video driver" ON)
++set_option(SDL_MINI                "Use the Miyoo Mini (SSD202D) video, render and audio drivers" OFF)
+ option_string(SDL_BACKGROUNDING_SIGNAL "number to use for magic backgrounding signal or 'OFF'" OFF)
+ option_string(SDL_FOREGROUNDING_SIGNAL "number to use for magic foregrounding signal or 'OFF'" OFF)
+ set_option(SDL_HIDAPI              "Enable the HIDAPI subsystem" ON)
+@@ -1264,6 +1265,32 @@ if(SDL_VIDEO)
+   endif()
+ endif()
+ 
++# Miyoo Mini (SigmaStar SSD202D). Video, render and audio in one option because
++# they are one driver set: the render backend blits through the video driver's
++# MI_GFX context, and the audio driver includes the video driver's header for it.
++#
++# The sources are not upstream's. They are grafted in from
++# platform/miyoomini/sdl2/ before this file is configured; see that directory's
++# PROVENANCE.md for their origin and licence.
++if(SDL_MINI)
++  set(SDL_VIDEO_DRIVER_MINI 1)
++  set(SDL_VIDEO_RENDER_MINI 1)
++  set(SDL_AUDIO_DRIVER_MINI 1)
++  file(GLOB MINI_SOURCES
++    ${SDL2_SOURCE_DIR}/src/video/mini/*.c
++    ${SDL2_SOURCE_DIR}/src/render/mini/*.c
++    ${SDL2_SOURCE_DIR}/src/audio/mini/*.c)
++  if(NOT MINI_SOURCES)
++    message(FATAL_ERROR "SDL_MINI is ON but no src/{video,render,audio}/mini sources are present.")
++  endif()
++  list(APPEND SOURCE_FILES ${MINI_SOURCES})
++  # The vendor SDK lives in the toolchain sysroot, so no include path is needed
++  # for the headers; the libraries are named explicitly.
++  list(APPEND EXTRA_LIBS mi_gfx mi_ao mi_sys mi_common shmvar)
++  set(HAVE_SDL_VIDEO TRUE)
++  set(HAVE_SDL_AUDIO TRUE)
++endif()
++
+ # Platform-specific options and settings
+ if(ANDROID)
+   file(GLOB ANDROID_CORE_SOURCES ${SDL2_SOURCE_DIR}/src/core/android/*.c)
+diff --git a/include/SDL_config.h.cmake b/include/SDL_config.h.cmake
+index 64b8413c..fc9dffbb 100644
+--- a/include/SDL_config.h.cmake
++++ b/include/SDL_config.h.cmake
+@@ -302,6 +302,7 @@
+ #cmakedefine SDL_AUDIO_DRIVER_DISK @SDL_AUDIO_DRIVER_DISK@
+ #cmakedefine SDL_AUDIO_DRIVER_DSOUND @SDL_AUDIO_DRIVER_DSOUND@
+ #cmakedefine SDL_AUDIO_DRIVER_DUMMY @SDL_AUDIO_DRIVER_DUMMY@
++#cmakedefine SDL_AUDIO_DRIVER_MINI @SDL_AUDIO_DRIVER_MINI@
+ #cmakedefine SDL_AUDIO_DRIVER_EMSCRIPTEN @SDL_AUDIO_DRIVER_EMSCRIPTEN@
+ #cmakedefine SDL_AUDIO_DRIVER_ESD @SDL_AUDIO_DRIVER_ESD@
+ #cmakedefine SDL_AUDIO_DRIVER_ESD_DYNAMIC @SDL_AUDIO_DRIVER_ESD_DYNAMIC@
+@@ -413,6 +414,7 @@
+ #cmakedefine SDL_VIDEO_DRIVER_DIRECTFB_DYNAMIC @SDL_VIDEO_DRIVER_DIRECTFB_DYNAMIC@
+ #cmakedefine SDL_VIDEO_DRIVER_DUMMY @SDL_VIDEO_DRIVER_DUMMY@
+ #cmakedefine SDL_VIDEO_DRIVER_OFFSCREEN @SDL_VIDEO_DRIVER_OFFSCREEN@
++#cmakedefine SDL_VIDEO_DRIVER_MINI @SDL_VIDEO_DRIVER_MINI@
+ #cmakedefine SDL_VIDEO_DRIVER_WINDOWS @SDL_VIDEO_DRIVER_WINDOWS@
+ #cmakedefine SDL_VIDEO_DRIVER_WINRT @SDL_VIDEO_DRIVER_WINRT@
+ #cmakedefine SDL_VIDEO_DRIVER_WAYLAND @SDL_VIDEO_DRIVER_WAYLAND@
+@@ -457,6 +459,7 @@
+ #cmakedefine SDL_VIDEO_DRIVER_VITA @SDL_VIDEO_DRIVER_VITA@
+ #cmakedefine SDL_VIDEO_DRIVER_N3DS @SDL_VIDEO_DRIVER_N3DS@
+ 
++#cmakedefine SDL_VIDEO_RENDER_MINI @SDL_VIDEO_RENDER_MINI@
+ #cmakedefine SDL_VIDEO_RENDER_D3D @SDL_VIDEO_RENDER_D3D@
+ #cmakedefine SDL_VIDEO_RENDER_D3D11 @SDL_VIDEO_RENDER_D3D11@
+ #cmakedefine SDL_VIDEO_RENDER_D3D12 @SDL_VIDEO_RENDER_D3D12@
+diff --git a/src/audio/SDL_audio.c b/src/audio/SDL_audio.c
+index 1ab847aa..7db0074f 100644
+--- a/src/audio/SDL_audio.c
++++ b/src/audio/SDL_audio.c
+@@ -42,6 +42,9 @@ static SDL_AudioDevice *open_devices[16];
+ 
+ /* Available audio drivers */
+ static const AudioBootStrap *const bootstrap[] = {
++#ifdef SDL_AUDIO_DRIVER_MINI
++    &Mini_AudioDriver,
++#endif
+ #ifdef SDL_AUDIO_DRIVER_PULSEAUDIO
+     &PULSEAUDIO_bootstrap,
+ #endif
+diff --git a/src/audio/SDL_sysaudio.h b/src/audio/SDL_sysaudio.h
+index 6e8de529..e4a0ce7e 100644
+--- a/src/audio/SDL_sysaudio.h
++++ b/src/audio/SDL_sysaudio.h
+@@ -198,6 +198,7 @@ extern AudioBootStrap PAUDIO_bootstrap;
+ extern AudioBootStrap HAIKUAUDIO_bootstrap;
+ extern AudioBootStrap COREAUDIO_bootstrap;
+ extern AudioBootStrap DISKAUDIO_bootstrap;
++extern AudioBootStrap Mini_AudioDriver;
+ extern AudioBootStrap DUMMYAUDIO_bootstrap;
+ extern AudioBootStrap FUSIONSOUND_bootstrap;
+ extern AudioBootStrap aaudio_bootstrap;
+diff --git a/src/render/SDL_render.c b/src/render/SDL_render.c
+index cc3d1695..158f5627 100644
+--- a/src/render/SDL_render.c
++++ b/src/render/SDL_render.c
+@@ -98,6 +98,9 @@ this should probably be removed at some point in the future.  --ryan. */
+ 
+ #ifndef SDL_RENDER_DISABLED
+ static const SDL_RenderDriver *render_drivers[] = {
++#if SDL_VIDEO_RENDER_MINI
++    &Mini_RenderDriver,
++#endif
+ #if SDL_VIDEO_RENDER_D3D
+     &D3D_RenderDriver,
+ #endif
+diff --git a/src/render/SDL_sysrender.h b/src/render/SDL_sysrender.h
+index bab41e77..53c29c1f 100644
+--- a/src/render/SDL_sysrender.h
++++ b/src/render/SDL_sysrender.h
+@@ -307,6 +307,7 @@ extern SDL_RenderDriver DirectFB_RenderDriver;
+ extern SDL_RenderDriver METAL_RenderDriver;
+ extern SDL_RenderDriver PS2_RenderDriver;
+ extern SDL_RenderDriver PSP_RenderDriver;
++extern SDL_RenderDriver Mini_RenderDriver;
+ extern SDL_RenderDriver SW_RenderDriver;
+ extern SDL_RenderDriver VITA_GXM_RenderDriver;
+ 
+diff --git a/src/video/SDL_sysvideo.h b/src/video/SDL_sysvideo.h
+index faf598be..4624f7aa 100644
+--- a/src/video/SDL_sysvideo.h
++++ b/src/video/SDL_sysvideo.h
+@@ -473,6 +473,7 @@ extern VideoBootStrap N3DS_bootstrap;
+ extern VideoBootStrap RPI_bootstrap;
+ extern VideoBootStrap KMSDRM_bootstrap;
+ extern VideoBootStrap KMSDRM_LEGACY_bootstrap;
++extern VideoBootStrap Mini_VideoDriver;
+ extern VideoBootStrap DUMMY_bootstrap;
+ extern VideoBootStrap DUMMY_evdev_bootstrap;
+ extern VideoBootStrap Wayland_bootstrap;
+diff --git a/src/video/SDL_video.c b/src/video/SDL_video.c
+index 2f6c631d..89ef9bc0 100644
+--- a/src/video/SDL_video.c
++++ b/src/video/SDL_video.c
+@@ -72,6 +72,9 @@
+ 
+ /* Available video drivers */
+ static VideoBootStrap *bootstrap[] = {
++#ifdef SDL_VIDEO_DRIVER_MINI
++    &Mini_VideoDriver,
++#endif
+ #ifdef SDL_VIDEO_DRIVER_COCOA
+     &COCOA_bootstrap,
+ #endif

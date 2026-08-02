@@ -1,6 +1,28 @@
 # Shipping the Miyoo Mini bundle without a GL stack
 
-**Status:** `in-progress`
+**Status:** `closed 2026-08-01` — the goal is met at source rather than by patching
+
+> **Closed, and by a route this document argued against.** Stages 1–3 landed as
+> written and took the bundle from 30 MB to 8.8 MiB by removing an unused
+> `DT_NEEDED` from a binary we did not build. Since 2026-08-01 that binary is
+> gone: this project compiles its own `libSDL2-2.0.so.0` from pinned upstream
+> 2.32.10 with the SSD202D drivers grafted in, and the GL path is simply not
+> compiled.
+>
+> So there is no `libGLESv2.so` to drop and no `libEGL.so` to stub. Confirmed on
+> the device — the loader maps `libSDL2-2.0.so.0` and the firmware's `libmi_*`,
+> and nothing else. `lib/` is one file and the bundle is **4.7 MB**.
+>
+> `scripts/drop-unused-needed.sh` and the `WREEL_ONION_DROP_GLES` option stay:
+> they still apply to `WREEL_ONION_SDL2_RUNTIME`, the escape hatch for staging
+> somebody else's prebuilt. They are simply not on the default path any more.
+>
+> The reasoning that dated fastest is worth naming. This document priced option
+> B at "~8.3 MB, days" — 55 KB better than option A for days of work — because
+> it assumed a rebuild bought only the removal of EGL. It bought the removal of
+> EGL, GLESv2 **and** json-c, a library whose headers match its binary, a live
+> upstream, and the ability to fix the driver at all. See
+> [miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/).
 **Written:** 2026-07-29
 **Blocked by:** nothing
 **Serves:** [onion-bundle](../2026-07-27-onion-bundle/), and any future handheld
@@ -364,10 +386,13 @@ obligation is source availability and the ability to relink, and removing an
 unused `DT_NEEDED` obstructs neither. It does mean the modification must be
 documented rather than silent, which stage 3 covers.
 
-**The Flip.** Unchanged by this work: it needs a runtime built for 752×560
-regardless, and whatever that build is will need the same treatment. Worth
-checking the symbol evidence again for that binary rather than assuming it
-matches.
+**The Flip.** Unchanged by this work. **Corrected 2026-07-31:** this said the
+Flip "needs a runtime built for 752×560 regardless". It does not — the shipped
+runtime detects the panel at startup and sets `FB_W`/`FB_H` from it. What it
+needs is a runtime whose *texture cap* follows that detection, which is a
+one-line defect rather than a separate build. Either way the resulting binary
+wants the same symbol check as this document applied to ours, rather than an
+assumption that it matches.
 
 ---
 

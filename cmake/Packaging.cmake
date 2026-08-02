@@ -141,19 +141,35 @@ function(_wreel_onion_drop_gles app_dir libs_var out_command)
     message(STATUS "  dropping the unused libGLESv2.so dependency (21.8 MB)")
 endfunction()
 
-function(_wreel_add_onion_bundle target)
-    set(bundle_root "${CMAKE_BINARY_DIR}/bundle/onion")
-    set(app_dir     "${bundle_root}/App/Coppers")
+# Stages one App/<Dir>/ and returns the commands that populate it.
+#
+# Split out because the bundle carries two of them. MainUI builds its Apps menu
+# from App/<Dir>/config.json, one entry per directory, so two menu entries means
+# two directories — there is no way to put a second launchable thing behind one
+# config.json, and a variable in local.env would have meant editing a text file
+# on the SD card to switch between them.
+#
+# Each directory is self-contained, including its own copy of libSDL2. Sharing
+# one lib/ between them by relative path would save 1.5 MB and make either
+# directory unusable if the other were deleted, which is not how anyone treats a
+# folder in an Apps menu.
+function(_wreel_onion_app out_commands)
+    cmake_parse_arguments(APP "" "DIR;TARGET;LABEL;DESCRIPTION;ARGS;REPORT" "" ${ARGN})
 
-    set(WREEL_BUNDLE_BINARY      "${target}")
-    set(WREEL_BUNDLE_LABEL       "Coppers")
-    set(WREEL_BUNDLE_DESCRIPTION
-        "Copper bars, and a fill-rate measurement")
+    set(app_dir "${WREEL_ONION_BUNDLE_ROOT}/App/${APP_DIR}")
+
+    # Consumed by both templates through configure_file below.
+    set(WREEL_BUNDLE_DIR         "${APP_DIR}")
+    set(WREEL_BUNDLE_BINARY      "${APP_TARGET}")
+    set(WREEL_BUNDLE_LABEL       "${APP_LABEL}")
+    set(WREEL_BUNDLE_DESCRIPTION "${APP_DESCRIPTION}")
+    set(WREEL_BUNDLE_ARGS        "${APP_ARGS}")
+    set(WREEL_BUNDLE_REPORT      "${APP_REPORT}")
 
     # The theme-relative convention every Onion app uses. Nothing installs this
     # file — an icon has not been drawn, and writing into the user's theme
     # directory to add one would be overreach. A missing icon is cosmetic.
-    set(WREEL_BUNDLE_ICON "../../Icons/Default/app/coppers.png")
+    set(WREEL_BUNDLE_ICON "../../Icons/Default/app/${APP_TARGET}.png")
 
     configure_file("${CMAKE_SOURCE_DIR}/cmake/templates/onion/config.json.in"
                    "${app_dir}/config.json" @ONLY)
@@ -163,6 +179,78 @@ function(_wreel_add_onion_bundle target)
          PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
                      GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 
+    set(commands
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${app_dir}/lib"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "$<TARGET_FILE:${APP_TARGET}>" "${app_dir}/${APP_TARGET}")
+
+    # Assets, from the property the target carries. Optional: wreel-diag draws
+    # everything it needs and opens no files, so it has no such property and
+    # gets no data/ directory rather than an empty one.
+    get_target_property(assets ${APP_TARGET} WREEL_BUNDLE_ASSETS)
+    if(assets)
+        list(APPEND commands
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${app_dir}/data")
+        foreach(asset IN LISTS assets)
+            if(NOT EXISTS "${CMAKE_SOURCE_DIR}/data/${asset}")
+                message(FATAL_ERROR
+                    "Target '${APP_TARGET}' lists bundle asset 'data/${asset}', "
+                    "which does not exist.")
+            endif()
+            list(APPEND commands
+                COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                        "${CMAKE_SOURCE_DIR}/data/${asset}"
+                        "${app_dir}/data/${asset}")
+        endforeach()
+    endif()
+
+    # The SDL2 runtime.
+    #
+    # Two sources, and the first is now the normal one:
+    #
+    #   WREEL_MINI_SDL2       we built it — pinned upstream 2.32.10 with the
+    #                         SSD202D drivers grafted in. One file, no EGL, no
+    #                         GLESv2, no json-c.
+    #   WREEL_ONION_SDL2_RUNTIME  a directory of prebuilt .so files somebody
+    #                         else built. The route until 2026-08-01, kept as
+    #                         the escape hatch and for comparing against.
+    #
+    # Copied under its SONAME rather than its versioned filename, and NOT as a
+    # symlink: an SD card is FAT32 and symlinks do not survive the copy. The
+    # loader asks for libSDL2-2.0.so.0, so that is what the file is called.
+    if(WREEL_MINI_SDL2)
+        list(APPEND commands
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "$<TARGET_FILE:SDL2>" "${app_dir}/lib/libSDL2-2.0.so.0")
+    elseif(WREEL_ONION_SDL2_RUNTIME)
+        file(GLOB runtime_libs "${WREEL_ONION_SDL2_RUNTIME}/*.so*")
+        _wreel_onion_drop_gles("${app_dir}" runtime_libs gles_command)
+        list(APPEND commands
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    ${runtime_libs} "${app_dir}/lib/"
+            ${gles_command})
+    endif()
+
+    set(${out_commands} "${commands}" PARENT_SCOPE)
+    message(STATUS "  App/${APP_DIR}/  -> ${APP_LABEL}")
+endfunction()
+
+function(_wreel_add_onion_bundle target)
+    set(WREEL_ONION_BUNDLE_ROOT "${CMAKE_BINARY_DIR}/bundle/onion")
+
+    if(NOT WREEL_MINI_SDL2 AND NOT WREEL_ONION_SDL2_RUNTIME)
+        message(WARNING
+            "The bundle will carry no libSDL2-2.0.so.0 and launch.sh will refuse "
+            "to start. Either build one — WREEL_MINI_SDL2=ON, which is the "
+            "default on this target — or point WREEL_ONION_SDL2_RUNTIME at a "
+            "directory holding a prebuilt SDL2 for this panel.")
+    elseif(WREEL_ONION_SDL2_RUNTIME AND NOT WREEL_MINI_SDL2 AND
+           NOT EXISTS "${WREEL_ONION_SDL2_RUNTIME}/libSDL2-2.0.so.0")
+        message(FATAL_ERROR
+            "WREEL_ONION_SDL2_RUNTIME='${WREEL_ONION_SDL2_RUNTIME}' holds no "
+            "libSDL2-2.0.so.0.")
+    endif()
+
     get_target_property(assets ${target} WREEL_BUNDLE_ASSETS)
     if(NOT assets)
         message(FATAL_ERROR
@@ -171,80 +259,62 @@ function(_wreel_add_onion_bundle target)
             "${target}/CMakeLists.txt.")
     endif()
 
-    set(asset_commands)
-    foreach(asset IN LISTS assets)
-        if(NOT EXISTS "${CMAKE_SOURCE_DIR}/data/${asset}")
-            message(FATAL_ERROR
-                "Target '${target}' lists bundle asset 'data/${asset}', which "
-                "does not exist.")
-        endif()
-        list(APPEND asset_commands
-            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                    "${CMAKE_SOURCE_DIR}/data/${asset}" "${app_dir}/data/${asset}")
-    endforeach()
+    message(STATUS "Onion bundle: `cmake --build . --target bundle-onion`")
 
-    # The SDL2 runtime, and whatever it drags in with it.
-    #
-    # Vendored rather than borrowed from the firmware: the copy Onion ships under
-    # .tmp_update/lib/parasyte needs a Mesa/X11/libdrm stack and its own loader
-    # and libc, which is an alternate userland rather than a library. Onion's own
-    # native SDL2 ports vendor theirs the same way.
-    #
-    # Not fetched automatically. It is a binary of a specific panel geometry —
-    # 640x480 is compiled into the mmiyoo driver — and downloading one silently
-    # would be guessing at the device on the other end.
-    if(WREEL_ONION_SDL2_RUNTIME)
-        if(NOT EXISTS "${WREEL_ONION_SDL2_RUNTIME}/libSDL2-2.0.so.0")
-            message(FATAL_ERROR
-                "WREEL_ONION_SDL2_RUNTIME='${WREEL_ONION_SDL2_RUNTIME}' holds no "
-                "libSDL2-2.0.so.0.")
-        endif()
-        file(GLOB runtime_libs "${WREEL_ONION_SDL2_RUNTIME}/*.so*")
+    _wreel_onion_app(demo_commands
+        DIR         "Coppers"
+        TARGET      "${target}"
+        LABEL       "Coppers"
+        DESCRIPTION "Copper bars, and a fill-rate measurement"
+        ARGS        "$COPPERS_ARGS")
 
-        _wreel_onion_drop_gles("${app_dir}" runtime_libs gles_command)
+    # The diagnostics tool gets its own entry rather than a flag on the demo's.
+    # It is the thing to reach for when the demo does something unexplained, and
+    # needing to edit a file on the SD card to get at it — with the device in
+    # hand and the demo misbehaving — is exactly the wrong moment for that.
+    set(bundle_depends)
+    if(TARGET wreel-diag)
+        _wreel_onion_app(diag_commands
+            DIR         "WreelDiag"
+            TARGET      "wreel-diag"
+            LABEL       "Wreel Diagnostics"
+            DESCRIPTION "What this device's SDL2 actually does"
+            ARGS        "--out diag.txt"
+            REPORT      "diag.txt")
+        list(APPEND bundle_depends wreel-diag)
+    endif()
 
-        list(APPEND asset_commands
-            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                    ${runtime_libs} "${app_dir}/lib/"
-            ${gles_command})
-        message(STATUS "  runtime from ${WREEL_ONION_SDL2_RUNTIME}")
-    else()
-        message(WARNING
-            "No WREEL_ONION_SDL2_RUNTIME set, so the bundle carries no "
-            "libSDL2-2.0.so.0 and launch.sh will refuse to start. Point it at a "
-            "directory holding an mmiyoo SDL2 built for this panel.")
+    if(WREEL_MINI_SDL2)
+        list(APPEND bundle_depends SDL2)
     endif()
 
     # The tarball is built from the parent of App/ so it unpacks straight over
-    # the root of an SD card.
+    # the root of an SD card, and carries both entries.
     set(tarball "${CMAKE_SOURCE_DIR}/pkg/coppers-${PROJECT_VERSION}-onion.tar.gz")
 
     add_custom_target(bundle-onion
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "${app_dir}/data" "${app_dir}/lib"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                "$<TARGET_FILE:${target}>" "${app_dir}/${target}"
-        ${asset_commands}
+        ${demo_commands}
+        ${diag_commands}
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_SOURCE_DIR}/pkg"
-        COMMAND "${CMAKE_COMMAND}" -E chdir "${bundle_root}"
+        COMMAND "${CMAKE_COMMAND}" -E chdir "${WREEL_ONION_BUNDLE_ROOT}"
                 "${CMAKE_COMMAND}" -E tar czf "${tarball}" App
-        DEPENDS ${target}
-        COMMENT "Staging ${app_dir} and writing ${tarball}"
+        DEPENDS ${target} ${bundle_depends}
+        COMMENT "Staging ${WREEL_ONION_BUNDLE_ROOT}/App and writing ${tarball}"
         VERBATIM)
 
-    message(STATUS "Onion bundle: `cmake --build . --target bundle-onion`")
-    message(STATUS "  stages ${app_dir}")
-
     # Said plainly because it is the one thing about this bundle that is not
-    # like the others: this target's SDL2 is a shared object the firmware
-    # supplies, so the bundle is not self-contained the way every other preset's
-    # output is.
-    if(NOT WREEL_USE_SYSTEM_SDL2)
+    # like the others: SDL2 is a shared object beside the binary rather than
+    # linked into it, so the bundle is not self-contained the way every other
+    # preset's output is. Since 2026-08-01 we build that object ourselves, which
+    # changes where it comes from and not the fact of it.
+    if(NOT WREEL_MINI_SDL2 AND NOT WREEL_USE_SYSTEM_SDL2)
         message(WARNING
-            "Onion bundle built with the pinned static SDL2. That build has no "
-            "video driver for the SSD202D — dummy, offscreen and wayland only — "
-            "so it will run headless and draw nothing on the device. Configure "
-            "with -DWREEL_USE_SYSTEM_SDL2=ON against the device's SDL2. See "
-            "planning/2026-07-27-onion-bundle/.")
+            "Onion bundle built against the pinned upstream SDL2 with no Miyoo "
+            "drivers. That build has no video driver for the SSD202D — dummy, "
+            "offscreen and wayland only — so it will run headless and draw "
+            "nothing on the device. Configure with -DWREEL_MINI_SDL2=ON, which "
+            "is the default on this target. See "
+            "planning/2026-07-31-miyoo-sdl2-fork/.")
     endif()
 endfunction()
 

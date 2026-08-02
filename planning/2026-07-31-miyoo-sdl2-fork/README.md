@@ -1,6 +1,6 @@
 # Maintaining our own SDL2 for the Miyoo Mini
 
-**Status:** `snapshot`
+**Status:** `in-progress` — stage 0 passed on hardware 2026-08-01
 **Written:** 2026-07-31
 **Blocked by:** nothing — but stage 0 is a gate, and everything after it is
 conditional on stage 0 succeeding
@@ -19,6 +19,14 @@ See §5
 > — and all three turned out to matter. §1.7, §3 and §5 carry what changed; the
 > §1 and §2 findings that motivated the work are unaffected and were re-checked
 > against the same checkout.
+
+> **Stage 0 passed 2026-08-01.** The drivers are grafted onto the pinned SDL
+> 2.32.10, the library builds in the toolchain container, and `coppers` ran on
+> the device against it: **859 frames at 59.7 fps, audio at 22050 Hz**, video
+> driver `Mini`, render driver `Miyoo Mini (accelerated)` — indistinguishable
+> from the prebuilt. §8 is the full record, including what the accompanying
+> diagnostics run measured and what it got wrong twice before it was
+> trustworthy.
 
 ## Motivation
 
@@ -87,9 +95,12 @@ The `mini` driver advertises two formats, `RGB565` and `ARGB8888`;
 path, and the stored pointer is dangling **before
 `SDL_CreateTextureFromSurface` returns** — not merely after the caller cleans up.
 
-That is the path `gfx::renderer::Context::draw_surface()` takes. It has not
+That is the path `gfx::renderer::Context::draw_surface()` takes. **Confirmed on
+hardware 2026-08-01** — see §8.3. It took `wreel-diag` down with a SIGSEGV when
+that tool's own upload buffer went out of scope, and was then measured directly
+without touching freed memory. Before that run this section said it "has not
 visibly failed on device, which is what a read of recently-freed heap normally
-looks like.
+looks like"; it fails very visibly once the freed page is reused.
 
 `Layer` is unaffected: it locks and unlocks, so the registered pointer is
 `t->data`, which the driver owns.
@@ -363,6 +374,8 @@ depends on wanting new capability, and each is small and self-contained.
 | 6 | Bounds-check `update_texture`'s 100-entry table | silent missing sprites (D27) | **certain** |
 | 13 | Advertise `ABGR8888` (`E_MI_GFX_FMT_ABGR8888` is native) | removes a conversion per upload, and §1.1's converting path | high |
 | 19 | `MI_SYS_Munmap(gfx.fb.virAddr, FB_SIZE)`, not `TMP_SIZE` | under-unmaps the framebuffer on teardown | **certain** — it is upstream's own later fix (§7.1) |
+| 20 | Mirror `dst.y` the way `dst.x` already is | sub-rect destinations land vertically mirrored (§8.2) | **certain, and measured** — asked for y=60, landed at y=300 on a 480-tall panel |
+| 21 | Implement `Mini_UpdateWindowFramebuffer` | makes SDL's own software renderer work here — §8.5 | high — `GFX_Copy` plus `GFX_Flip`, and every other part of that path is already measured working |
 
 **Numbers are append-only** from 2026-07-31 on, because the rest of this document
 cross-references them. Item 13 moved up from tier 2 in the revised decision: it
@@ -591,9 +604,19 @@ The engine-side mitigations, none of which need a fork:
 
 ---
 
-## 6. The experiment that should happen first, fork or not
+## 6. The experiment that should happen first — ANSWERED 2026-08-01
 
 **Is the fixed `E_MI_GFX_ROTATE_180` a bug or correct panel compensation?**
+
+> **Compensation.** The panel is mounted inverted. `wreel-diag` established that
+> the framebuffer holds the image rotated 180°, and the ambiguity that leaves —
+> a rotated framebuffer displays upright on an inverted panel — was closed by
+> looking at the screen: `coppers`' HUD text reads left-to-right from the top
+> left. **Item 14 must compose with the rotation, not remove it.**
+>
+> The rest of this section is kept as written, because the second axis it
+> identified turned out to be the real defect and the reasoning is what found it
+> — see §8.2 and item 20.
 
 Nothing recorded so far distinguishes them, because `coppers`' full-screen
 content is a field of horizontal bars that looks the same rotated. One run
@@ -699,43 +722,197 @@ control.
 
 ---
 
+## 8. Stage 0 on hardware — what it settled, 2026-08-01
+
+The build landed as §5.2 described: driver sources in
+[platform/miyoomini/sdl2/](../../platform/miyoomini/sdl2/), upstream fetched at
+its existing pin and patched with 42 additive lines across 8 files, one
+`WREEL_MINI_SDL2` option, `WREEL_SDL2_LINKAGE` forced to SHARED for the LGPL
+reason. Provenance and the complete list of modifications are in that
+directory's `PROVENANCE.md`.
+
+### 8.1 The gate
+
+`coppers`, unmodified, against the rebuilt library:
+
+```
+[I] gfx system initialised, video driver Mini
+[I] renderer context 640x480 via Miyoo Mini (accelerated)
+[I] audio: 22050 Hz, 2 ch, 2048 sample buffer, 8 voices, driver Miyoo Mini
+[I] coppers: 859 frames, 59.7 fps, plot 2.920 blit 4.425 present 9.348 ms
+```
+
+**The drivers behave the same on a 2.32 base as on 2.0.20.** That is what §5.1
+predicted from the signature survey and what §4 said would be the risk of taking
+E over B, and it is now measured rather than argued.
+
+Two things fall out of the loader trace:
+
+```
+libSDL2-2.0.so.0 => /mnt/SDCARD/App/Coppers/lib/libSDL2-2.0.so.0
+libmi_gfx.so     => /config/lib/libmi_gfx.so
+libmi_ao.so, libmi_sys.so, libmi_common.so, libshmvar.so
+```
+
+- **No `libEGL.so`, no `libGLESv2.so`, no `libjson-c.so.5`.** §1.7 and §3's
+  json-c removal, realised. The bundle's `lib/` is one file, and
+  [THIRD-PARTY.md](../../THIRD-PARTY.md)'s unknown-licence item is gone rather
+  than mitigated.
+- **The MI libraries resolve from `/config/lib`**, not `/customer/lib`, which is
+  the only path `launch.sh` adds. `/config/lib` is already on the default search
+  path on this firmware.
+
+Audio also opened and played three tracks **without the driver touching the
+system volume**, which is the removal recorded in `PROVENANCE.md` and was the
+one part of it that could not be argued from source.
+
+### 8.2 The rotation question, closed
+
+§6 asked whether the fixed `E_MI_GFX_ROTATE_180` is a bug or panel compensation,
+and called getting it backwards the most expensive mistake available here.
+
+`wreel-diag` drew four coloured quadrants and read `/dev/fb0`: the framebuffer
+holds the image **rotated 180°**. That is still ambiguous on its own — a rotated
+framebuffer displays upright on an inverted panel — so it was closed by looking
+at the screen. `coppers`' HUD text reads left-to-right from the top left.
+
+**The panel is mounted inverted and the rotation compensates for it.** Item 14
+must compose with the rotation; removing it would break the only path that
+works. D25 is corrected accordingly.
+
+And the correction turns §6's second axis into a defect with a one-line fix. For
+the viewer to see content at `dstrect`, the framebuffer rect must be mirrored in
+*both* axes. `Mini_QueueCopy` mirrors x and not y:
+
+```c
+dst.x = (vid_win->w - (dstrect->x + dstrect->w)) * scale;   /* correct */
+dst.y = dstrect->y * scale;                                 /* missing the same */
+```
+
+Invisible full-screen, wrong for every sprite. **New tier 1 item 20.**
+
+**Confirmed 2026-08-01**, and the arithmetic held exactly. A 160×120 block asked
+for at y=60 on a 480-tall panel landed at y=300, which is `480 − 60 − 120`; x was
+correct. The check reports it as "x is right and y is mirrored", which is the
+shape the derivation predicted rather than a general "it is in the wrong
+place".
+
+### 8.3 What the diagnostics measured
+
+Complete after the third run, 2026-08-01. **Every §1 and §2 finding that could be
+reached from user code is now measured rather than read, and none of them
+surprised.**
+
+| | Verdict | |
+|---|---|---|
+| `SDL_UpdateTexture` copies | **WRONG** | keeps the caller's pointer — §1.1 / D27, proven directly, and it crashed the tool before it was written to survive it |
+| `SDL_RenderClear` | **IGNORED** | "screen still holds the previous frame; the clear was queued and never executed" — §2 exactly |
+| `SDL_RenderCopy` full-screen | **OK** | the one operation that works, and the whole reason `Layer` is the house pattern here |
+| `SDL_RenderCopy` sub-rect | **WRONG** | read *past the staged rows* and returned the previous blit's leftovers — §1.2, and the magenta poison is what proves it rather than a lucky colour match |
+| sub-rect, RGB565 | **WRONG** | `pitch/rect.w` is 16, the driver reads that as bytes-per-pixel — §1.3 |
+| partial destination | **WRONG** | requested y=60, landed at y=300 on a 480-tall panel. `480 − 60 − 120 = 300` — §8.2's arithmetic, to the pixel |
+| `SDL_SetTextureBlendMode` | **IGNORED** | sprite opaque over red; mode accepted and never applied |
+| `SDL_SetTextureColorMod` | **IGNORED** | no tints, fades or damage flashes |
+| `SDL_RenderFillRect` | **IGNORED** | success, nothing drawn |
+| render to texture | **IGNORED** | "the target texture is empty… and TARGETTEXTURE is advertised anyway" — §1.5 |
+| texture cap | 640×480 advertised **and enforced** | over-limit correctly refused |
+| desktop mode, display bounds | **success, all zeros** | D22/D24, on our build too — item 15 is unfixed |
+| audio | **OK** | 22050 Hz once `audioserver` is stopped |
+
+Two of these needed the checks rewritten before they were worth anything —
+`SDL_RenderClear` and the sub-rect — and both had reported the *opposite* answer
+first. §8.4 is why.
+
+Incidental, from the same runs: the framebuffer's virtual height was 960 on one
+run and 1440 on another. `Mini_InitGFX` sets `yres_virtual = yres * 2`, and this
+tool probes `/dev/fb0` before `SDL_Init`, so what it reports there is the
+firmware's own buffering rather than SDL's. Worth knowing before reading anything
+into it.
+
+### 8.4 What the tool got wrong, which is worth more than the table
+
+Three of the first run's verdicts were the diagnostic's fault, not the driver's,
+and each is a trap that will catch the next person testing on this device.
+
+- **A window sized from the driver's mode list is 800×600 on a 640×480 panel.**
+  `SDL_GetDesktopDisplayMode` returns *success* with a zeroed mode, and SDL sorts
+  the driver's ten fixed modes largest-first. Every full-size texture was then
+  refused by the 640×480 cap. `gfx::renderer::Context` probes four sources for
+  exactly this reason; the tool now reads `/dev/fb0`.
+- **A no-op `SDL_RenderClear` cannot be measured across two presents.** Present
+  is an fbdev pan between halves of a 640×960 framebuffer, so the second present
+  flips to the frame from *two* presents ago. Background and operation have to
+  be in one frame.
+- **A sub-rect check can pass by accident.** §1.2 says the blitter reads whatever
+  the staging buffer last held; the previous check had filled staging with the
+  same green the check expected, so it reported OK about stale memory. The
+  staging buffer has to be poisoned with a colour that appears nowhere else.
+
+A fourth was a check that tested nothing: `SDL_GetRenderTarget` returns the
+frontend's own bookkeeping, so it reports success whatever
+`Mini_SetRenderTarget` does.
+
+**The transferable part:** on this driver, a check that does not read the
+framebuffer back is measuring its own assumptions, and a check that reads it
+back can still be measuring the previous check's leftovers.
+
+### 8.5 The item that changes tier 2
+
+`Mini_UpdateWindowFramebuffer` is `return 0` — recorded in D25 on 2026-07-28,
+with a device measurement of 965 correct frames, a 4 µs present and a black
+panel. That was filed as architectural because the library was not ours.
+
+**It is ours now**, and implementing it is about ten lines: `GFX_Copy` the window
+surface, `GFX_Flip`. It makes SDL's own software renderer work here — the
+reference implementation of correct sub-rectangles, blend modes, colour
+modulation, fills and render-to-texture — at the CPU cost this project already
+pays for `Layer`, with `MI_GFX` still carrying the full-screen blit.
+
+That is one function against tier 2's six items, and it is why tier 2 stays
+contested rather than scheduled. **New item 21**, and the first thing to try.
+
+---
+
 ## Tasks
 
-**Stage 0 — the gate.** Rewritten for option E; the B form is kept below it
-because B is the fallback if E fails, and its tasks are not the same.
+**Stage 0 — the gate. DONE 2026-08-01.** Kept in full rather than deleted,
+because what each item turned into is the useful part.
 
-- [ ] **Settle the json-c link before anything else.** `--enable-audio-mini`
-      links `-ljson-c`, and the union sysroot **does not have it** — it ships
-      `libcjson`, a different library with a different API. Three ways out, and
-      the choice wants making rather than discovering at link time: supply json-c
-      headers and link the `libjson-c.so.5` the bundle already carries; link
-      `-l:libjson-c.so.5` against the staged bundle copy; or drop the dependency
-      by replacing the driver's four json-c calls, which exist only to read an
-      initial volume out of `/appconfigs/system.json`. **The third is the one to
-      take** if the volume default is acceptable, because it removes a shipped
-      binary of unrecorded version (THIRD-PARTY.md) as a side effect
-- [ ] Add `src/{video,render,audio}/mini` to the pinned SDL 2.32.10 build: the
-      `SDL_OFFSCREEN`-shaped CMake block, the `#cmakedefine` entries, and the
-      three `bootstrap[]`/`render_drivers[]` registrations (§5.1)
-- [ ] Fix the three changed signatures — `RenderPresent`,
-      `SDL_RenderDriver.CreateRenderer`, audio `OpenDevice` — and **nothing
-      else**. Anything beyond them is a finding, not a task: it means the §5.1
-      survey missed something and the estimate needs revisiting
-- [ ] Compile it. The SDK headers need no work: the toolchain sysroot's
-      `mi_gfx.h`, `mi_sys.h`, `mi_common.h` and `mi_ao.h` are **byte-identical**
-      to the vendor tree's `mini/inc/` copies, verified 2026-07-31, and the
-      sysroot carries the matching `libmi_*.so`. There is no need to vendor
-      SigmaStar's headers or blobs
-- [ ] Compare exported symbols against the shipped prebuilt's — 107 imported by
-      our satellites plus 87 by our own code, the comparison
-      [TARGETS.md](../../docs/TARGETS.md) already records. Expect *more* symbols,
-      not the same set: 2.32 exports what 2.0.20 did plus twelve years of
-      additions. **The check is that nothing is missing**, not that the sets match
-- [ ] Point the bundle at it (`WREEL_ONION_SDL2_RUNTIME`) and run on the device
-      unmodified. **This is the gate.** It tests base and build together (§5.1),
-      so a failure needs the B control below to localise
-- [ ] Drop `-lEGL -lGLESv2` and `SDL_gles_mini.c` (§1.7) and confirm the bundle's
-      `lib/` is `libSDL2` alone
+- [x] **Settle the json-c link.** Taken further than this task proposed: the
+      whole system-volume mechanism went, not just its dependency. Upstream read
+      `/appconfigs/system.json` on every open and wrote the result to the
+      *system* volume through an ioctl on `/dev/mi_ao` — a different knob from
+      the `MI_AO_SetVolume` that stays. Re-asserting a level the firmware
+      already holds is not an audio backend's job, and its fallback of `0` drove
+      the level to `MIN_RAW_VALUE` and muted the device. An intermediate design
+      that had the host read the file and pass `SDL_MINI_VOLUME` was built and
+      withdrawn: it moved the coupling instead of removing it
+- [x] Add `src/{video,render,audio}/mini` to the pinned SDL 2.32.10 build. 42
+      inserted lines across 8 upstream files, nothing removed or changed, applied
+      by `graft.cmake` from FetchContent's `PATCH_COMMAND`
+- [x] ~~Fix the three changed signatures~~ **Six, not three, and the sixth was
+      found by the compiler rather than by the survey.** `QueueCopyEx` gained
+      `scale_x, scale_y`; `AudioBootStrap.init` went `int` to `SDL_bool`;
+      `VideoBootStrap.create` lost its `devindex`. §5.1's method — grep the
+      member names, diff the declarations — missed the first because its
+      declaration spans two lines and the second and third because they are not
+      assigned through a `->`. Plus one real bug rather than a signature: from
+      2.24 the frontend owns the `SDL_Renderer` allocation, so upstream's
+      `SDL_free(renderer)` in `Mini_DestroyRenderer` would have been a double
+      free
+- [x] Compile it. The SDK headers needed no work, as predicted — sysroot and
+      vendor copies are byte-identical. The link needed `-lmi_ao`, which the
+      first patch omitted
+- [x] Compare exported symbols against the shipped prebuilt's. **839 against
+      798, a strict superset**; nothing the prebuilt exports is missing, and all
+      176 SDL-family symbols our binaries import resolve
+- [x] Run on the device unmodified. **The gate: passed** — §8.1
+- [x] Drop `-lEGL -lGLESv2` and `SDL_gles_mini.c` (§1.7). Confirmed on the
+      device: `lib/` is one file and the loader maps no EGL and no GL
+
+**What stage 0 cost that was not on the list:** two device runs of the
+diagnostics tool before its own results could be trusted, for the reasons in
+§8.4. The library was right on the first run; the instrument was not.
 
 **Stage 0-B — the fallback control**, only if stage 0 fails
 

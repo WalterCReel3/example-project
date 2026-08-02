@@ -10,14 +10,47 @@ recorded as "whatever was in that directory". Same rule as the asset file:
 **everything gets a row, including the ones where the honest answer is
 "unknown".**
 
-## What ships, and only where
+> **Superseded for the shipped bundle, 2026-08-01. Nothing in the table below is
+> shipped any more.**
+>
+> This file was written when the Miyoo Mini bundle carried three binaries this
+> project did not build. It now carries **none**: `libSDL2-2.0.so.0` is compiled
+> from the pinned upstream 2.32.10 with steward-fu's SSD202D drivers grafted in,
+> and the other two went with it —
+>
+> - **`libEGL.so`** was never called on our path (the `Mini_CreateWindow` call
+>   was to a same-named *local* function, not the EGL import) and the GL path is
+>   not compiled at all now. **The unknown-licence item is closed**, and with it
+>   [packaging-distribution](planning/2026-07-25-packaging-distribution/)'s
+>   blocker on any channel that counts as distribution.
+> - **`libGLESv2.so`** was already removed at bundle time; it is now absent at
+>   source.
+> - **`libjson-c.so.5`** existed only because the vendor audio driver read
+>   `/appconfigs/system.json` to overwrite the system volume on every open. That
+>   whole mechanism is gone — the firmware owns that setting.
+>
+> Confirmed on the device: the loader maps `libSDL2-2.0.so.0` and the firmware's
+> `libmi_*`, and nothing else.
+>
+> **The file is kept, not deleted.** The three binaries are still what
+> `WREEL_ONION_SDL2_RUNTIME` stages if anyone uses that path, the pins are still
+> the record of what this project shipped up to 2026-08-01, and the method in
+> *How these were identified* is the reusable part. What we build ourselves is
+> documented in
+> [platform/miyoomini/sdl2/PROVENANCE.md](platform/miyoomini/sdl2/PROVENANCE.md)
+> — a different obligation, since that is source we modified rather than a
+> binary we redistributed.
+
+## What shipped until 2026-08-01, and only where
 
 One target. Every other preset links everything statically — this is
 `miyoomini`'s documented exception, because upstream SDL2 has no video driver
 that can reach that panel ([docs/TARGETS.md](docs/TARGETS.md), the Miyoo Mini
 exception).
 
-The bundle's `lib/` after `cmake --build --target bundle-onion`:
+The bundle's `lib/` after `cmake --build --target bundle-onion`, **when built
+with `WREEL_ONION_SDL2_RUNTIME`**. The default path since 2026-08-01 stages one
+file we built ourselves and none of these:
 
 | File | Origin | Pin | Licence |
 |---|---|---|---|
@@ -91,6 +124,14 @@ copy. That last one is a live constraint rather than a formality, and it is the
 reason the GL removal is done the way it is —
 `scripts/drop-unused-needed.sh` removes an unused `DT_NEEDED` and changes nothing
 else, so a user substituting their own build of that library is unobstructed.
+
+**The same obligation now attaches to a library we compile**, and it is met the
+same way rather than differently: `WREEL_SDL2_LINKAGE` forces SHARED on this
+target precisely so the relink stays possible, and the source is in the tree
+rather than pinned to somebody else's repository. Note where the LGPL comes
+from — upstream SDL2 is **zlib**; it is steward-fu's ~1,290 driver lines that
+carry `// LGPL-2.1 License`. So the obligation follows those files through the
+rebase, and only replacing them would change it.
 
 **The modification must be declared, and this is the declaration.** The
 `libSDL2-2.0.so.0` this project ships is **not** byte-identical to the upstream

@@ -111,18 +111,33 @@ set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
+# SDL2 on this target is built from source, from the same pin as every other
+# target, with the SSD202D video, render and audio drivers grafted in. That is
+# WREEL_MINI_SDL2, defaulted ON here because there is no other way to reach the
+# panel and no reason to make every invocation say so.
+#
+# Until 2026-08-01 this target instead required WREEL_USE_SYSTEM_SDL2=ON against
+# a prefix assembled by hand, because upstream SDL2 has no video driver for the
+# SSD202D. That is still true of *unmodified* upstream; what changed is that the
+# drivers now live in platform/miyoomini/sdl2/ and are compiled into the pinned
+# tree. See planning/2026-07-31-miyoo-sdl2-fork/.
+if(NOT DEFINED WREEL_MINI_SDL2)
+    set(WREEL_MINI_SDL2 ON CACHE BOOL
+        "Build SDL2 with the Miyoo Mini (SSD202D) drivers grafted in" FORCE)
+endif()
+
 # WREEL_SDL2_ROOT — a prefix holding an SDL2 built FOR THIS DEVICE, searched in
 # addition to the sysroot.
 #
-# This exists because WREEL_USE_SYSTEM_SDL2=ON is mandatory here (upstream SDL2
-# has no video driver for the SSD202D — docs/TARGETS.md § The Miyoo Mini
-# exception) and was unusable without it. The union toolchain's sysroot carries
-# SDL 1.2 and no SDL2, so the SDL2 to build against necessarily lives outside
-# the sysroot — and `PACKAGE ONLY` above means find_package() will not look
-# there. Passing -DCMAKE_FIND_ROOT_PATH does not help either: the line below is
-# a normal variable, so it shadows the cache entry a -D creates.
+# Now the escape hatch rather than the route: it pairs with
+# WREEL_USE_SYSTEM_SDL2=ON for a firmware whose SDL2 genuinely cannot be
+# replaced. The union toolchain's sysroot carries SDL 1.2 and no SDL2, so such
+# an SDL2 necessarily lives outside the sysroot — and `PACKAGE ONLY` above means
+# find_package() will not look there. Passing -DCMAKE_FIND_ROOT_PATH does not
+# help either: the line below is a normal variable, so it shadows the cache
+# entry a -D creates.
 #
-#   cmake --preset miyoomini -DWREEL_USE_SYSTEM_SDL2=ON \
+#   cmake --preset miyoomini -DWREEL_MINI_SDL2=OFF -DWREEL_USE_SYSTEM_SDL2=ON \
 #         -DWREEL_SDL2_ROOT=/path/to/sdl2-prefix
 if(NOT WREEL_SDL2_ROOT AND DEFINED ENV{WREEL_SDL2_ROOT})
     set(WREEL_SDL2_ROOT "$ENV{WREEL_SDL2_ROOT}")

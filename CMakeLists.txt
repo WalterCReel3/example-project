@@ -83,6 +83,9 @@ add_subdirectory(loaders)
 
 if(WREEL_BUILD_PROBE)
     add_subdirectory(probe)
+    # Same switch as the probe: they are the two device tools and there is no
+    # case for having one without the other.
+    add_subdirectory(diag)
 endif()
 
 # One condition per demo rather than one for all of them: skratch needs

@@ -39,6 +39,39 @@ option(WREEL_BUILD_PROBE  "Build the wreel-probe device tool"    ON)
 option(WREEL_USE_SYSTEM_SDL2
        "Link the sysroot's SDL2 instead of building a pinned copy" OFF)
 
+# The Miyoo Mini's SDL2, built from the pinned upstream with the SSD202D drivers
+# grafted in. Defaulted ON by cmake/toolchains/miyoomini.cmake and meaningless
+# elsewhere -- no other target has an MI SDK to compile against.
+#
+# It replaces WREEL_USE_SYSTEM_SDL2 on that target rather than joining it. The
+# system path meant "a prefix somebody assembled by hand, holding headers of
+# unrecorded provenance and a prebuilt we did not build"; this one is pinned,
+# reproducible and emits its own headers. WREEL_USE_SYSTEM_SDL2 stays as the
+# escape hatch for a device whose firmware SDL2 genuinely cannot be replaced.
+option(WREEL_MINI_SDL2
+       "Build SDL2 with the Miyoo Mini (SSD202D) drivers grafted in" OFF)
+
+# How SDL2 itself is linked. STATIC on four targets and SHARED on miyoomini, and
+# those are not the same kind of decision:
+#
+#   STATIC is a PREFERENCE. One binary is easier to put in a Steam depot or on an
+#   SD card, and it keeps us off whatever library set a firmware happens to ship
+#   while we hold a glibc floor. The 2016 tree took it for granted; today it is a
+#   default we choose, and any target can be built the other way for an
+#   experiment.
+#
+#   SHARED on miyoomini is an OBLIGATION. The SSD202D drivers grafted into that
+#   build carry steward-fu's LGPL-2.1 header, and the licence requires that a
+#   user can relink against a modified copy. Dynamic linking is how that is met
+#   without shipping object files with every release. It does not relax because
+#   packaging tooling improves.
+#
+# The SDL2 satellites are a separate axis and stay static everywhere: SDL2_image,
+# SDL2_ttf and SDL2_mixer are all zlib-licensed and consume the SDL2 API rather
+# than the display. See docs/TARGETS.md § Pinned dependencies.
+set(WREEL_SDL2_LINKAGE "STATIC" CACHE STRING "How SDL2 is linked: STATIC or SHARED")
+set_property(CACHE WREEL_SDL2_LINKAGE PROPERTY STRINGS STATIC SHARED)
+
 # ON since 2026-07-26. It was off for as long as the 2016 fixed-function sources
 # were in the tree: they carried 167 warnings, 30 of which survived to the end and
 # every one of which was in a file the renderer rework deleted or rewrote. With
@@ -155,6 +188,68 @@ if(WREEL_ENABLE_GLES2 AND NOT WREEL_TARGET_HAS_GPU)
         "  The SSD202D has no 3D block at all — no GL, no GLES, no EGL. The\n"
         "  gfx::renderer path with its software driver is the only option there,\n"
         "  and it is built unconditionally. See docs/TARGETS.md § 3.")
+endif()
+
+# Two ways of getting an SDL2 that can drive the panel, and asking for both is
+# a mistake rather than a preference — they disagree about which library the
+# link lands on, and the failure would appear as a missing video driver on the
+# device rather than at configure time.
+if(WREEL_MINI_SDL2 AND WREEL_USE_SYSTEM_SDL2)
+    message(FATAL_ERROR
+        "WREEL_MINI_SDL2 and WREEL_USE_SYSTEM_SDL2 are both ON, and they are\n"
+        "  alternatives: the first builds a pinned SDL2 with the SSD202D drivers\n"
+        "  grafted in, the second links a copy somebody else built. Turn one off.\n"
+        "  See planning/2026-07-31-miyoo-sdl2-fork/.")
+endif()
+
+if(WREEL_MINI_SDL2 AND NOT EXISTS "${CMAKE_SOURCE_DIR}/platform/miyoomini/sdl2/graft.cmake")
+    message(FATAL_ERROR
+        "WREEL_MINI_SDL2=ON but platform/miyoomini/sdl2/ is not in the tree.")
+endif()
+
+# ---------------------------------------------------------------------------
+# SDL2 linkage
+# ---------------------------------------------------------------------------
+
+string(TOUPPER "${WREEL_SDL2_LINKAGE}" _wreel_linkage)
+if(NOT _wreel_linkage MATCHES "^(STATIC|SHARED)$")
+    message(FATAL_ERROR
+        "WREEL_SDL2_LINKAGE must be STATIC or SHARED, not '${WREEL_SDL2_LINKAGE}'.")
+endif()
+
+# Forced rather than defaulted, and it refuses to be overridden. A STATIC SDL2
+# containing the grafted LGPL-2.1 drivers would put a source-plus-objects
+# obligation on every release for no benefit — see the option's own note. If
+# there is ever a reason to do it anyway, the argument belongs in
+# docs/TARGETS.md before the flag comes off.
+if(WREEL_MINI_SDL2)
+    if(_wreel_linkage STREQUAL "STATIC")
+        message(STATUS
+            "SDL2 linkage: SHARED, forced — the Miyoo Mini drivers are LGPL-2.1 "
+            "and must stay relinkable")
+    endif()
+    set(_wreel_linkage "SHARED")
+endif()
+
+# Written to BOTH the cache and this scope, deliberately. A normal variable of
+# the same name shadows the cache entry for the rest of the configure, so
+# updating only the cache leaves every later reader — Dependencies.cmake, the
+# summary — seeing the pre-forcing value while `cmake -L` reports the new one.
+# The toolchain file's WREEL_SDL2_ROOT note is the same hazard from the other
+# side.
+set(WREEL_SDL2_LINKAGE "${_wreel_linkage}" CACHE STRING
+    "How SDL2 is linked: STATIC or SHARED" FORCE)
+set(WREEL_SDL2_LINKAGE "${_wreel_linkage}")
+
+# A shared SDL2 has to end up beside the executable, and only the handheld
+# bundle knows how to put it there. Failing here beats a binary that links
+# cleanly and then cannot find its library on the device.
+if(WREEL_SDL2_LINKAGE STREQUAL "SHARED" AND NOT WREEL_MINI_SDL2)
+    message(WARNING
+        "WREEL_SDL2_LINKAGE=SHARED on target '${WREEL_TARGET_ID}'. Nothing stages "
+        "libSDL2 for this target, so the build tree will run and an installed or "
+        "packaged copy will not. Fine for an experiment; wire up Packaging before "
+        "shipping it.")
 endif()
 
 # Demos are gated per demo, because they do not all need the same renderer.
@@ -278,6 +373,8 @@ function(wreel_print_summary)
                    "${WREEL_AUDIO_CHANNELS} ch, ${WREEL_AUDIO_BUFFER} buf, "
                    "${WREEL_AUDIO_VOICES} voices")
     message(STATUS "  system SDL2 ........ ${WREEL_USE_SYSTEM_SDL2}")
+    message(STATUS "  Miyoo Mini SDL2 .... ${WREEL_MINI_SDL2}")
+    message(STATUS "  SDL2 linkage ....... ${WREEL_SDL2_LINKAGE}")
     message(STATUS "  warnings as errors . ${WREEL_WERROR}")
     message(STATUS "  static libstdc++ ... ${WREEL_STATIC_CXX}")
     message(STATUS "  tests .............. ${WREEL_BUILD_TESTS}")
