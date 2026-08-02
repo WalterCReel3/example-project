@@ -315,7 +315,7 @@ caller's.
 `max_texture_width/height` is **640×480** — the panel exactly. Any texture wider
 or taller simply fails to upload.
 
-### 4.4 SDL's own software renderer is present, and cannot present
+### 4.4 SDL's own software renderer ~~is present, and cannot present~~ works here since 2026-08-02
 
 It is compiled in and registered (`SW_RenderDriver` is in the binary's symbol
 table), and `SDL_CreateRenderer` honours `SDL_HINT_RENDER_DRIVER`, so
@@ -351,6 +351,25 @@ backend spends 11–13 ms, and a black panel. **The only route to the display is
 > lands, `SDL_RENDER_DRIVER=software` on this device produces a black screen
 > rather than a slow one, which is worth knowing before reaching for it as a
 > comparison.
+
+> **Landed 2026-08-02, and everything above it is now history rather than
+> constraint.** `Mini_UpdateWindowFramebuffer` stages the window surface through
+> `GFX_Copy` and flips. **`Mini_QueueCopy` is no longer the only route to the
+> display**, which is the sentence in this section with the widest reach — § 5's
+> gap list, `Layer` being the house pattern, and the sprites snapshot's inability
+> to call `Context::draw()` all hang off it.
+>
+> Measured: `coppers` with `SDL_RENDER_DRIVER=software` runs 2612 frames at the
+> demo's 59.7 fps cap with a present of **9.487 ms** against the 4 µs above, the
+> panel upright and its text legible, and drew its HUD through per-glyph
+> sub-rectangle copies. `wreel-diag` on that path returns **OK on every
+> conformance check**, including all five this document lists as missing.
+>
+> Two things that did not change. The `mini` backend's gaps are exactly as
+> listed — this is a second route, not a repair of the first. And the diag's
+> software-path verdicts are read back through `SDL_RenderReadPixels` rather than
+> `/dev/fb0`, so they measure what SDL composited rather than what reached the
+> panel; the panel evidence is the present cost and the demo run.
 
 ### 4.5 What the runtime drags in, and the 21.8 MB that it does not
 
@@ -539,6 +558,19 @@ drawn a blended sprite on the device.
 > Also confirmed here: this project builds its own copy of this library now, and
 > the rows below hold for it as well as for the prebuilt — they are the same
 > driver sources. See [TARGETS.md](TARGETS.md) § The Miyoo Mini exception.
+
+> **Where the two libraries part company — 2026-08-02.** The table still
+> describes the *shipped prebuilt* exactly. Against the copy we build, three rows
+> have moved and the rest have not:
+>
+> - **`SDL_UpdateTexture` copies.** The use-after-free is fixed and D27 is
+>   withdrawn, so `Context::draw_surface()` is usable here.
+> - **Sub-rectangle *placement* is correct.** The destination `y` mirror landed;
+>   the source-rect `y` and the format inference did not, so a sub-rect copy is
+>   still wrong — for two reasons now instead of three, both on the source side.
+> - **The software renderer presents**, so the last column stops being the whole
+>   story: every state row below is a gap in *this backend*, not in this device.
+>   § 4.4.
 
 | Capability | Status through the shipped SDL2 | Whose limit |
 |---|---|---|

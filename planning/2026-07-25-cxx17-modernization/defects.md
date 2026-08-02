@@ -1121,7 +1121,7 @@ whose halves would show a stride error as a diagonal. Tested on the dev box
 deliberately: on any machine a developer owns, the renderer answers and the
 fallback never runs, so it is exactly the kind of path that rots unobserved.
 
-### D25 — resolved as architectural, 2026-07-28
+### D25 — ~~resolved as architectural~~, 2026-07-28, overturned 2026-08-02
 
 The open question was whether this backend could be sidestepped by selecting
 SDL's own software renderer, which is compiled into the same library. It cannot.
@@ -1163,6 +1163,29 @@ must be composited into one streaming texture first — which is what
 > with `MI_GFX` still carrying the full-screen blit that `coppers` actually uses.
 > The measurement above — 965 correct frames, a 4 µs present, a black panel —
 > says every part of that path already works except the present.
+
+> **Done and measured 2026-08-02.** `Mini_UpdateWindowFramebuffer` stages the
+> window surface through `GFX_Copy` and flips. **SDL's own software renderer
+> works on this device**, and the claim above is now a measurement rather than a
+> prediction:
+>
+> - `coppers` with `SDL_RENDER_DRIVER=software`: **2612 frames at 59.7 fps**,
+>   present **9.487 ms** against the 4 µs of the `return 0` it replaces, and the
+>   panel upright with its text legible. The demo drew its HUD through per-glyph
+>   sub-rectangle copies — an atlas in all but name — without the `_layer_only`
+>   workaround, because the driver name no longer matches.
+> - `wreel-diag` on the same path: **every conformance check OK**, including the
+>   five that read IGNORED under the `mini` backend.
+>
+> One caveat on that second line, because it will otherwise be quoted as more
+> than it is. Under the software renderer the tool reads back through
+> `SDL_RenderReadPixels`, not `/dev/fb0` — so those verdicts measure what SDL
+> composited into the window surface, not what reached the panel. The panel
+> evidence is the present cost and the demo run, not the table.
+>
+> **So the choice below is now a real choice**, which is what the fork snapshot's
+> stage 2 has to decide: `Layer` on five targets, tier 2 in the `mini` backend on
+> one, or SDL's software renderer on this one for free.
 
 What that makes true elsewhere in the tree:
 
@@ -1221,6 +1244,24 @@ reassured.
 
 **Not our defect**, but it fires on our code path, and unlike D25 it is a
 memory-safety bug rather than a missing feature.
+
+> **Withdrawn 2026-08-02 — fixed, and verified on hardware.** The premise that
+> made this "not fixable from this side" was that the library was somebody
+> else's binary. Since 2026-08-01 these drivers are compiled from source in this
+> tree, so the `memcpy` this entry called for is a change we can make, and it is
+> made: `Mini_UpdateTexture` copies into the `t->data` the driver already
+> allocates. `wreel-diag` on the device took `SDL_UpdateTexture copies` from
+> WRONG to OK in the same run, with no other verdict moving.
+>
+> **`Context::draw_surface()` is usable on this target.** The mitigations below
+> — avoid `SDL_CreateTextureFromSurface`, or re-upload every frame — are no
+> longer needed and should not be designed around.
+>
+> The rest of the entry is kept as written. The two sub-rectangle bugs at the
+> bottom are **not** fixed, and the 100-entry table is still unbounded; they were
+> recorded here rather than as separate entries and they outlive the defect they
+> were filed under. Fixes are scoped as items 2, 3 and 6 in
+> [2026-07-31-miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/).
 
 Found 2026-07-31 by reading `steward-fu/sdl2` from a local checkout — the first
 time the port's source had been read rather than viewed.
@@ -1313,13 +1354,13 @@ because they share a cause — nobody has exercised a sub-rectangle blit:
   using the **sub-rectangle's** width against the **whole texture's** pitch, so
   any sub-rect narrower than its texture is misidentified.
 
-Together with D25's fixed rotation, that is three independent reasons an atlas
-blit cannot be correct on this device, and it is why
+~~Together with D25's fixed rotation, that is three independent reasons an atlas
+blit cannot be correct on this device.~~ **Two, as of 2026-08-02, and both are on
+the source side.** The rotation was never one of them — it compensates for a
+panel mounted inverted, established by looking at the screen on 2026-08-01 — and
+the destination-placement bug it did conceal is fixed (item 20). What remains is
+the pair above: the staging copy ignoring `srt.y`, and the format inferred from
+`pitch / srt.w`. Until those land,
 [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/) must
-composite into a layer here rather than calling `Context::draw()`.
-
-**Not fixed, and not fixable from this side** — the mitigation is to avoid
-`SDL_CreateTextureFromSurface` on this target or to re-upload every frame so the
-borrowed pointer is never stale. The actual fix is a `memcpy` in a library we do
-not build, which is one of the five correctness patches scoped in
-[2026-07-31-miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/).
+still composite into a layer here rather than calling `Context::draw()` with a
+source rect.

@@ -1,6 +1,7 @@
 # Maintaining our own SDL2 for the Miyoo Mini
 
-**Status:** `in-progress` — stage 0 passed on hardware 2026-08-01
+**Status:** `in-progress` — stage 0 passed 2026-08-01; stage 1 items 1, 21 and
+20 landed and verified on hardware 2026-08-02
 **Written:** 2026-07-31
 **Blocked by:** nothing — but stage 0 is a gate, and everything after it is
 conditional on stage 0 succeeding
@@ -62,6 +63,10 @@ would be an opaque rectangle (§2.1).
 Line references are `sdl2/src/{video,render}/mini/` at head `0631abc8`.
 
 ### 1.1 `SDL_UpdateTexture` stores a borrowed pointer and never copies
+
+> **Fixed 2026-08-02 (item 1).** Kept as written because it is the reasoning that
+> found the defect and the record of how it was proven. The driver now copies
+> into `t->data`; the verdict below reads OK.
 
 `SDL_render_mini.c:121` —
 
@@ -279,7 +284,7 @@ Traced against the engine's actual call sites, not hypothetically:
 | `SDL_SetTextureColorMod` | `Texture::set_color_mod()` [texture.cc:90](../../gfx/renderer/texture.cc#L90) | **No.** Never read by the driver |
 | `SDL_SetTextureAlphaMod` | `Texture::set_alpha_mod()` [texture.cc:97](../../gfx/renderer/texture.cc#L97) | **No.** Never read |
 | `SDL_SetTextureScaleMode` | `Texture`, `Layer` | **No.** `Mini_SetTextureScaleMode` is a no-op |
-| `SDL_CreateTextureFromSurface` | `Texture(surface)` [texture.cc:24](../../gfx/renderer/texture.cc#L24) | **Use-after-free** — §1.1 |
+| `SDL_CreateTextureFromSurface` | `Texture(surface)` [texture.cc:24](../../gfx/renderer/texture.cc#L24) | ~~**Use-after-free**~~ **yes, since item 1 landed 2026-08-02** — §1.1 |
 | `SDL_LockTexture` / `SDL_UnlockTexture` | `Layer::lock()` | yes, and safe |
 | `SDL_UpdateTexture` | `LayerLock::~LayerLock` | yes, and safe — `Layer` owns `_pixels` for its lifetime |
 | `SDL_RenderCopy`, full-screen | `Context::draw()` | yes |
@@ -366,7 +371,7 @@ depends on wanting new capability, and each is small and self-contained.
 
 | # | Change | Fixes | Confidence |
 |---|---|---|---|
-| 1 | Copy pixels in `Mini_UpdateTexture` into `t->data` | §1.1 use-after-free | **certain** — it is a `memcpy` |
+| 1 | ~~Copy pixels in `Mini_UpdateTexture` into `t->data`~~ **landed 2026-08-02** | §1.1 use-after-free | **done, verified** |
 | 2 | Offset the staging copy by `srt.y * pitch` | §1.2 atlas corruption | **certain** |
 | 3 | Derive the format from `texture->format`, not `pitch / srt.w` | §1.3 | **certain** |
 | 4 | Set `max_texture_*` from `FB_W`/`FB_H` after detection | §1.4, the Flip | **certain** |
@@ -374,8 +379,8 @@ depends on wanting new capability, and each is small and self-contained.
 | 6 | Bounds-check `update_texture`'s 100-entry table | silent missing sprites (D27) | **certain** |
 | 13 | Advertise `ABGR8888` (`E_MI_GFX_FMT_ABGR8888` is native) | removes a conversion per upload, and §1.1's converting path | high |
 | 19 | `MI_SYS_Munmap(gfx.fb.virAddr, FB_SIZE)`, not `TMP_SIZE` | under-unmaps the framebuffer on teardown | **certain** — it is upstream's own later fix (§7.1) |
-| 20 | Mirror `dst.y` the way `dst.x` already is | sub-rect destinations land vertically mirrored (§8.2) | **certain, and measured** — asked for y=60, landed at y=300 on a 480-tall panel |
-| 21 | Implement `Mini_UpdateWindowFramebuffer` | makes SDL's own software renderer work here — §8.5 | high — `GFX_Copy` plus `GFX_Flip`, and every other part of that path is already measured working |
+| 20 | ~~Mirror `dst.y` the way `dst.x` already is~~ **landed 2026-08-02** | sub-rect destinations land vertically mirrored (§8.2) | **done, verified** |
+| 21 | ~~Implement `Mini_UpdateWindowFramebuffer`~~ **landed 2026-08-02** | makes SDL's own software renderer work here — §8.5 | **done, verified** — and it retires most of tier 2's justification |
 
 **Numbers are append-only** from 2026-07-31 on, because the rest of this document
 cross-references them. Item 13 moved up from tier 2 in the revised decision: it
@@ -871,6 +876,18 @@ pays for `Layer`, with `MI_GFX` still carrying the full-screen blit.
 That is one function against tier 2's six items, and it is why tier 2 stays
 contested rather than scheduled. **New item 21**, and the first thing to try.
 
+> **Tried, 2026-08-02, and it works.** Present 9.487 ms against the 4 µs of the
+> `return 0`, an upright picture with legible text, and `wreel-diag` returning
+> **OK on every conformance check** — clear, blend, colour mod, fill and
+> render-to-texture included. `coppers` drew its HUD through per-glyph sub-rect
+> copies at frame rate with no `_layer_only` workaround.
+>
+> Caveat that must travel with that table: under the software renderer the tool
+> reads back through `SDL_RenderReadPixels` rather than `/dev/fb0`, so it
+> measured what SDL composited, not what reached the panel. The panel evidence is
+> the present cost and the demo run. Item 18 (`RenderReadPixels` on the `mini`
+> backend) or a `--readback fb0` flag would remove the asymmetry.
+
 ---
 
 ## Tasks
@@ -928,22 +945,27 @@ diagnostics tool before its own results could be trusted, for the reasons in
 Ordered, because the order is not obvious and two items were added after the
 device runs.
 
-- [ ] **Item 1 — copy the pixels in `Mini_UpdateTexture`.** First, alone, and
-      before anything else touches the driver. It is a `memcpy` into the
-      `t->data` the driver already allocates, it is the only item here that is a
-      *memory-safety* fix rather than a rendering one, and it changes the
-      lifetime rules every other check depends on. Guarded by `wreel-diag`'s
-      `SDL_UpdateTexture copies`, which currently reads WRONG and must read OK.
-      Withdraws D27, and lets `Context::draw_surface()` be used here at all
-- [ ] **Item 21 — implement `Mini_UpdateWindowFramebuffer`.** §8.5. About ten
-      lines, and the largest capability-per-line in the inventory: it makes SDL's
-      own software renderer work on this device, which is the reference
-      implementation of everything tier 2 wants. Do it before tier 2 is costed
-      again, because it may retire most of it. Guarded by running with
-      `SDL_RENDER_DRIVER=software` and getting a picture rather than a black
-      screen
-- [ ] **Item 20 — mirror `dst.y`.** One line, §8.2, measured. Guarded by
-      `partial destination`, which must go from WRONG to OK
+> **Items 1, 21 and 20 landed 2026-08-02**, in one device trip as planned, and
+> the diff against the 2026-08-01 baseline moved exactly the two verdicts they
+> aimed at. Full record in
+> [target-validation/results.md](../2026-07-25-target-validation/results.md).
+> The rest of stage 1 is unstarted.
+
+- [x] **Item 1 — copy the pixels in `Mini_UpdateTexture`.** Done 2026-08-02.
+      `SDL_UpdateTexture copies` WRONG → OK on the device. **D27 withdrawn** and
+      `Context::draw_surface()` is usable here. One thing the task did not
+      anticipate: `Mini_UnlockTexture` fed `t->data` back through
+      `Mini_UpdateTexture`, which after the fix is a `memcpy` onto itself, so it
+      registers the buffer directly instead
+- [x] **Item 21 — implement `Mini_UpdateWindowFramebuffer`.** Done 2026-08-02,
+      and it is the item that pays. `SDL_RENDER_DRIVER=software` gives an upright
+      picture with legible text, a present of 9.487 ms against the 4 µs of the
+      `return 0`, and **every `wreel-diag` conformance check OK**. Nearer 30
+      lines than ten: the staging buffer is one panel's worth of pixels and this
+      driver advertises modes larger than the panel, so both bounds are real
+      rather than defensive
+- [x] **Item 20 — mirror `dst.y`.** Done 2026-08-02. `partial destination`
+      WRONG → OK, framebuffer box at y=300 un-rotating to the requested y=60
 - [ ] **Items 2 and 3 — the source rect's `y`, and the format inference.** The
       atlas blockers, and the reason
       [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/)
@@ -975,6 +997,19 @@ comparison, made once with tier 1 landed:
       no device loop, needed by that snapshot anyway — against items 7–12 in the
       driver, one target, device loop, and correct for any SDL2 program rather
       than only ours
+
+> **Item 21 added a third option and weakened the second, 2026-08-02.** SDL's own
+> software renderer now works on this device and returns OK on every conformance
+> check, so the capability tier 2 was to build already exists here — through code
+> shared with the other four targets rather than written for this one. Measured
+> cost against the `mini` backend, same device, same demo: blit 6.551 ms against
+> 3.977, present 9.487 against 10.680, frame rate identical at the demo's cap.
+>
+> That does not decide it. `Layer` composites once and blits full-screen through
+> `MI_GFX`, which the software renderer does not, and the phases those numbers
+> came from are not aligned. But **items 7–12 now have to beat a working
+> implementation rather than an absent one**, and that is a materially harder
+> case than the one this section was written to frame.
 - [ ] If the driver wins, item 7 goes first and alone: `RunCommandQueue` as a
       real execution loop with `QueueCopy`'s behaviour moved into it unchanged.
       **The device run after that commit must look identical to the one before

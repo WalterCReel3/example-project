@@ -10,7 +10,7 @@ correctness. This file is how the build works.
 ```
 src/video/mini/     SDL_video_mini.c   the MI_GFX context, the fbdev present, display modes
                     SDL_event_mini.c   evdev on a thread; the pad is a keyboard here
-                    SDL_fb_mini.c      window framebuffer — Update is a no-op, see PROVENANCE
+                    SDL_fb_mini.c      window framebuffer — what makes SDL's software renderer present
 src/render/mini/    SDL_render_mini.c  the "Miyoo Mini" render backend
 src/audio/mini/     SDL_audio_mini.c   MI_AO
 patches/            0001-register-mini-drivers.patch
