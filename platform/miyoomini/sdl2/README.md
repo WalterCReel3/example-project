@@ -39,6 +39,31 @@ Both steps are idempotent: `PATCH_COMMAND` is not guaranteed to run exactly once
 and a reconfigure after an interrupted populate would otherwise fail on an
 already-applied patch.
 
+### Editing a driver afterwards
+
+`PATCH_COMMAND` runs when the tree is *populated*, and never again — so on its
+own it would graft these sources once and then ignore every later edit, silently
+building the drivers as they were the day the tree was fetched.
+`_wreel_sync_mini_drivers()` in [cmake/Dependencies.cmake](../../../cmake/Dependencies.cmake)
+closes that: it copies `src/` into the populated tree at **configure** time, just
+before `FetchContent_MakeAvailable`, with `configure_file(... COPYONLY)`.
+
+Two consequences worth knowing:
+
+- **There is nothing to run.** Each driver source becomes a dependency of the
+  build system, so editing one makes `cmake --build` re-run CMake, re-copy and
+  rebuild `libSDL2` by itself. `bundle-onion` already depends on the `SDL2`
+  target and re-copies `$<TARGET_FILE:SDL2>`, so the rebuilt library reaches the
+  staged bundle and the tarball with no extra step.
+- **It cannot be a build-time target**, which is the obvious shape and the wrong
+  one. Ninja decides what is dirty before it runs the first command, so a copy
+  performed during the build is seen one build too late.
+
+A tree populated *without* the graft — fetched before this existed, or with
+`WREEL_MINI_SDL2=OFF` — keeps its stamp and will never be patched now. The sync
+stops the configure and says to delete it, because that tree otherwise builds a
+`libSDL2` that links fine and has no video driver for this panel.
+
 The vendor SDK needs no vendoring. The toolchain sysroot's `mi_gfx.h`,
 `mi_sys.h`, `mi_common.h` and `mi_ao.h` are byte-identical to the copies in
 steward-fu's tree, and the matching `libmi_*.so` are there too.
