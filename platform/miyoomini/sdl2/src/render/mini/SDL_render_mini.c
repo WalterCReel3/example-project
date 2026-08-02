@@ -206,8 +206,14 @@ static int Mini_QueueCopy(SDL_Renderer *renderer, SDL_RenderCommand *cmd, SDL_Te
 
     dst.w = dstrect->w * scale;
     dst.h = dstrect->h * scale;
+
+    /* Mirrored in both axes. The panel is mounted inverted and GFX_Copy
+       compensates with a 180-degree rotation, so the framebuffer rect that puts
+       content where the caller asked for it is the caller's rect reflected
+       through the centre of the window. Full-screen destinations reduce to
+       (0,0) either way, which is why only sub-rectangles show it. */
     dst.x = (vid_win->w - (dstrect->x + dstrect->w)) * scale;
-    dst.y = dstrect->y * scale;
+    dst.y = (vid_win->h - (dstrect->y + dstrect->h)) * scale;
     dst.x += ((FB_W - (vid_win->w * scale)) / 2);
     dst.y += ((FB_H - (vid_win->h * scale)) / 2);
 
