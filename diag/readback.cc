@@ -251,17 +251,54 @@ Image read_via_framebuffer()
 
 } // namespace
 
+namespace
+{
+
+ReadbackChoice choice_ = ReadbackChoice::Auto;
+
+} // namespace
+
+void set_readback_choice(ReadbackChoice choice)
+{
+    choice_ = choice;
+}
+
+const char* readback_choice_name(ReadbackChoice choice)
+{
+    switch (choice) {
+    case ReadbackChoice::Auto:
+        return "auto";
+    case ReadbackChoice::RenderReadPixels:
+        return "sdl";
+    case ReadbackChoice::Framebuffer:
+        return "fb0";
+    }
+    return "?";
+}
+
 Image read_frame(SDL_Renderer* renderer, Readback* source)
 {
-    Image image = read_via_sdl(renderer);
-    if (image.valid()) {
-        if (source) {
-            *source = Readback::RenderReadPixels;
+    // A forced choice never falls back. Falling back would defeat the reason
+    // for forcing: with the software renderer SDL_RenderReadPixels answers, so
+    // `auto` measures what SDL composited rather than what reached the panel,
+    // and a silent fallback would hand back exactly the frame being avoided.
+    if (choice_ != ReadbackChoice::Framebuffer) {
+        Image image = read_via_sdl(renderer);
+        if (image.valid()) {
+            if (source) {
+                *source = Readback::RenderReadPixels;
+            }
+            return image;
         }
-        return image;
+        if (choice_ == ReadbackChoice::RenderReadPixels) {
+            if (source) {
+                *source = Readback::None;
+            }
+            return Image();
+        }
     }
 
-    image = read_via_framebuffer();
+    Image image = read_via_framebuffer();
     if (image.valid()) {
         if (source) {
             *source = Readback::Framebuffer;

@@ -91,21 +91,53 @@ int main(int argc, char** argv)
 {
     const char* out = nullptr;
     bool keep = false;
+    diag::ReadbackChoice readback = diag::ReadbackChoice::Auto;
 
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--out") == 0 && i + 1 < argc) {
             out = argv[++i];
         } else if (std::strcmp(argv[i], "--keep") == 0) {
             keep = true;
+        } else if (std::strcmp(argv[i], "--readback") == 0 && i + 1 < argc) {
+            const char* how = argv[++i];
+            if (std::strcmp(how, "auto") == 0) {
+                readback = diag::ReadbackChoice::Auto;
+            } else if (std::strcmp(how, "sdl") == 0) {
+                readback = diag::ReadbackChoice::RenderReadPixels;
+            } else if (std::strcmp(how, "fb0") == 0) {
+                readback = diag::ReadbackChoice::Framebuffer;
+            } else {
+                std::fprintf(stderr, "--readback takes auto, sdl or fb0\n");
+                return 2;
+            }
         } else {
-            std::fprintf(stderr, "usage: %s [--out FILE] [--keep]\n", argv[0]);
+            std::fprintf(
+                stderr,
+                "usage: %s [--out FILE] [--keep] [--readback auto|sdl|fb0]\n"
+                "\n"
+                "  --readback fb0   read /dev/fb0 rather than asking the\n"
+                "                   renderer. The only way to measure what\n"
+                "                   reached the panel when the renderer\n"
+                "                   answers RenderReadPixels itself, which\n"
+                "                   SDL's software renderer does.\n",
+                argv[0]);
             return 2;
         }
     }
 
+    diag::set_readback_choice(readback);
+
     diag::report_open(out);
     diag::note(util::format("wreel-diag %s  [target: %s]", WREEL_VERSION,
                             WREEL_TARGET_ID));
+
+    // Only when overridden, so a default run's report stays comparable line for
+    // line with the baselines every earlier diff was taken against.
+    if (readback != diag::ReadbackChoice::Auto) {
+        diag::note(util::format("--readback %s: every check reads back this "
+                                "way, with no fallback",
+                                diag::readback_choice_name(readback)));
+    }
 
     diag::report_environment();
 
