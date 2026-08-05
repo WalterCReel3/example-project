@@ -103,9 +103,10 @@ private:
     // wider than the panel on the Miyoo Mini.
     bool _hud_measured;
 
-    // True where the renderer can only be trusted with a full-screen copy, so
-    // the HUD is plotted into the layer rather than drawn as a texture. Set
-    // from the driver's name; see the constructor.
+    // True where the renderer does not apply blend modes, so the HUD is plotted
+    // into the layer — which composites on the CPU — rather than drawn as a
+    // texture that would arrive opaque. Set from the driver's name; see the
+    // constructor.
     bool _layer_only;
 
     // First member so it is destroyed last: SDL_Quit must not run before the
