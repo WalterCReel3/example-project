@@ -1186,6 +1186,19 @@ must be composited into one streaming texture first — which is what
 > **So the choice below is now a real choice**, which is what the fork snapshot's
 > stage 2 has to decide: `Layer` on five targets, tier 2 in the `mini` backend on
 > one, or SDL's software renderer on this one for free.
+>
+> **Worked through 2026-08-05** in
+> [miyoo-sdl2-fork § 8.6](../2026-07-31-miyoo-sdl2-fork/), and one of those three
+> turned out not to be an option at all: blending in `Layer` does not make the
+> *texture* path work, so it cannot retire a workaround that exists to avoid
+> that path. It is still wanted by the sprites module, for its own reasons.
+>
+> Two corrections to the bullets below fell out of the same reading. `coppers`'
+> HUD needs a CPU path **because blending is a no-op**, not because
+> sub-rectangles are wrong — `draw_hud()` passes a null source rect, so items 2
+> and 3 never touched it, and items 1 and 20 have fixed what did. And
+> `software-2d-sprites-tiling` can assume `Context::draw()` after all, on the
+> software renderer, which is where § 8.6 recommends it be written.
 
 What that makes true elsewhere in the tree:
 

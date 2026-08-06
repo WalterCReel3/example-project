@@ -404,10 +404,29 @@ than a plan to execute here.
 | 7 | Implement `RunCommandQueue` as an execution loop over the command stream | the architecture everything below hangs off | high — the loop is ~60 lines and every other backend is a model for it |
 | 8 | `SDL_RENDERCMD_CLEAR` → `MI_GFX_QuickFill` with the queued draw colour | `SDL_RenderClear`, `SDL_SetRenderDrawColor` | high — direct API match |
 | 9 | `SDL_RENDERCMD_SETCLIPRECT` → `stClipRect`; `SETVIEWPORT` → a destination offset | `SDL_RenderSetClipRect`, `SetViewport`, `SetLogicalSize` | high |
-| 10 | Blend mode → `eSrcDfbBldOp`/`eDstDfbBldOp`/`eDFBBlendFlag` | `SDL_SetTextureBlendMode` — **alpha sprites** | high |
+| 10 | Blend mode → `eSrcDfbBldOp`/`eDstDfbBldOp`/`eDFBBlendFlag` | `SDL_SetTextureBlendMode` — **alpha sprites** | high — and **not blocked by item 7**, see below |
 | 11 | Colour/alpha mod → `COLORIZE`/`COLORALPHA` + `u32GlobalSrcConstColor` | `SDL_SetTextureColorMod`, `SetAlphaMod` — fades and tints | medium — the flags are documented, the combination is untried |
 | 12 | `Mini_QueueFillRects` → `MI_GFX_QuickFill` | `SDL_RenderFillRect` | high |
 | ~~13~~ | — | *moved to tier 1* | |
+
+> **Items 10 and 11 are not behind item 7 — read 2026-08-05, from the 2.32
+> headers rather than from this document's own §2.3.** That section says to
+> implement `RunCommandQueue` properly or leave it alone, and the tier is
+> presented as one commit. That holds for the state SDL *queues* — clear,
+> viewport, clip rect, fill, draw colour — and not for these two.
+>
+> `SDL_Texture` in `SDL_sysrender.h` carries `blendMode`, `modMode` and `color`
+> as plain fields, and there is **no `SetTextureBlendMode` backend hook**: the
+> frontend stores them and nothing else. So `Mini_QueueCopy` already has the
+> texture in hand and can read all three at draw time, with the command queue
+> untouched and draw ordering unaffected. It is about twenty lines, and
+> `GFX_Copy` already takes the `alpha` parameter it would use.
+>
+> Worth recording alongside: `IsSupportedBlendMode` treats `BLENDMODE_BLEND`,
+> `ADD`, `MOD` and `MUL` as **required of every renderer** and returns true
+> without consulting the backend. The driver cannot honestly refuse them, which
+> is why the no-op is undetectable by any conforming program rather than merely
+> unimplemented.
 
 **Tier 3 — capability and performance.** Genuinely optional; none of it is needed
 by anything the project has today.
@@ -1014,6 +1033,103 @@ comparison, made once with tier 1 landed:
       real execution loop with `QueueCopy`'s behaviour moved into it unchanged.
       **The device run after that commit must look identical to the one before
       it** — §2.3 is why, and it is what makes 8–12 safe to add
+
+### 8.6 The comparison, worked through — 2026-08-05
+
+Prompted by a smaller question: `coppers` forces its HUD into the layer on this
+driver (`Demo::_layer_only`), and whether that can go is the same decision in
+miniature. Two things had to be corrected before the options were even right.
+
+**Blending in `Layer` is not one of the options.** `_layer_only` chooses between
+*plotting the HUD into the layer* and *drawing it as a texture over the layer*.
+Blending inside `Layer` only helps what is already plotted. Removing the branch
+needs the **renderer** to blend. `Layer`-side blending is still wanted by
+[software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/); it is
+not a route here.
+
+**And the reason the HUD needs it is blend, not sub-rectangles.** `draw_hud()`
+calls `draw(texture, nullptr, &target)` — a *full* source rect with a partial
+destination — so items 2 and 3 never bore on it. What did were item 1 (the
+upload) and item 20 (the destination mirror), both landed. What remains is that
+`draw_text` rasterises with `TTF_RenderUTF8_Blended` and uploads through
+`SDL_CreateTextureFromSurface`, which sets `SDL_BLENDMODE_BLEND` — so the text's
+whole rectangle would arrive opaque over the copper bars.
+
+#### A — blend in the `mini` backend, items 10 and 11
+
+| | |
+|---|---|
+| Cost | ~20 lines, one device trip. **Not** the queue rework — see the note under tier 2 |
+| Unlocks | alpha sprites, tints, fades, on the accelerated path |
+| Leaves | items 2, 3 and 4 — an atlas still cannot blit correctly, and is still capped at 640×480 |
+
+- **The only option that keeps `MI_GFX` in the drawing path.** Item 16's batching
+  is meaningless unless sprites reach the blitter at all, so B forecloses in
+  practice what A keeps open.
+- **The only option that removes `_layer_only` without changing what `coppers`
+  measures** — see the trap under B.
+- Fixes it for any SDL2 program on the device, which matters only if these
+  drivers are ever offered outward. §5 rejects that for now.
+- Grows the surface we maintain and the LGPL obligation follows it, and every
+  change costs an SD card. Item 11's confidence stays medium: the `MI_GFX` flags
+  are documented, the combination is untried.
+
+#### B — `Driver::Software` on this target
+
+| | |
+|---|---|
+| Cost | **nothing to build.** [context.hpp](../../include/gfx/renderer/context.hpp)'s `Driver::Software` already exists, and the `mini` backend advertises `ACCELERATED` so it will not match |
+| Unlocks | everything, measured: 11/11 conformance, sub-rects, blend, colour mod, fills, render-to-texture |
+| Costs | compositing moves to two Cortex-A7 cores — blit 6.551 ms against 3.977, before any sprites exist |
+
+- **It removes four driver items from the sprites module's critical path** —
+  2, 3, 10, 11 — and the texture cap with them. The software renderer advertises
+  `max 0x0`, unlimited, against the backend's 640×480. That also disposes of
+  item 4 and the Mini Flip, on the one target where the cap is wrong and cannot
+  be tested.
+- **The device loop mostly disappears for engine work.** `desktop-software`
+  exercises the identical renderer, so correctness becomes a desk question and
+  the SD card is for integration.
+- **Retires `Layer::set_readback()` as a necessity.** `SDL_RenderReadPixels`
+  works there, so `save_screenshot()` needs no workaround — D25's 2026-07-28
+  mitigation becomes optional rather than load-bearing.
+- **It changes what `coppers` is, and that is the trap.** The demo exists to
+  measure the hardware scale-and-blit; under the software renderer the
+  layer-to-window scale is a CPU blit and the comparison is gone. Present stays
+  hardware either way, because item 21 blits the window surface through
+  `GFX_Copy`. **Switching the engine default and switching the demo default are
+  not the same decision and should not be taken together.**
+- Leaves the `mini` backend unused by default, which invites rot — though it
+  also stays the control every conformance diff is taken against.
+
+#### C — plot the HUD into the layer everywhere
+
+Delete `draw_hud()` and the branch outright. Zero dependencies, and it is the
+only option available today. Rejected: it breaks decision 2 of the
+[coppers snapshot](../2026-07-26-coppers-cracktro/) deliberately — the HUD would
+scale with the layer, so at `--layer-height 240` the instrument moves with the
+thing it measures. Recorded because "just always use the layer" is the obvious
+question.
+
+#### The split
+
+They are not exclusive, and B costs nothing today. Divide by what the code is
+*for* rather than by target:
+
+| | Engine and sprites work | `coppers` |
+|---|---|---|
+| Renderer | **B** — `Driver::Software` | stay on `mini` |
+| Why | every capability now, desk-testable, no texture cap | keep measuring the hardware path |
+| `_layer_only` | not applicable — blending works | **stays until A lands** |
+
+So B unblocks the sprites module without a single driver item, and A becomes
+worth doing on its own merits rather than as a blocker — cheaper than this
+document priced it, and the only thing that retires `_layer_only` while leaving
+`coppers` measuring what it was built to measure.
+
+**What to avoid:** making B the global default and calling `_layer_only` solved.
+That trades a visible workaround for an invisible 2.6 ms and quietly retires the
+only instrument pointed at the hardware path.
 
 **Stage 3 — reconsider tier 3**
 

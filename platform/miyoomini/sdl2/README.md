@@ -113,6 +113,15 @@ binary on `desktop-software` runs against SDL's own software renderer and is the
 control: a line that reads OK there and IGNORED here is a gap in this driver, and
 one that reads IGNORED in both is a bug in the check.
 
+**Add `--readback fb0` for any run with `SDL_RENDER_DRIVER=software`.** The
+default tries `SDL_RenderReadPixels` first and only falls back to `/dev/fb0`.
+That is right for the `Miyoo Mini` backend, which answers `SDL_Unsupported` and
+so gets measured through the framebuffer — but SDL's software renderer answers
+it, and the report then describes what SDL composited into the window surface
+rather than what the video driver put on the panel. Forcing `fb0` does not fall
+back, so a run that cannot read the framebuffer says so instead of quietly
+measuring the other thing.
+
 Findings so far, and the traps that produced wrong ones first, are in
 [planning/2026-07-31-miyoo-sdl2-fork](../../../planning/2026-07-31-miyoo-sdl2-fork/)
 § 8.
