@@ -52,7 +52,7 @@ void GFX_Clear(void);
 void GFX_Flip(void);
 /* `format` is the SDL pixel format of `pixels`; the source rect is honoured in
    both axes, so an atlas sub-rectangle works. */
-int GFX_Copy(const void *pixels, SDL_Rect srcrect, SDL_Rect dstrect, int pitch, uint32_t format, int rotate);
+int GFX_Copy(const void *pixels, SDL_Rect srcrect, SDL_Rect dstrect, int pitch, uint32_t format, SDL_BlendMode blend, int rotate);
 
 #endif
 

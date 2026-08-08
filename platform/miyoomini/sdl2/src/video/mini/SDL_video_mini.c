@@ -130,7 +130,50 @@ static MI_GFX_ColorFmt_e mi_color_format(uint32_t sdl_format)
     }
 }
 
-int GFX_Copy(const void *pixels, SDL_Rect src_rt, SDL_Rect dst_rt, int pitch, uint32_t format, int rotate)
+/* SDL's blend modes onto MI_GFX's DirectFB-derived operands.
+ *
+ * All four are mandatory: SDL_render.c's IsSupportedBlendMode returns true for
+ * BLEND, ADD, MOD and MUL without consulting the backend, so a driver cannot
+ * refuse one — it can only apply it or lie about having done so.
+ *
+ * NONE is what this function used to hardcode: BLD_ONE with BLD_ZERO is
+ * src*1 + dst*0. The path gfx::renderer::Layer takes therefore produces the
+ * same operands as before, which is what makes an unchanged device run the
+ * check on this change.
+ */
+static void mi_blend(MI_GFX_Opt_t *opt, SDL_BlendMode blend)
+{
+    opt->eDFBBlendFlag = E_MI_GFX_DFB_BLEND_NOFX;
+
+    switch (blend) {
+    case SDL_BLENDMODE_BLEND:
+        opt->eSrcDfbBldOp = E_MI_GFX_DFB_BLD_SRCALPHA;
+        opt->eDstDfbBldOp = E_MI_GFX_DFB_BLD_INVSRCALPHA;
+        opt->eDFBBlendFlag = E_MI_GFX_DFB_BLEND_ALPHACHANNEL;
+        break;
+    case SDL_BLENDMODE_ADD:
+        opt->eSrcDfbBldOp = E_MI_GFX_DFB_BLD_SRCALPHA;
+        opt->eDstDfbBldOp = E_MI_GFX_DFB_BLD_ONE;
+        opt->eDFBBlendFlag = E_MI_GFX_DFB_BLEND_ALPHACHANNEL;
+        break;
+    case SDL_BLENDMODE_MOD:
+        opt->eSrcDfbBldOp = E_MI_GFX_DFB_BLD_DESTCOLOR;
+        opt->eDstDfbBldOp = E_MI_GFX_DFB_BLD_ZERO;
+        break;
+    case SDL_BLENDMODE_MUL:
+        opt->eSrcDfbBldOp = E_MI_GFX_DFB_BLD_DESTCOLOR;
+        opt->eDstDfbBldOp = E_MI_GFX_DFB_BLD_INVSRCALPHA;
+        opt->eDFBBlendFlag = E_MI_GFX_DFB_BLEND_ALPHACHANNEL;
+        break;
+    case SDL_BLENDMODE_NONE:
+    default:
+        opt->eSrcDfbBldOp = E_MI_GFX_DFB_BLD_ONE;
+        opt->eDstDfbBldOp = E_MI_GFX_DFB_BLD_ZERO;
+        break;
+    }
+}
+
+int GFX_Copy(const void *pixels, SDL_Rect src_rt, SDL_Rect dst_rt, int pitch, uint32_t format, SDL_BlendMode blend, int rotate)
 {
     MI_U16 u16Fence = 0;
     const int bpp = SDL_BYTESPERPIXEL(format);
@@ -152,9 +195,7 @@ int GFX_Copy(const void *pixels, SDL_Rect src_rt, SDL_Rect dst_rt, int pitch, ui
 
     gfx.hw.opt.u32GlobalSrcConstColor = 0;
     gfx.hw.opt.eRotate = rotate;
-    gfx.hw.opt.eSrcDfbBldOp = E_MI_GFX_DFB_BLD_ONE;
-    gfx.hw.opt.eDstDfbBldOp = E_MI_GFX_DFB_BLD_ZERO;
-    gfx.hw.opt.eDFBBlendFlag = E_MI_GFX_DFB_BLEND_NOFX;
+    mi_blend(&gfx.hw.opt, blend);
 
     /* The staged surface is as wide as the source texture and as tall as the
        rect, so x offsets still index into it and y has already been consumed by
