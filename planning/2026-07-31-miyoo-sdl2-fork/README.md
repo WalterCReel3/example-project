@@ -381,6 +381,8 @@ depends on wanting new capability, and each is small and self-contained.
 | 19 | `MI_SYS_Munmap(gfx.fb.virAddr, FB_SIZE)`, not `TMP_SIZE` | under-unmaps the framebuffer on teardown | **certain** — it is upstream's own later fix (§7.1) |
 | 20 | ~~Mirror `dst.y` the way `dst.x` already is~~ **landed 2026-08-02** | sub-rect destinations land vertically mirrored (§8.2) | **done, verified** |
 | 21 | ~~Implement `Mini_UpdateWindowFramebuffer`~~ **landed 2026-08-02** | makes SDL's own software renderer work here — §8.5 | **done, verified** — and it retires most of tier 2's justification |
+| 10 | Blend mode → `eSrcDfbBldOp`/`eDstDfbBldOp`/`eDFBBlendFlag` | `SDL_SetTextureBlendMode` accepted and ignored — SDL requires all four modes of every renderer | high — **moved from tier 2 2026-08-08**, §8.7 |
+| 11 | Colour/alpha mod → `COLORIZE`/`COLORALPHA` + `u32GlobalSrcConstColor` | `SDL_SetTextureColorMod`, `SetAlphaMod` accepted and ignored | medium — the flags are documented, the combination is untried |
 
 **Numbers are append-only** from 2026-07-31 on, because the rest of this document
 cross-references them. Item 13 moved up from tier 2 in the revised decision: it
@@ -404,8 +406,8 @@ than a plan to execute here.
 | 7 | Implement `RunCommandQueue` as an execution loop over the command stream | the architecture everything below hangs off | high — the loop is ~60 lines and every other backend is a model for it |
 | 8 | `SDL_RENDERCMD_CLEAR` → `MI_GFX_QuickFill` with the queued draw colour | `SDL_RenderClear`, `SDL_SetRenderDrawColor` | high — direct API match |
 | 9 | `SDL_RENDERCMD_SETCLIPRECT` → `stClipRect`; `SETVIEWPORT` → a destination offset | `SDL_RenderSetClipRect`, `SetViewport`, `SetLogicalSize` | high |
-| 10 | Blend mode → `eSrcDfbBldOp`/`eDstDfbBldOp`/`eDFBBlendFlag` | `SDL_SetTextureBlendMode` — **alpha sprites** | high — and **not blocked by item 7**, see below |
-| 11 | Colour/alpha mod → `COLORIZE`/`COLORALPHA` + `u32GlobalSrcConstColor` | `SDL_SetTextureColorMod`, `SetAlphaMod` — fades and tints | medium — the flags are documented, the combination is untried |
+| ~~10~~ | — | *moved to tier 1, 2026-08-08* — §8.7 | |
+| ~~11~~ | — | *moved to tier 1, 2026-08-08* — §8.7 | |
 | 12 | `Mini_QueueFillRects` → `MI_GFX_QuickFill` | `SDL_RenderFillRect` | high |
 | ~~13~~ | — | *moved to tier 1* | |
 
@@ -985,10 +987,14 @@ device runs.
       rather than defensive
 - [x] **Item 20 — mirror `dst.y`.** Done 2026-08-02. `partial destination`
       WRONG → OK, framebuffer box at y=300 un-rotating to the requested y=60
-- [ ] **Items 2 and 3 — the source rect's `y`, and the format inference.** The
-      atlas blockers, and the reason
-      [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/)
-      cannot start. Guarded by `SDL_RenderCopy sub-rect` and `sub-rect, RGB565`
+- [ ] **Items 2, 3, 10 and 11 — the source rect's `y`, the format inference, and
+      blending.** One device trip: all four are in `Mini_QueueCopy` and
+      `GFX_Copy`, and each has its own verdict — `SDL_RenderCopy sub-rect`,
+      `sub-rect, RGB565`, `SDL_SetTextureBlendMode`, `SDL_SetTextureColorMod`.
+      2 and 3 are the atlas blockers; 10 and 11 move up from tier 2 on the
+      reasoning in §8.7, and item 10 carries the free guard that `coppers` must
+      be unchanged. Item 11 lands separately, being the one with medium
+      confidence
 - [ ] **Items 5, 6, 13 and 19** — drop `TARGETTEXTURE` from the advertised
       flags, bounds-check `update_texture`'s 100-entry table, advertise
       `ABGR8888`, and the `MI_SYS_Munmap` size from `9eff61a4` (§7.1). Small,
@@ -1132,6 +1138,73 @@ document priced it, and the only thing that retires `_layer_only` while leaving
 **What to avoid:** making B the global default and calling `_layer_only` solved.
 That trades a visible workaround for an invisible 2.6 ms and quietly retires the
 only instrument pointed at the hardware path.
+
+### 8.7 The split, weakened by its own premise — 2026-08-08
+
+§8.6 priced A as a thing you do *instead of* the atlas work, and that was wrong.
+Items 2, 3, 10 and 11 are all in `Mini_QueueCopy` and `GFX_Copy` — the same two
+functions, one device trip, and four separate `wreel-diag` verdicts to guard
+them. Together they give the `mini` backend correct source rectangles *and*
+blending, which is the whole of what `Atlas`, `AnimatedSprite` and `TileMap`
+need from a renderer.
+
+That leaves B with a narrower and more honest case than §8.6 gave it:
+
+- **Desk-testability**, which is untouched by any of this and is the strongest
+  single argument — engine correctness verified on `desktop-software` instead of
+  through an SD card.
+- **No texture cap**, which matters for an atlas larger than the panel and for
+  the Flip.
+
+Everything else B was buying, A now buys with the blitter doing the work instead
+of two Cortex-A7 cores.
+
+#### Why item 10 is arguably tier 1, not tier 2
+
+Read from `mi_gfx_datatype.h` in the toolchain sysroot rather than from
+[MIYOO-MINI.md § 4.6](../../docs/MIYOO-MINI.md), and it reframes the item.
+
+**`GFX_Copy`'s hardcode is exactly `SDL_BLENDMODE_NONE`**: `eSrcDfbBldOp =
+BLD_ONE` with `eDstDfbBldOp = 0`, which is `BLD_ZERO`, gives `src*1 + dst*0`. So
+the driver does not have blending switched off — it implements **one of the four
+modes SDL requires of every renderer** and silently substitutes it for the other
+three. With `IsSupportedBlendMode` returning true without consulting the
+backend, no conforming program can detect the substitution.
+
+That is the same shape as item 1: code that lies to its caller. Tier 1 is
+defined here as "bugs in code we already ship and run", and this qualifies. It
+was sorted into tier 2 because the original reading framed it as a missing
+capability.
+
+All four modes map onto operands the header already has:
+
+| SDL mode | `eSrcDfbBldOp` | `eDstDfbBldOp` | `eDFBBlendFlag` |
+|---|---|---|---|
+| `NONE` | `BLD_ONE` | `BLD_ZERO` | — *(today's hardcode)* |
+| `BLEND` | `BLD_SRCALPHA` | `BLD_INVSRCALPHA` | `ALPHACHANNEL` |
+| `ADD` | `BLD_SRCALPHA` | `BLD_ONE` | `ALPHACHANNEL` |
+| `MOD` | `BLD_DESTCOLOR` | `BLD_ZERO` | — |
+| `MUL` | `BLD_DESTCOLOR` | `BLD_INVSRCALPHA` | `ALPHACHANNEL` |
+
+with `E_MI_GFX_DFB_BLEND_COLORIZE` and `COLORALPHA` for item 11's modulation.
+
+#### The guard, which is free
+
+`gfx::renderer::Layer` sets `SDL_BLENDMODE_NONE` deliberately, so a correct
+mapping produces byte-identical operands on the path `coppers` actually uses.
+**The device run after item 10 must look exactly like the one before it** — the
+same cheap check §2.3 demands for item 7, available here without the queue
+rework.
+
+#### What is still unknown
+
+- **Whether blending composes with the fixed `E_MI_GFX_ROTATE_180` in one
+  `BitBlit`.** Both live in `MI_GFX_Opt_t` and nothing suggests they interact,
+  but nothing has exercised them together either — and §6 is this project's
+  standing reminder about assuming how that rotation behaves.
+- **Item 11's confidence stays medium.** `COLORIZE`/`COLORALPHA` with a global
+  const colour is documented and untried, which is why it lands as its own
+  commit after item 10 rather than with it.
 
 **Stage 3 — reconsider tier 3**
 
