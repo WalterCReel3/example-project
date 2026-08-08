@@ -1208,9 +1208,12 @@ What that makes true elsewhere in the tree:
   The decision needs revisiting rather than quietly breaking.
 - **`--cpu-scroller` is not a comparison option here, it is the only correct
   one.** The texture path draws, and draws wrong.
-- **`software-2d-sprites-tiling` cannot assume `Context::draw()`.** `Atlas`,
-  `AnimatedSprite` and `TileMap` are source-rect blits by definition; on this
-  target they have to composite into a layer.
+- ~~**`software-2d-sprites-tiling` cannot assume `Context::draw()`.**~~
+  **It can, as of 2026-08-08.** `Atlas`, `AnimatedSprite` and `TileMap` are
+  source-rect blits by definition, and this backend now honours a source rect in
+  both axes, takes the format from the texture, blends, and modulates — items 2,
+  3, 10 and 11, verified on the device. Compositing into a layer remains a
+  performance choice rather than a correctness requirement.
 - **`Layer::set_readback()` is not a nicety.** It is the only way to capture a
   frame on the one device where a screenshot is the only way to see the output.
 

@@ -167,14 +167,50 @@ the planning snapshot's § 3 numbers them.
   and leaves the other doubled. Invisible full-screen, wrong for every sprite.
   Verdict `partial destination`: WRONG → OK.
 
+### Correctness fixes, 2026-08-08
+
+Four more, one device trip, each with its own `wreel-diag` verdict.
+
+- **Items 2 and 3 — the source rectangle and the pixel format**, which are one
+  change rather than two. `GFX_Copy` staged rows from the top of the texture and
+  then told the blitter to read from `srt.y`, so any rect with a non-zero y —
+  which is every atlas rect — read past what had been staged. And the format was
+  inferred as `(pitch / srt.w) == 2`, the whole texture's pitch against the
+  sub-rectangle's width, so a narrow rect of an RGB565 texture was handed over as
+  32-bit.
+
+  Fixing the format is what makes the rect fix expressible: the staged surface is
+  now described as the texture's width by the rect's height, which needs the
+  bytes per pixel, and that is what lets an x offset index into it. Upstream
+  described the surface as the rect's own width while still using the rect's x as
+  an offset into it.
+
+  A bound on the staging copy comes with it. It is the one place a caller's
+  pixels reach a fixed-size DMA buffer, and a texture at the advertised limit
+  fills it exactly.
+
+- **Item 10 — the texture's blend mode is applied.** Upstream hardcoded
+  `eSrcDfbBldOp = BLD_ONE` with `eDstDfbBldOp = 0`, which is `BLD_ZERO`: exactly
+  `SDL_BLENDMODE_NONE`. So the driver implemented one of the four modes SDL
+  requires of every renderer and silently substituted it for the other three —
+  `IsSupportedBlendMode` returns true for all four without consulting the
+  backend, so no conforming program could detect the substitution. **On the
+  device the result is byte-identical to SDL's own software renderer.**
+
+- **Item 11 — colour and alpha modulation are applied**, through
+  `E_MI_GFX_DFB_BLEND_COLORIZE` and `COLORALPHA` over
+  `u32GlobalSrcConstColor`.
+
+Both read state SDL keeps on `SDL_Texture` with no backend hook, so neither
+touches the command queue or draw ordering.
+
 ## What is NOT changed
 
-The remaining bugs. `GFX_Copy` still copies from row 0 while telling the blitter
-to read from `srt.y`, and still infers the pixel format from `pitch / srt.w`;
-`update_texture`'s 100-entry table is still unbounded;
+The remaining bugs. `update_texture`'s 100-entry table is still unbounded;
 `max_texture_width/height` are still literals of 640x480 that the Flip detection
 does not reach; `SDL_RENDERER_TARGETTEXTURE` is still advertised and still does
-nothing; `RunCommandQueue` still returns 0 without executing anything.
+nothing; `RunCommandQueue` still returns 0 without executing anything, so
+`SDL_RenderClear` and `SDL_RenderFillRect` remain no-ops.
 
 All of it is inventoried, with fixes, in § 1 and § 3 of the planning snapshot.
 

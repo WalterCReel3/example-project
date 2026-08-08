@@ -1,7 +1,7 @@
 # Maintaining our own SDL2 for the Miyoo Mini
 
-**Status:** `in-progress` — stage 0 passed 2026-08-01; stage 1 items 1, 21 and
-20 landed and verified on hardware 2026-08-02
+**Status:** `in-progress` — stage 0 passed 2026-08-01; stage 1 items 1, 21, 20,
+2, 3, 10 and 11 landed and verified on hardware, 2026-08-02 and 2026-08-08
 **Written:** 2026-07-31
 **Blocked by:** nothing — but stage 0 is a gate, and everything after it is
 conditional on stage 0 succeeding
@@ -372,8 +372,8 @@ depends on wanting new capability, and each is small and self-contained.
 | # | Change | Fixes | Confidence |
 |---|---|---|---|
 | 1 | ~~Copy pixels in `Mini_UpdateTexture` into `t->data`~~ **landed 2026-08-02** | §1.1 use-after-free | **done, verified** |
-| 2 | Offset the staging copy by `srt.y * pitch` | §1.2 atlas corruption | **certain** |
-| 3 | Derive the format from `texture->format`, not `pitch / srt.w` | §1.3 | **certain** |
+| 2 | ~~Offset the staging copy by `srt.y * pitch`~~ **landed 2026-08-08** | §1.2 atlas corruption | **done, verified** |
+| 3 | ~~Derive the format from `texture->format`, not `pitch / srt.w`~~ **landed 2026-08-08** | §1.3 | **done, verified** — and it is what makes item 2 expressible |
 | 4 | Set `max_texture_*` from `FB_W`/`FB_H` after detection | §1.4, the Flip | **certain** |
 | 5 | Drop `TARGETTEXTURE` from the advertised flags | §1.5 | **certain** |
 | 6 | Bounds-check `update_texture`'s 100-entry table | silent missing sprites (D27) | **certain** |
@@ -381,8 +381,8 @@ depends on wanting new capability, and each is small and self-contained.
 | 19 | `MI_SYS_Munmap(gfx.fb.virAddr, FB_SIZE)`, not `TMP_SIZE` | under-unmaps the framebuffer on teardown | **certain** — it is upstream's own later fix (§7.1) |
 | 20 | ~~Mirror `dst.y` the way `dst.x` already is~~ **landed 2026-08-02** | sub-rect destinations land vertically mirrored (§8.2) | **done, verified** |
 | 21 | ~~Implement `Mini_UpdateWindowFramebuffer`~~ **landed 2026-08-02** | makes SDL's own software renderer work here — §8.5 | **done, verified** — and it retires most of tier 2's justification |
-| 10 | Blend mode → `eSrcDfbBldOp`/`eDstDfbBldOp`/`eDFBBlendFlag` | `SDL_SetTextureBlendMode` accepted and ignored — SDL requires all four modes of every renderer | high — **moved from tier 2 2026-08-08**, §8.7 |
-| 11 | Colour/alpha mod → `COLORIZE`/`COLORALPHA` + `u32GlobalSrcConstColor` | `SDL_SetTextureColorMod`, `SetAlphaMod` accepted and ignored | medium — the flags are documented, the combination is untried |
+| 10 | ~~Blend mode → `eSrcDfbBldOp`/`eDstDfbBldOp`/`eDFBBlendFlag`~~ **landed 2026-08-08** | `SDL_SetTextureBlendMode` accepted and ignored | **done, verified** — output matches SDL's software renderer exactly |
+| 11 | ~~Colour/alpha mod → `COLORIZE`/`COLORALPHA` + `u32GlobalSrcConstColor`~~ **landed 2026-08-08** | `SDL_SetTextureColorMod`, `SetAlphaMod` accepted and ignored | **done, verified** |
 
 **Numbers are append-only** from 2026-07-31 on, because the rest of this document
 cross-references them. Item 13 moved up from tier 2 in the revised decision: it
@@ -987,14 +987,13 @@ device runs.
       rather than defensive
 - [x] **Item 20 — mirror `dst.y`.** Done 2026-08-02. `partial destination`
       WRONG → OK, framebuffer box at y=300 un-rotating to the requested y=60
-- [ ] **Items 2, 3, 10 and 11 — the source rect's `y`, the format inference, and
-      blending.** One device trip: all four are in `Mini_QueueCopy` and
-      `GFX_Copy`, and each has its own verdict — `SDL_RenderCopy sub-rect`,
-      `sub-rect, RGB565`, `SDL_SetTextureBlendMode`, `SDL_SetTextureColorMod`.
-      2 and 3 are the atlas blockers; 10 and 11 move up from tier 2 on the
-      reasoning in §8.7, and item 10 carries the free guard that `coppers` must
-      be unchanged. Item 11 lands separately, being the one with medium
-      confidence
+- [x] **Items 2, 3, 10 and 11 — the source rect's `y`, the format inference, and
+      blending.** Done 2026-08-08, one device trip, all four verdicts moved and
+      nothing else did. The blend output is byte-identical to SDL's own software
+      renderer on the same device. 2 and 3 turned out to be one change: the
+      staged surface can only be described correctly once the format is known.
+      Item 10's `coppers` guard passed, though its stated threshold was not a
+      valid constant — see results.md
 - [ ] **Items 5, 6, 13 and 19** — drop `TARGETTEXTURE` from the advertised
       flags, bounds-check `update_texture`'s 100-entry table, advertise
       `ABGR8888`, and the `MI_SYS_Munmap` size from `9eff61a4` (§7.1). Small,
@@ -1198,13 +1197,15 @@ rework.
 
 #### What is still unknown
 
-- **Whether blending composes with the fixed `E_MI_GFX_ROTATE_180` in one
-  `BitBlit`.** Both live in `MI_GFX_Opt_t` and nothing suggests they interact,
-  but nothing has exercised them together either — and §6 is this project's
-  standing reminder about assuming how that rotation behaves.
-- **Item 11's confidence stays medium.** `COLORIZE`/`COLORALPHA` with a global
-  const colour is documented and untried, which is why it lands as its own
-  commit after item 10 rather than with it.
+- ~~**Whether blending composes with the fixed `E_MI_GFX_ROTATE_180` in one
+  `BitBlit`.**~~ **Answered 2026-08-08: they do not interact.** The transform
+  check still reads rotated 180 with the same four quadrant colours, and a
+  partial destination still lands where it was asked, with blending applied in
+  the same run. Measured rather than inferred from nothing having gone wrong.
+- ~~**Item 11's confidence stays medium.**~~ **Landed and verified the same
+  day.** `COLORIZE`/`COLORALPHA` with a global const colour behaves as the
+  header describes; separating it from item 10 cost one commit and bought a
+  clean revert that was not needed.
 
 **Stage 3 — reconsider tier 3**
 
