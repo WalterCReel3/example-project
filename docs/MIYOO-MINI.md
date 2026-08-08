@@ -788,8 +788,11 @@ whether or not the alternative exists.
 
 Consequences carried into the codebase:
 
-- `coppers` detects the driver by name and defaults to CPU composition — the CPU
-  scroller and a HUD plotted into the layer.
+- ~~`coppers` detects the driver by name and defaults to CPU composition.~~
+  **Removed 2026-08-08**: the backend blends and honours source rectangles, so
+  the driver-name override and the CPU HUD it selected are gone. The CPU
+  scroller remains the only one *built* for this target, which is a build
+  option — see `coppers/CMakeLists.txt`.
 - `Layer::set_readback()` exists because it is the only way to capture a frame
   where `SDL_RenderReadPixels` is unsupported.
 - `Context` probes four sources for its output size and refuses to run with
