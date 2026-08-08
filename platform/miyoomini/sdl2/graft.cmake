@@ -76,6 +76,25 @@ execute_process(
     ERROR_VARIABLE apply_error)
 
 if(NOT applied EQUAL 0)
+    # Two very different faults land here, and they need opposite responses.
+    # A tree that already carries the *registration* but does not match this
+    # patch was populated with an earlier revision of it — editing the patch
+    # while a populated tree exists is enough, and the patch step does re-run.
+    # That is not a pin problem and regenerating the patch would make it worse.
+    if(EXISTS "${sdl_dir}/src/video/SDL_video.c")
+        file(STRINGS "${sdl_dir}/src/video/SDL_video.c" registered
+            REGEX "Mini_VideoDriver")
+    endif()
+
+    if(registered)
+        message(FATAL_ERROR
+            "graft.cmake: '${sdl_dir}' was populated with a different revision "
+            "of ${patch}, so it neither reverses nor re-applies. Delete the "
+            "fetched tree and configure again:\n"
+            "    rm -rf ${sdl_dir} ${sdl_dir}/../sdl2-subbuild\n"
+            "  The patch itself is fine; nothing needs regenerating.")
+    endif()
+
     message(FATAL_ERROR
         "graft.cmake: could not apply ${patch}\n"
         "  ${apply_error}\n"

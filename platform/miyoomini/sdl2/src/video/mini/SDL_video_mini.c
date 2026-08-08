@@ -111,28 +111,63 @@ void GFX_Clear(void)
     MI_SYS_MemsetPa(gfx.tmp.phyAddr, 0, TMP_SIZE);
 }
 
-int GFX_Copy(const void *pixels, SDL_Rect src_rt, SDL_Rect dst_rt, int pitch, int alpha, int rotate)
+/* The blitter's format, from SDL's. Only the formats this driver advertises,
+   plus the RGB888 the window framebuffer uses — SDL never hands the backend
+   anything else, because the frontend converts through a native texture first. */
+static MI_GFX_ColorFmt_e mi_color_format(uint32_t sdl_format)
+{
+    switch (sdl_format) {
+    case SDL_PIXELFORMAT_RGB565:
+        return E_MI_GFX_FMT_RGB565;
+    case SDL_PIXELFORMAT_ABGR8888:
+        return E_MI_GFX_FMT_ABGR8888;
+    case SDL_PIXELFORMAT_RGB888:
+        /* XRGB8888: the alpha byte is unused rather than absent, and every
+           blend that reads it is off for this surface. */
+    case SDL_PIXELFORMAT_ARGB8888:
+    default:
+        return E_MI_GFX_FMT_ARGB8888;
+    }
+}
+
+int GFX_Copy(const void *pixels, SDL_Rect src_rt, SDL_Rect dst_rt, int pitch, uint32_t format, int rotate)
 {
     MI_U16 u16Fence = 0;
-    int is_rgb565 = (pitch / src_rt.w) == 2 ? 1 : 0;
+    const int bpp = SDL_BYTESPERPIXEL(format);
+    const int staged = src_rt.h * pitch;
 
-    debug("%s, pixels=%p, is_rgb565=%d\n", __func__, pixels, is_rgb565);
-    memcpy(gfx.tmp.virAddr, pixels, src_rt.h * pitch);
+    debug("%s, pixels=%p, format=%08x\n", __func__, pixels, format);
+
+    if ((staged <= 0) || (staged > TMP_SIZE)) {
+        debug("%s, %d bytes will not fit the %d byte staging buffer\n",
+            __func__, staged, TMP_SIZE);
+        return -1;
+    }
+
+    /* From the rect's first row, not the texture's. The blitter is told to read
+       from row 0 of what was staged, so the two agree — copying from the top
+       while reading from src_rt.y is what left an atlas showing the previous
+       blit's leftovers. */
+    memcpy(gfx.tmp.virAddr, (const uint8_t *)pixels + (src_rt.y * pitch), staged);
 
     gfx.hw.opt.u32GlobalSrcConstColor = 0;
     gfx.hw.opt.eRotate = rotate;
     gfx.hw.opt.eSrcDfbBldOp = E_MI_GFX_DFB_BLD_ONE;
-    gfx.hw.opt.eDstDfbBldOp = 0;
-    gfx.hw.opt.eDFBBlendFlag = 0;
+    gfx.hw.opt.eDstDfbBldOp = E_MI_GFX_DFB_BLD_ZERO;
+    gfx.hw.opt.eDFBBlendFlag = E_MI_GFX_DFB_BLEND_NOFX;
 
+    /* The staged surface is as wide as the source texture and as tall as the
+       rect, so x offsets still index into it and y has already been consumed by
+       the copy above. Deriving the width from the pitch rather than from the
+       rect is what makes a sub-rectangle narrower than its texture work. */
     gfx.hw.src.rt.s32Xpos = src_rt.x;
-    gfx.hw.src.rt.s32Ypos = src_rt.y;
+    gfx.hw.src.rt.s32Ypos = 0;
     gfx.hw.src.rt.u32Width = src_rt.w;
     gfx.hw.src.rt.u32Height = src_rt.h;
-    gfx.hw.src.surf.u32Width = src_rt.w;
+    gfx.hw.src.surf.u32Width = bpp ? (uint32_t)(pitch / bpp) : (uint32_t)src_rt.w;
     gfx.hw.src.surf.u32Height = src_rt.h;
     gfx.hw.src.surf.u32Stride = pitch;
-    gfx.hw.src.surf.eColorFmt = is_rgb565 ? E_MI_GFX_FMT_RGB565 : E_MI_GFX_FMT_ARGB8888;
+    gfx.hw.src.surf.eColorFmt = mi_color_format(format);
     gfx.hw.src.surf.phyAddr = gfx.tmp.phyAddr;
 
     gfx.hw.dst.rt.s32Xpos = dst_rt.x;

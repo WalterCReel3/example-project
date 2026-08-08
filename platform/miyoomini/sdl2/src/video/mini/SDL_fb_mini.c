@@ -96,7 +96,8 @@ int Mini_UpdateWindowFramebuffer(_THIS, SDL_Window *window, const SDL_Rect *rect
     dst.x = (FB_W - dst.w) / 2;
     dst.y = (FB_H - dst.h) / 2;
 
-    GFX_Copy(surface->pixels, src, dst, surface->pitch, 0, E_MI_GFX_ROTATE_180);
+    GFX_Copy(surface->pixels, src, dst, surface->pitch, surface->format->format,
+             E_MI_GFX_ROTATE_180);
     GFX_Flip();
     return 0;
 }
