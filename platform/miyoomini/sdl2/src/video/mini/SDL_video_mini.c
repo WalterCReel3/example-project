@@ -173,7 +173,28 @@ static void mi_blend(MI_GFX_Opt_t *opt, SDL_BlendMode blend)
     }
 }
 
-int GFX_Copy(const void *pixels, SDL_Rect src_rt, SDL_Rect dst_rt, int pitch, uint32_t format, SDL_BlendMode blend, int rotate)
+/* SDL_SetTextureColorMod and SetAlphaMod, which MI_GFX spells as a global
+ * constant colour plus a flag saying which of its channels to use.
+ *
+ * COLORIZE multiplies the source RGB by the constant's RGB; COLORALPHA does the
+ * same for alpha. They are independent flags over one colour register, so both
+ * can be set at once and an unmodulated blit sets neither.
+ */
+static void mi_modulate(MI_GFX_Opt_t *opt, SDL_Color mod)
+{
+    opt->u32GlobalSrcConstColor =
+        ((MI_U32)mod.a << 24) | ((MI_U32)mod.r << 16) |
+        ((MI_U32)mod.g << 8) | (MI_U32)mod.b;
+
+    if ((mod.r != 0xff) || (mod.g != 0xff) || (mod.b != 0xff)) {
+        opt->eDFBBlendFlag |= E_MI_GFX_DFB_BLEND_COLORIZE;
+    }
+    if (mod.a != 0xff) {
+        opt->eDFBBlendFlag |= E_MI_GFX_DFB_BLEND_COLORALPHA;
+    }
+}
+
+int GFX_Copy(const void *pixels, SDL_Rect src_rt, SDL_Rect dst_rt, int pitch, uint32_t format, SDL_BlendMode blend, SDL_Color mod, int rotate)
 {
     MI_U16 u16Fence = 0;
     const int bpp = SDL_BYTESPERPIXEL(format);
@@ -193,9 +214,9 @@ int GFX_Copy(const void *pixels, SDL_Rect src_rt, SDL_Rect dst_rt, int pitch, ui
        blit's leftovers. */
     memcpy(gfx.tmp.virAddr, (const uint8_t *)pixels + (src_rt.y * pitch), staged);
 
-    gfx.hw.opt.u32GlobalSrcConstColor = 0;
     gfx.hw.opt.eRotate = rotate;
     mi_blend(&gfx.hw.opt, blend);
+    mi_modulate(&gfx.hw.opt, mod);
 
     /* The staged surface is as wide as the source texture and as tall as the
        rect, so x offsets still index into it and y has already been consumed by
