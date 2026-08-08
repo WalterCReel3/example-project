@@ -51,14 +51,14 @@ unset LD_PRELOAD
 # SDL_RENDER_DRIVER is SDL's own hint, read straight from the environment. This
 # device's SDL2 carries two render backends: `mini`, which is MI_GFX-accelerated
 # but implements only a full-screen copy and rotates it, and `software`, which
-# is SDL's real one and correct for sub-rect blits, fills and read-back.
+# is SDL's real one and correct for sub-rect blits, blend modes, colour
+# modulation, fills and render-to-texture.
 #
-# Corrected 2026-08-01: naming `software` here does NOT give a working
-# comparison. SDL's software renderer draws into the window surface and presents
-# it with SDL_UpdateWindowSurface, and this video driver's
-# Mini_UpdateWindowFramebuffer is `return 0` — so the frame is rendered
-# correctly and never reaches the panel. Expect a black screen, not a slow one.
-# Fixing it is a one-function job in the video driver and is not done yet.
+# Naming `software` gives a real comparison: SDL's software renderer draws into
+# the window surface and presents it with SDL_UpdateWindowSurface, which this
+# video driver implements by staging the surface through MI_GFX and flipping.
+# The compositing is on the CPU and the full-screen blit is not, so expect a
+# correct picture at some cost rather than an accelerated one.
 #
 # SDL_VIDEODRIVER=dummy does work, and is the useful isolation: a run that fails
 # with `mini` and survives with `dummy` puts the fault in the video driver

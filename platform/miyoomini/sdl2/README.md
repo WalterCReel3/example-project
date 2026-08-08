@@ -10,7 +10,7 @@ correctness. This file is how the build works.
 ```
 src/video/mini/     SDL_video_mini.c   the MI_GFX context, the fbdev present, display modes
                     SDL_event_mini.c   evdev on a thread; the pad is a keyboard here
-                    SDL_fb_mini.c      window framebuffer — Update is a no-op, see PROVENANCE
+                    SDL_fb_mini.c      window framebuffer — what makes SDL's software renderer present
 src/render/mini/    SDL_render_mini.c  the "Miyoo Mini" render backend
 src/audio/mini/     SDL_audio_mini.c   MI_AO
 patches/            0001-register-mini-drivers.patch
@@ -30,7 +30,7 @@ that runs `graft.cmake` after FetchContent populates the tree:
 
 1. `src/` is copied over SDL2's `src/`, adding `{video,render,audio}/mini/` and
    touching nothing else.
-2. `patches/0001-register-mini-drivers.patch` is applied — 42 inserted lines
+2. `patches/0001-register-mini-drivers.patch` is applied — 46 inserted lines
    across 8 upstream files, none removed or changed. It adds an `SDL_MINI`
    option, a build block, three `#cmakedefine` entries, and one bootstrap-array
    entry plus one `extern` for each of video, render and audio.
@@ -38,6 +38,31 @@ that runs `graft.cmake` after FetchContent populates the tree:
 Both steps are idempotent: `PATCH_COMMAND` is not guaranteed to run exactly once,
 and a reconfigure after an interrupted populate would otherwise fail on an
 already-applied patch.
+
+### Editing a driver afterwards
+
+`PATCH_COMMAND` runs when the tree is *populated*, and never again — so on its
+own it would graft these sources once and then ignore every later edit, silently
+building the drivers as they were the day the tree was fetched.
+`_wreel_sync_mini_drivers()` in [cmake/Dependencies.cmake](../../../cmake/Dependencies.cmake)
+closes that: it copies `src/` into the populated tree at **configure** time, just
+before `FetchContent_MakeAvailable`, with `configure_file(... COPYONLY)`.
+
+Two consequences worth knowing:
+
+- **There is nothing to run.** Each driver source becomes a dependency of the
+  build system, so editing one makes `cmake --build` re-run CMake, re-copy and
+  rebuild `libSDL2` by itself. `bundle-onion` already depends on the `SDL2`
+  target and re-copies `$<TARGET_FILE:SDL2>`, so the rebuilt library reaches the
+  staged bundle and the tarball with no extra step.
+- **It cannot be a build-time target**, which is the obvious shape and the wrong
+  one. Ninja decides what is dirty before it runs the first command, so a copy
+  performed during the build is seen one build too late.
+
+A tree populated *without* the graft — fetched before this existed, or with
+`WREEL_MINI_SDL2=OFF` — keeps its stamp and will never be patched now. The sync
+stops the configure and says to delete it, because that tree otherwise builds a
+`libSDL2` that links fine and has no video driver for this panel.
 
 The vendor SDK needs no vendoring. The toolchain sysroot's `mi_gfx.h`,
 `mi_sys.h`, `mi_common.h` and `mi_ao.h` are byte-identical to the copies in
@@ -87,6 +112,15 @@ Run it before and after a driver change and diff the two reports. The same
 binary on `desktop-software` runs against SDL's own software renderer and is the
 control: a line that reads OK there and IGNORED here is a gap in this driver, and
 one that reads IGNORED in both is a bug in the check.
+
+**Add `--readback fb0` for any run with `SDL_RENDER_DRIVER=software`.** The
+default tries `SDL_RenderReadPixels` first and only falls back to `/dev/fb0`.
+That is right for the `Miyoo Mini` backend, which answers `SDL_Unsupported` and
+so gets measured through the framebuffer — but SDL's software renderer answers
+it, and the report then describes what SDL composited into the window surface
+rather than what the video driver put on the panel. Forcing `fb0` does not fall
+back, so a run that cannot read the framebuffer says so instead of quietly
+measuring the other thing.
 
 Findings so far, and the traps that produced wrong ones first, are in
 [planning/2026-07-31-miyoo-sdl2-fork](../../../planning/2026-07-31-miyoo-sdl2-fork/)

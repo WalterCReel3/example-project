@@ -316,6 +316,21 @@ Transform detect_transform(SDL_Renderer* renderer)
                                    tl & 0xffffff, tr & 0xffffff,
                                    bl & 0xffffff, br & 0xffffff));
 
+    // Four deliberately different quadrants cannot come back as one colour from
+    // a readback that is seeing the output. When they do, the fault is the
+    // readback rather than the renderer — and saying so here is the difference
+    // between one accurate finding and ten confident wrong ones below it.
+    // /dev/fb0 on a desktop is the console buffer, which a compositor never
+    // draws to, and it reads back as a valid, entirely black frame.
+    if (tl == tr && tr == bl && bl == br) {
+        check("screen transform", Verdict::Failed,
+              util::format("the whole frame reads %06x through %s, so the "
+                           "readback is not seeing what was drawn. Every check "
+                           "below measures the wrong buffer",
+                           tl & 0xffffff, readback_name(frame.source)));
+        return Transform::Unknown;
+    }
+
     struct Candidate
     {
         Transform transform;

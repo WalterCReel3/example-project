@@ -650,3 +650,197 @@ sent this investigation into the library's symbol table to check whether
 `SW_RenderDriver` was even registered. It was. The lesson is narrow and worth
 keeping: **a diagnostic that prints a value the program was never given is worse
 than no diagnostic**, and the launcher was doing exactly that.
+
+---
+
+## 2026-08-01 — our own SDL2 on the device, and the conformance baseline
+
+Two runs, both from `pkg/coppers-0.2.0-onion.tar.gz` built with
+`WREEL_MINI_SDL2=ON` — pinned upstream SDL 2.32.10 with the SSD202D drivers
+compiled in. Reasoning and the full account are in
+[miyoo-sdl2-fork § 8](../2026-07-31-miyoo-sdl2-fork/); this is the raw output,
+kept because it is the baseline every subsequent driver patch is diffed against.
+
+### `coppers` — the gate
+
+```
+[I] gfx system initialised, video driver Mini
+[W] no desktop mode reported; using exclusive fullscreen against the driver's own mode list (10 modes, first 800x600)
+[I] output size: renderer 640x480 (reported success)
+[I] renderer context 640x480 via Miyoo Mini (accelerated)
+[W] Miyoo Mini draws sub-rectangles wrongly; composing everything into the layer
+[I] audio: 22050 Hz, 2 ch, 2048 sample buffer, 8 voices, driver Miyoo Mini
+[I] coppers: Miyoo Mini 640x480 layer, 640x480 window, 859 frames, 59.7 fps,
+    plot 2.920 blit 4.425 present 9.348 ms, scroller cpu 1054 us
+```
+
+Indistinguishable from the prebuilt it replaces. The loader resolves six
+non-system libraries and **none of them is EGL, GLESv2 or json-c**:
+
+```
+libSDL2-2.0.so.0 => /mnt/SDCARD/App/Coppers/lib/libSDL2-2.0.so.0
+libmi_gfx.so, libmi_ao.so, libmi_sys.so, libmi_common.so => /config/lib/
+libshmvar.so => /customer/lib/
+```
+
+Note `/config/lib`, which is not a path `launch.sh` adds — it is already on the
+default search path on this firmware.
+
+### `wreel-diag` — the conformance baseline
+
+Machine: `INFINITY2M SSC011A-S01A-S`, Linux 4.9.84 armv7l, 2 cores, 100 MB RAM
+reported, `/dev/fb0` 640x480 at 32 bpp, stride 2560.
+
+```
+== Orientation ==
+  drawing size             640x480
+  readback via             /dev/fb0
+  expected                 TL=red TR=green BL=blue BR=white
+  observed                 TL=ffffff TR=0000e0 BL=00e000 BR=e00000
+  screen transform         info      content reaches the panel rotated 180
+
+== Renderer conformance ==
+  SDL_UpdateTexture copies WRONG     the driver kept the caller's pointer and read it at draw time
+  SDL_RenderClear          IGNORED   screen still holds the previous frame
+  SDL_RenderCopy full      OK
+  SDL_RenderCopy sub-rect  WRONG     read past the rows that were staged, returned the previous blit's leftovers
+  sub-rect, RGB565         WRONG     80x60 sub-rect of solid green arrived as e007e0; pitch/rect.w is 16
+  requested dst            80,60 160x120
+  in the framebuffer       400,60 160x120
+  as seen on the panel     80,300 160x120
+  partial destination      WRONG     x is right and y is mirrored — expected y=60, got y=300
+  SDL_SetTextureBlendMode  IGNORED   sprite is opaque (00ff00); mode accepted (mode=1), never applied
+  SDL_SetTextureColorMod   IGNORED   texture arrived unmodulated
+  SDL_RenderFillRect       IGNORED   returned success and drew nothing
+
+== Texture limits ==
+  advertised max           640x480
+  create at the limit      OK
+  create over the limit    OK        refused, as advertised
+  render to texture        IGNORED   the target texture is empty; TARGETTEXTURE is advertised anyway
+
+== Audio ==
+  driver                   Miyoo Mini
+  SDL_OpenAudioDevice      OK        22050 Hz, 2 ch, 2048 samples
+```
+
+**Every row above matches what § 1 and § 2 of the fork snapshot predicted from
+source.** The two that read `OK` are the two that should: a full-screen copy is
+the one operation this backend implements, and the texture cap is both advertised
+and enforced.
+
+`SDL_GetDesktopDisplayMode` and `SDL_GetDisplayBounds` both returned **success
+with zeroed structures** — D22 and D24, unfixed, on our build as much as on the
+prebuilt.
+
+### How to reproduce, and what to compare against
+
+```sh
+cmake --build build/miyoomini --target bundle-onion
+# copy pkg/*.tar.gz over the SD card root; run "Wreel Diagnostics" from Apps
+# read App/WreelDiag/diag.txt
+```
+
+The control is the same binary on `desktop-software`, which runs against SDL's
+own software renderer and returns `OK` on all eleven checks. A line that reads
+`OK` there and `IGNORED` here is a gap in this driver; `IGNORED` in both is a bug
+in the check — and three of them were, first time round. See § 8.4.
+
+---
+
+## 2026-08-02 — stage 1, the first three correctness patches on hardware
+
+Items 1, 21 and 20 of
+[miyoo-sdl2-fork § 3](../2026-07-31-miyoo-sdl2-fork/), in one device trip and
+diffed against the 2026-08-01 baseline above. **Two verdicts changed, both the
+ones aimed at, and nothing else in the table moved.**
+
+### The `mini` backend — items 1 and 20
+
+```
+  SDL_UpdateTexture copies OK        the upload took a copy, as SDL2 specifies
+  requested dst            80,60 160x120
+  in the framebuffer       400,300 160x120
+  as seen on the panel     80,60 160x120
+  partial destination      OK        landed where it was asked
+```
+
+Against the baseline's `WRONG` / `400,60` / `80,300` / `WRONG`. The framebuffer
+box moved to y=300 and un-rotates to the requested y=60, which is the arithmetic
+the fix was derived from rather than merely the verdict it wanted — `480 − 60 −
+120 = 300`.
+
+Unchanged, and expected to be: `screen transform` rotated 180 with the same four
+quadrant colours, `SDL_RenderCopy full` OK, sub-rect and RGB565 still `WRONG`
+with the same `e007e0` staging poison, clear / blend / colour-mod / fill still
+`IGNORED`, texture cap enforced, render-to-texture `IGNORED`, audio 22050 Hz.
+
+`coppers` is indistinguishable from the baseline: 924 frames at 59.7 fps, plot
+2.031 blit 3.977 present 10.680 ms. Item 1 costs the accelerated path nothing,
+because `Layer` locks and unlocks and that path now copies nothing at all.
+
+### The software renderer — item 21
+
+`Mini_UpdateWindowFramebuffer` was `return 0`. It now stages the window surface
+through `GFX_Copy` and flips, and the entry that
+[defects.md](../2026-07-25-cxx17-modernization/defects.md) closed as
+architectural on 2026-07-28 is reopened and answered:
+
+```
+--- local.env ---
+SDL_RENDER_DRIVER=software
+[I] renderer context 640x480 via software (software)
+[I] coppers: software 320x240 layer, 640x480 window, 2612 frames, 59.7 fps,
+             plot 0.668 blit 6.551 present 9.487 ms, scroller cpu 402 us
+```
+
+| | 2026-07-28, `return 0` | 2026-08-02 |
+|---|---|---|
+| frames | 965 | 2612 |
+| fps | 59.4 | 59.7 |
+| present | **0.004 ms** | **9.487 ms** |
+| panel | black | upright, text legible |
+
+**The frame rate is not the evidence and never was** — 59.4 fps was reached with
+a present that did nothing, so it is the demo's own cap rather than vsync pacing.
+The present cost is the discriminator, and 4 µs to 9.5 ms is a staged `memcpy`, a
+blit, a fence wait and an `FBIOPAN_DISPLAY` appearing where there had been a
+`return`.
+
+The demo drew its HUD through per-glyph sub-rectangle copies — an atlas in all
+but name — and held frame rate, because `driver_name()` is `software` here so
+`coppers`' `_layer_only` workaround never engaged.
+
+`wreel-diag` on the same path returns **OK on every conformance check**,
+including the five that read `IGNORED` under the `mini` backend: clear, blend
+mode, colour mod, fill rect and render-to-texture, plus both sub-rect checks.
+
+**Read that with one caveat, or it claims more than it measured.** Under the
+software renderer `read_frame()` succeeds through `SDL_RenderReadPixels` and
+never falls back to `/dev/fb0`, which is exactly why the `mini` runs read the
+framebuffer and this one did not. So those verdicts describe what SDL composited
+into the window surface, not what reached the panel; the `screen transform:
+identity` line is the same artefact. The panel evidence is the present cost and
+the demo run.
+
+A `--readback fb0` flag would close that gap and is worth adding before the next
+software-path run — opt-in, so the default stays the control that every earlier
+diff was taken against.
+
+### What it settles for tier 2
+
+The comparison [miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/) deferred to
+stage 2 now has numbers on both sides, from one device:
+
+| | `mini` backend | SDL software renderer |
+|---|---|---|
+| fps | 59.7 | 59.7 |
+| blit | 3.977 ms | 6.551 ms |
+| present | 10.680 ms | 9.487 ms |
+| conformance | 4 OK, 5 IGNORED, 2 WRONG | 11 OK |
+
+Not a like-for-like split: the demo cycles layer size, and the two runs ended in
+different phases, so the per-phase columns are indicative and the frame rate is
+capped in both. What is not indicative is the right-hand column existing at all —
+tier 2's six items buy, on one target, what one already-landed function buys
+through code shared with the other four.

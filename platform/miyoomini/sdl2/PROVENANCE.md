@@ -66,12 +66,14 @@ plainly, because both are easy to get backwards:
 
 ## What we changed, and why
 
-Nothing here is a capability change. Every item is either required to compile
-against SDL 2.32.10, or removes a dependency that cannot be justified. The
-correctness defects these drivers carry — the `SDL_UpdateTexture` use-after-free,
-the source-rect `y` and format bugs, the texture cap — are **deliberately not
-fixed yet**: the first device run has to compare against the shipped binary, and
-that comparison is worthless if the drivers were changed at the same time.
+Three kinds of change, kept apart because they carry different risk: what SDL
+2.32.10 requires to compile, what removes an unjustifiable dependency, and — from
+2026-08-02 — deliberate correctness fixes to the drivers themselves.
+
+The correctness fixes came **after** the unmodified graft had run on hardware,
+not with it. The first device run had to compare against the shipped binary, and
+that comparison would have been worthless if the drivers had changed at the same
+time. That run is § 8.1 of the planning snapshot; the fixes below are stage 1.
 
 ### Required by SDL 2.32.10
 
@@ -135,21 +137,50 @@ Two consequences beyond the signatures:
   uses `IMG_*`; it is why upstream's `configure.ac` hardcodes an SDL2 include
   path from a buildroot toolchain that has nothing to do with this build.
 
+### Correctness fixes, 2026-08-02
+
+Three, each measured on hardware by `wreel-diag` before and after. Numbered as
+the planning snapshot's § 3 numbers them.
+
+- **Item 1 — `Mini_UpdateTexture` copies the pixels.** Upstream recorded the
+  caller's pointer in a table and dereferenced it at draw time, so any texture
+  whose upload buffer had been freed or reused was a use-after-free — and
+  `SDL_CreateTextureFromSurface` frees its converted surface before it returns.
+  The driver already allocated `t->data` and used it only on the lock path; the
+  update path now copies into it, honouring the rect SDL passes.
+
+  `Mini_UnlockTexture` registers `t->data` directly rather than routing through
+  `Mini_UpdateTexture`, which after the fix would have been a `memcpy` onto
+  itself. Verdict `SDL_UpdateTexture copies`: WRONG → OK.
+
+- **Item 21 — `Mini_UpdateWindowFramebuffer` is implemented.** It was `return 0`,
+  so SDL's own software renderer composited correct frames that never reached the
+  panel. It now stages the window surface through `GFX_Copy` and flips, with two
+  guards: the surface must fit the staging buffer, and the window must not be
+  larger than the panel. Both are reachable — this driver advertises 800x600 on a
+  640x480 panel. Confirmed by running the demo with `SDL_RENDER_DRIVER=software`.
+
+- **Item 20 — `Mini_QueueCopy` mirrors the destination `y`.** It mirrored `x`
+  only. The panel is mounted inverted and `GFX_Copy` compensates with a fixed
+  180-degree rotation, so a destination rect has to be reflected through the
+  centre of the window in *both* axes; mirroring one cancels the rotation there
+  and leaves the other doubled. Invisible full-screen, wrong for every sprite.
+  Verdict `partial destination`: WRONG → OK.
+
 ## What is NOT changed
 
-The bugs. `Mini_UpdateTexture` still stores the caller's pointer without copying;
-`GFX_Copy` still copies from row 0 while telling the blitter to read from
-`srt.y`, and still infers the pixel format from `pitch / srt.w`;
-`max_texture_width/height` are still literals of 640×480 that the Flip detection
+The remaining bugs. `GFX_Copy` still copies from row 0 while telling the blitter
+to read from `srt.y`, and still infers the pixel format from `pitch / srt.w`;
+`update_texture`'s 100-entry table is still unbounded;
+`max_texture_width/height` are still literals of 640x480 that the Flip detection
 does not reach; `SDL_RENDERER_TARGETTEXTURE` is still advertised and still does
 nothing; `RunCommandQueue` still returns 0 without executing anything.
 
 All of it is inventoried, with fixes, in § 1 and § 3 of the planning snapshot.
-It stays until the unmodified graft has run on hardware.
 
 ## Rebuilding the registration patch
 
-`patches/0001-register-mini-drivers.patch` is additive only — 42 lines inserted
+`patches/0001-register-mini-drivers.patch` is additive only — 46 lines inserted
 across 8 upstream files, none removed or changed — and it is applied by
 [graft.cmake](graft.cmake) from FetchContent's `PATCH_COMMAND`. If the SDL2 pin
 moves and it stops applying, regenerate rather than force it:

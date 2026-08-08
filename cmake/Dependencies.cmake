@@ -66,6 +66,63 @@ else()
     set(_wreel_sdl_target SDL2::SDL2-static)
 endif()
 
+# Keep an already-populated SDL2 tree in step with platform/miyoomini/sdl2/src/.
+#
+# graft.cmake runs from FetchContent's PATCH_COMMAND, and that runs once — when
+# the tree is first populated. Without this, every later edit to a driver source
+# is invisible to the compiler and the build keeps linking the drivers as they
+# were on the day the tree was fetched, silently.
+#
+# Configure time rather than a custom target, deliberately: configure_file
+# records each source as a dependency of the build system, so editing one makes
+# `cmake --build` re-run CMake, re-copy and rebuild libSDL2 with nothing to
+# remember. A build-time copy would land too late — Ninja decides what is dirty
+# before it runs the first edge, so the rebuild would always be one build
+# behind the edit.
+function(_wreel_sync_mini_drivers mini_dir)
+    if(FETCHCONTENT_SOURCE_DIR_SDL2)
+        set(sdl_dir "${FETCHCONTENT_SOURCE_DIR_SDL2}")
+    else()
+        set(sdl_dir "${FETCHCONTENT_BASE_DIR}/sdl2-src")
+    endif()
+
+    file(GLOB_RECURSE sources CONFIGURE_DEPENDS
+        RELATIVE "${mini_dir}/src" "${mini_dir}/src/*.c" "${mini_dir}/src/*.h")
+
+    # Registered even when there is nothing to copy into yet. On the first
+    # configure the tree is populated by PATCH_COMMAND *after* this runs, so
+    # without this the first edit after a fresh configure would not re-run CMake
+    # and the sync would never get its chance.
+    foreach(source IN LISTS sources)
+        set_property(DIRECTORY "${CMAKE_SOURCE_DIR}" APPEND PROPERTY
+            CMAKE_CONFIGURE_DEPENDS "${mini_dir}/src/${source}")
+    endforeach()
+
+    if(NOT EXISTS "${sdl_dir}/src/video/SDL_video.c")
+        return()
+    endif()
+
+    # A tree populated without the graft — fetched before this option existed,
+    # or with WREEL_MINI_SDL2 OFF — keeps its stamp, so PATCH_COMMAND will not
+    # run on it now. Copying the sources in would then produce a libSDL2 that
+    # compiles, links and has no video driver for this panel, which is a much
+    # worse failure than stopping here.
+    file(STRINGS "${sdl_dir}/src/video/SDL_video.c" registered
+        REGEX "Mini_VideoDriver")
+    if(NOT registered)
+        message(FATAL_ERROR
+            "'${sdl_dir}' was populated without the Miyoo Mini registration "
+            "patch, and FetchContent does not re-run PATCH_COMMAND on a tree "
+            "that already exists. Delete it and configure again:\n"
+            "    rm -rf ${sdl_dir} ${FETCHCONTENT_BASE_DIR}/sdl2-subbuild")
+    endif()
+
+    foreach(source IN LISTS sources)
+        configure_file("${mini_dir}/src/${source}" "${sdl_dir}/src/${source}"
+            COPYONLY)
+    endforeach()
+endfunction()
+
 if(WREEL_MINI_SDL2)
     # The Miyoo Mini path: pinned upstream SDL2, with the SSD202D drivers
     # grafted in and registered. See platform/miyoomini/sdl2/PROVENANCE.md and
@@ -122,6 +179,12 @@ if(WREEL_MINI_SDL2)
         PATCH_COMMAND  ${CMAKE_COMMAND}
             -DWREEL_MINI_DIR=${CMAKE_SOURCE_DIR}/platform/miyoomini/sdl2
             -P ${CMAKE_SOURCE_DIR}/platform/miyoomini/sdl2/graft.cmake)
+
+    # Before MakeAvailable, because SDL's own file(GLOB MINI_SOURCES) runs
+    # during add_subdirectory: a driver source added here has to be in place by
+    # then or it will not be in the build until the configure after next.
+    _wreel_sync_mini_drivers("${CMAKE_SOURCE_DIR}/platform/miyoomini/sdl2")
+
     FetchContent_MakeAvailable(SDL2)
 
     set(WREEL_SDL2_TARGET ${_wreel_sdl_target})

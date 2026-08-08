@@ -1,6 +1,6 @@
 Register the Miyoo Mini video, render and audio drivers with SDL2.
 
-Generated against SDL release-2.32.10. Additive only: 42 lines inserted,
+Generated against SDL release-2.32.10. Additive only: 46 lines inserted,
 no upstream line removed or changed. Regenerate per
 platform/miyoomini/sdl2/README.md if the SDL2 pin moves.
 
@@ -16,7 +16,7 @@ index e45b53e2..adbdde7b 100644
  option_string(SDL_BACKGROUNDING_SIGNAL "number to use for magic backgrounding signal or 'OFF'" OFF)
  option_string(SDL_FOREGROUNDING_SIGNAL "number to use for magic foregrounding signal or 'OFF'" OFF)
  set_option(SDL_HIDAPI              "Enable the HIDAPI subsystem" ON)
-@@ -1264,6 +1265,32 @@ if(SDL_VIDEO)
+@@ -1264,6 +1265,36 @@ if(SDL_VIDEO)
    endif()
  endif()
  
@@ -44,6 +44,10 @@ index e45b53e2..adbdde7b 100644
 +  list(APPEND EXTRA_LIBS mi_gfx mi_ao mi_sys mi_common shmvar)
 +  set(HAVE_SDL_VIDEO TRUE)
 +  set(HAVE_SDL_AUDIO TRUE)
++  # SDL summarises every set_option() as HAVE_<name minus the SDL_ prefix>.
++  # Without this the configure output reports "SDL_MINI (Wanted: ON): OFF" for
++  # drivers that are in fact compiled in.
++  set(HAVE_MINI ON)
 +endif()
 +
  # Platform-specific options and settings

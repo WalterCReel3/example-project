@@ -90,8 +90,27 @@ enum class Readback
 
 const char* readback_name(Readback source);
 
-// Tries SDL_RenderReadPixels first, then the framebuffer. `source` reports
-// which answered.
+// Which path read_frame() should take.
+//
+// `Auto` is right for the accelerated backend, whose RenderReadPixels is
+// SDL_Unsupported, so the framebuffer answers and the checks measure the panel.
+// It is misleading under SDL's software renderer, where RenderReadPixels
+// succeeds and therefore reports what SDL composited into the window surface —
+// which is not evidence that the video driver presented it. Forcing
+// `Framebuffer` is how a software-renderer run measures the panel instead.
+enum class ReadbackChoice
+{
+    Auto,
+    RenderReadPixels,
+    Framebuffer,
+};
+
+void set_readback_choice(ReadbackChoice choice);
+const char* readback_choice_name(ReadbackChoice choice);
+
+// Reads a frame by the configured path. A forced choice does not fall back:
+// silently returning the other path's frame would defeat the point of forcing
+// one. `source` reports which answered.
 Image read_frame(SDL_Renderer* renderer, Readback* source);
 
 // Opens /dev/fb0 and reports its geometry without drawing anything. Returns

@@ -80,15 +80,16 @@ Demo::Demo(const Options& options)
 #endif
     _cpu_scroller = make_cpu_scroller(*_glyphs);
 
-    // Some renderers cannot draw a sub-rectangle correctly, and on those the
-    // only thing that reaches the panel is the layer.
+    // Where blending is a no-op, the HUD is plotted into the layer rather than
+    // drawn as a texture.
     //
-    // The Miyoo Mini's SDL2 is the case in hand. Its render backend implements
-    // one operation — RenderCopy — always rotated 180 degrees with x mirrored,
-    // so a full-screen copy survives and every glyph and HUD line does not. Its
-    // fills, geometry, CopyEx and ReadPixels are no-ops. Selecting SDL's own
-    // software renderer instead does not help: it composites correctly into a
-    // window surface the video driver then declines to present.
+    // The Miyoo Mini's render backend is the case in hand, and blending is the
+    // whole of the reason. draw_text() rasterises with TTF_RenderUTF8_Blended
+    // and uploads through SDL_CreateTextureFromSurface, which sets
+    // SDL_BLENDMODE_BLEND; this backend accepts the mode and never applies it,
+    // so the text's rectangle would arrive opaque over the copper bars instead
+    // of just its glyphs. Plotting into the layer composites on the CPU, where
+    // alpha works.
     //
     // Detected at runtime by name rather than compiled in per target, because
     // three different SDL2 builds for this device have now been seen and the
@@ -100,15 +101,22 @@ Demo::Demo(const Options& options)
     // wherever it means anything.
     if (_context->driver_name() == "Miyoo Mini") {
         _layer_only = true;
-        _options.cpu_scroller = true;
 
         // Logged whenever the driver matches, not only when something had to be
         // overridden. On the target that omits the texture scroller at build
         // time there is nothing left to override, and a silent run would leave
         // no record of *why* the HUD is in the layer.
-        util::log_warning("%s draws sub-rectangles wrongly; composing "
-                          "everything into the layer",
+        util::log_warning("%s does not apply blend modes; plotting the HUD "
+                          "into the layer",
                           _context->driver_name().c_str());
+
+        // A separate cause behind the same name, kept separate because the two
+        // will stop being true at different times. The texture scroller blits
+        // glyphs out of an atlas, and this backend stages a source
+        // sub-rectangle from row 0 while telling the blitter to read from the
+        // rect's y. Normally moot — the scroller is not built for this target —
+        // and it matters only if WREEL_COPPERS_TEXTURE_SCROLLER is forced on.
+        _options.cpu_scroller = true;
     }
 
     if (!_options.mute) {
@@ -347,9 +355,9 @@ void Demo::draw_frame(double t)
                             scroll_state(t, pixels.width(), pixels.height()));
         }
 
-        // The HUD goes in here too where the renderer cannot be trusted with a
-        // sub-rectangle. Its cost then lands in the plot stage rather than the
-        // blit stage, which is worth knowing when reading the numbers: the
+        // The HUD goes in here too where the renderer does not blend. Its cost
+        // then lands in the plot stage rather than the blit stage, which is
+        // worth knowing when reading the numbers: the
         // instrument is inside the thing it measures. --no-hud remains the way
         // to take a clean reading, and the exit summary is unaffected either
         // way.

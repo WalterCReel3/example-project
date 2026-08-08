@@ -156,6 +156,29 @@ Ordered so that something is visible on screen as early as possible.
 - [ ] `game::Entities` — flat store, update tick, draw ordering
 - [ ] A `sprites` demo executable, separate from `skratch`
 
+> **The Miyoo Mini's driver stopped being this snapshot's blocker, 2026-08-05.**
+> Everything here needs source-rect blits, blend and colour modulation, and the
+> `mini` render backend has none of them working — items 2, 3, 10 and 11 of
+> [miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/), plus a 640×480 texture cap
+> that bounds an atlas.
+>
+> **None of them is on the critical path any more.** Since item 21 landed, SDL's
+> own software renderer presents on that device and returns OK on every
+> conformance check, with no texture cap at all — and
+> `gfx::renderer::Context` already takes `Driver::Software`. This module can be
+> written against the renderer it shares with the other four targets, and
+> verified on `desktop-software` rather than on an SD card.
+>
+> The cost is real and belongs with the fill-rate risk below rather than beside
+> it: compositing moves to two Cortex-A7 cores, measured at 6.551 ms a frame for
+> a full-screen layer blit against 3.977 through `MI_GFX` — **before a single
+> sprite exists**. That is the budget this module has to fit inside, and it
+> sharpens the "measure before building the tilemap" instruction rather than
+> softening it.
+>
+> Full options, costs and the recommended split are in
+> [miyoo-sdl2-fork § 8.6](../2026-07-31-miyoo-sdl2-fork/).
+
 ## Risks
 
 **The software driver's fill rate is unmeasured on real hardware, and that now
