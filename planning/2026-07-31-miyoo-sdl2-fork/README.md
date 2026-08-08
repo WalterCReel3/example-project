@@ -996,7 +996,9 @@ device runs.
 - [ ] **Item 4 — `max_texture_*` from `FB_W`/`FB_H`.** Correct, and
       **unverifiable without a Mini Flip in hand**. Land it saying so rather
       than implying it was tested
-- [ ] Revise D25 to whatever survives, and withdraw D27 when item 1 lands
+- [x] Revise D25 to whatever survives, and withdraw D27 when item 1 lands. Done
+      2026-08-02, and revisited 2026-08-05 when §8.6 found two of D25's
+      consequence bullets were wrong about *why* they were true
 
 **How each one is verified.** Run `wreel-diag` before and after and diff the two
 reports — it is a regression suite, not just a survey, and § 8.4 is the record of
