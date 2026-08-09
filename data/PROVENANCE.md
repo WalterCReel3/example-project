@@ -17,6 +17,63 @@ including the ones where the honest answer is "unknown".**
 | File | Origin | Licence |
 |---|---|---|
 | `glyphs-16x16.png` | [ianhan/BitmapFonts](https://github.com/ianhan/BitmapFonts), `fonts/font-pack/5611500775_36717acd08_o.png`, fetched 2026-07-27 | **Unknown — see below** |
+| `sunny-land/foxy/**` | Sunny Land by Luis Zuno (Ansimuz), `Assets/Characters/Foxy/*/sprites/`, licence acquired 2026-08-09 | **CC0 1.0** |
+| `foxy.png`, `foxy.xml` | Generated from the above by `tools/pack_atlas.py` | **CC0 1.0**, as a derivative |
+| `foxy.anim.xml` | Seeded by `tools/pack_atlas.py`, then hand-tuned | Project's own — it describes timing, not art |
+| `jetpackdude.xml` | Authored for this project in 2016. Its sheet is lost — see below | Project's own |
+
+### Sunny Land — `sunny-land/foxy/`, `foxy.png`, `foxy.xml`
+
+Foxy's 36 frames across 12 animations, uniform 33×32 as authored. The licence
+PDF shipped with the pack states it plainly:
+
+> "All assets included in this package are licensed under the Creative Commons
+> Zero (CC0) license, which means you can use them freely in any project,
+> whether personal or commercial, without the need for attribution. There are no
+> restrictions on use, modification, or redistribution of these assets."
+
+**So this is shippable**, which the glyph sheet below is not. Attribution is not
+required; the row above records the author anyway, because knowing where a file
+came from is the point of this document and is a separate question from what the
+licence compels.
+
+Only the frame PNGs are committed. The pack as purchased is 5.9 MB of PSD and
+`.ase` sources, preview GIFs and PDFs that nothing reads, and it is gitignored
+rather than carried — a size decision, not a legal one.
+
+`foxy.png` and `foxy.xml` are **generated, and regenerating them is expected to
+produce identical bytes**:
+
+```sh
+tools/.venv/bin/python tools/pack_atlas.py data/sunny-land/foxy \
+    --name foxy --out data
+```
+
+The packer trims transparent margins, so the sheet is 140×270 rather than the
+198×384 the pack's own `atlas.png` uses, and every frame carries Sparrow trim
+attributes. That is deliberate beyond the size saving: before this, nothing in
+`data/` exercised the trim path, and a trim offset applied with the wrong sign
+draws a sprite a few pixels out of place rather than failing. The tool's
+`--verify` pass rebuilds each frame from the atlas and compares it to its
+source, which is what makes that convention checked rather than asserted.
+
+`foxy.anim.xml` is a different kind of file: generated *once* as a starting
+point and edited by hand after, since Sparrow carries no timing and the frame
+rates are a judgement call rather than something derivable. A regenerate merges
+into it rather than overwriting, so the tuning survives. It contains no art and
+is the project's own.
+
+### `jetpackdude.xml`
+
+Authored for this project in 2016, so its licence is not an open question. Its
+sheet, `JetPackDude.png`, is not in the repository and the original art has not
+been located — the atlas is orphaned and cannot be drawn.
+
+It is kept anyway, as `test_sparrow`'s fixture for the *untrimmed* path: eight
+frames of `reddude.NNN` at 24×34 with no `frame*` attributes, which is a real
+exporter's output of a shape `foxy.xml` no longer contains now that every frame
+in it is trimmed. Parsing needs no image. Anything that needs to *draw* uses
+`foxy.xml`.
 
 ### `glyphs-16x16.png`
 
@@ -57,6 +114,5 @@ assumed, and so the shipping question is asked once per file rather than never.
 | `FreebooterUpdated.ttf` | TrueType. Unused so far |
 | `complications.mod`, `complications ii.mod`, `her bloody weekend.mod` | Tracker modules. **Tracker authors are normally named and retain rights**, so these are a clearer attribution question than the anonymous glyph sheet, not a vaguer one. Two of the three were untracked until 2026-07-27 |
 | `cavernes.png`, `darknes.png`, `test-pattern.jpg` | Images |
-| `jetpackdude.xml` | Sparrow atlas. Orphaned — references a `JetPackDude.png` not in the repository |
 | `ico.obj`, `ico.mtl`, `cube.obj`, `teapot.obj` | Meshes. `teapot.obj` is presumably the Newell teapot |
 | `test.json`, `test.xml`, `test2.xml`, `testfile` | Test fixtures, authored for this tree |
