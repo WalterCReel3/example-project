@@ -16,6 +16,9 @@ wreel_add_test(test_logging LIBS wreel::util wreel::posix)
 wreel_add_test(test_json    LIBS wreel::util)
 wreel_add_test(test_number  LIBS wreel::util)
 wreel_add_test(test_integer LIBS wreel::util)
+# Header-only, but it links wreel::gfx for the Rect predicates in
+# gfx/renderer/types.hpp — which needs no renderer, only the header.
+wreel_add_test(test_algorithm LIBS wreel::util wreel::gfx)
 wreel_add_test(test_obj     LIBS wreel::loaders wreel::posix)
 wreel_add_test(test_string  LIBS wreel::util)
 # Parses only — no Context, no texture, no image load — which is the property

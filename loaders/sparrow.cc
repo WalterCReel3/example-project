@@ -32,7 +32,7 @@ gfx::AtlasFrame parse_subtexture(const util::xml::Node& node,
     frame.source.w = node.require_attribute_int("width");
     frame.source.h = node.require_attribute_int("height");
 
-    if (frame.source.w <= 0 || frame.source.h <= 0) {
+    if (gfx::renderer::is_empty(frame.source)) {
         throw SparrowFormatError(util::format(
             "%s: SubTexture \"%s\" has a %dx%d region; a frame with no area "
             "draws nothing",

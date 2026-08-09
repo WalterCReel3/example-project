@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include <util/algorithm.hpp>
+
 namespace gfx
 {
 
@@ -85,14 +87,9 @@ void AnimationSet::add(Animation animation)
 
 AnimationSet::Index AnimationSet::find(const std::string& name) const
 {
-    const Animations::const_iterator found = std::find_if(
-        _animations.begin(), _animations.end(),
-        [&name](const Animation& animation) { return animation.name == name; });
-
-    if (found == _animations.end()) {
-        return npos;
-    }
-    return static_cast<Index>(std::distance(_animations.begin(), found));
+    return util::index_of(_animations, [&name](const Animation& animation) {
+        return animation.name == name;
+    });
 }
 
 AnimatedSprite::AnimatedSprite(const Atlas& atlas, const Animation& animation)

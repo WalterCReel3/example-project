@@ -1,5 +1,7 @@
 #include <loaders/tmx.hpp>
 
+#include <util/ascii.hpp>
+#include <util/algorithm.hpp>
 #include <util/format.hpp>
 #include <util/number.hpp>
 #include <util/xml.hpp>
@@ -40,7 +42,7 @@ void read_tileset_body(const util::xml::Node& node, const std::string& path,
     tileset.margin = node.attribute_int("margin", 0);
     tileset.spacing = node.attribute_int("spacing", 0);
 
-    if (tileset.tile_width <= 0 || tileset.tile_height <= 0) {
+    if (!util::all_positive(tileset.tile_width, tileset.tile_height)) {
         throw TmxFormatError(util::format("%s: tileset has a %dx%d tile size",
                                           path.c_str(), tileset.tile_width,
                                           tileset.tile_height));
@@ -114,8 +116,10 @@ void parse_csv(const std::string& text, int first_gid, const std::string& path,
     const char* const end = p + text.size();
 
     while (p != end) {
-        while (p != end && (*p == ' ' || *p == '\n' || *p == '\r' ||
-                            *p == '\t' || *p == ',')) {
+        // util::ascii, not a hand-rolled character class: the predicate
+        // exists, is tested, and does not depend on the locale the way
+        // <cctype> does.
+        while (p != end && (util::ascii_is_whitespace(*p) || *p == ',')) {
             ++p;
         }
         if (p == end) {
@@ -151,7 +155,7 @@ gfx::TileLayer read_layer(const util::xml::Node& node, const std::string& path,
     layer.offset_x = static_cast<int>(node.attribute_double("offsetx", 0.0));
     layer.offset_y = static_cast<int>(node.attribute_double("offsety", 0.0));
 
-    if (layer.width <= 0 || layer.height <= 0) {
+    if (!util::all_positive(layer.width, layer.height)) {
         throw TmxFormatError(util::format("%s: layer \"%s\" is %dx%d",
                                           path.c_str(), layer.name.c_str(),
                                           layer.width, layer.height));
@@ -242,8 +246,8 @@ TmxMap load_tmx(const std::string& path)
         map.tile_width = root.require_attribute_int("tilewidth");
         map.tile_height = root.require_attribute_int("tileheight");
 
-        if (map.width <= 0 || map.height <= 0 || map.tile_width <= 0 ||
-            map.tile_height <= 0) {
+        if (!util::all_positive(map.width, map.height, map.tile_width,
+                                map.tile_height)) {
             throw TmxFormatError(util::format(
                 "%s: map is %dx%d tiles of %dx%d", path.c_str(), map.width,
                 map.height, map.tile_width, map.tile_height));

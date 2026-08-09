@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <gfx/renderer/context.hpp>
+#include <util/algorithm.hpp>
 #include <gfx/renderer/texture.hpp>
 
 //============================================================================
@@ -61,7 +62,7 @@ struct TileLayer {
     // viewport does not have to clamp before asking.
     int at(int x, int y) const
     {
-        if (x < 0 || y < 0 || x >= width || y >= height) {
+        if (!util::in_grid(x, y, width, height)) {
             return empty_tile;
         }
         return tiles[static_cast<std::size_t>(y) * width + x];

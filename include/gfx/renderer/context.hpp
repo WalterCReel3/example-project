@@ -23,6 +23,8 @@
 // See planning/2026-07-26-gfx-renderer-and-gles2/.
 
 #include <string>
+
+#include <gfx/renderer/types.hpp>
 #include <util/nocopy.hpp>
 
 struct SDL_Window;
@@ -42,19 +44,9 @@ namespace renderer
 
 class Texture;
 
-struct Color {
-    unsigned char r;
-    unsigned char g;
-    unsigned char b;
-    unsigned char a;
-};
-
-struct Rect {
-    int x;
-    int y;
-    int w;
-    int h;
-};
+// Color and Rect live in gfx/renderer/types.hpp, included above: they are
+// values a Layer, an Atlas frame and a TileSet cell all use, and none of those
+// is a window.
 
 // Which render driver to ask SDL for.
 //

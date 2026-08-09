@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include <util/algorithm.hpp>
 #include <util/integer.hpp>
 
 namespace gfx
@@ -31,15 +32,15 @@ renderer::Rect TileSet::source(int tile) const
 
 bool TileSet::fits_texture() const
 {
-    if (_count <= 0 || _columns <= 0) {
+    if (!util::all_positive(_count, _columns)) {
         return false;
     }
 
     // The last tile is the only one that can run off the sheet, since the grid
     // is monotonic in both axes.
-    const renderer::Rect last = source(_count - 1);
-    return last.x >= 0 && last.y >= 0 && last.x + last.w <= _sheet.width() &&
-           last.y + last.h <= _sheet.height();
+    return renderer::contains(
+        renderer::bounds_of(_sheet.width(), _sheet.height()),
+        source(_count - 1));
 }
 
 TileMap::TileMap(TileSet tiles, std::vector<TileLayer> layers, int width,
@@ -53,14 +54,9 @@ TileMap::TileMap(TileSet tiles, std::vector<TileLayer> layers, int width,
 
 TileMap::Index TileMap::find(const std::string& name) const
 {
-    const std::vector<TileLayer>::const_iterator found =
-        std::find_if(_layers.begin(), _layers.end(),
-                     [&name](const TileLayer& l) { return l.name == name; });
-
-    if (found == _layers.end()) {
-        return npos;
-    }
-    return static_cast<Index>(std::distance(_layers.begin(), found));
+    return util::index_of(_layers, [&name](const TileLayer& layer) {
+        return layer.name == name;
+    });
 }
 
 void TileMap::set_object_layers(std::vector<ObjectLayer> layers)
@@ -77,7 +73,7 @@ int TileMap::draw_layer(renderer::Context& context, const TileLayer& layer,
 
     const int tile_w = _tiles.tile_width() * scale;
     const int tile_h = _tiles.tile_height() * scale;
-    if (tile_w <= 0 || tile_h <= 0) {
+    if (!util::all_positive(tile_w, tile_h)) {
         return 0;
     }
 

@@ -1,5 +1,7 @@
 #include <gfx/renderer/layer.hpp>
 
+#include <util/algorithm.hpp>
+
 #include <SDL.h>
 
 #include <stdexcept>
@@ -80,7 +82,7 @@ Layer::Layer(Context& context, int width, int height)
     , _height(height)
     , _readback(false)
 {
-    if (width <= 0 || height <= 0) {
+    if (!util::all_positive(width, height)) {
         throw std::runtime_error("layer dimensions must be positive");
     }
 
