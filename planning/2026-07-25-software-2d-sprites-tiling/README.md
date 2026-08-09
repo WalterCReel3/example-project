@@ -162,22 +162,45 @@ Ordered so that something is visible on screen as early as possible.
 > [miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/), plus a 640×480 texture cap
 > that bounds an atlas.
 >
-> **None of them is on the critical path any more.** Since item 21 landed, SDL's
-> own software renderer presents on that device and returns OK on every
-> conformance check, with no texture cap at all — and
-> `gfx::renderer::Context` already takes `Driver::Software`. This module can be
+> ~~**None of them is on the critical path any more.** Since item 21 landed,
+> SDL's own software renderer presents on that device … This module can be
 > written against the renderer it shares with the other four targets, and
-> verified on `desktop-software` rather than on an SD card.
+> verified on `desktop-software` rather than on an SD card.~~
 >
-> The cost is real and belongs with the fill-rate risk below rather than beside
-> it: compositing moves to two Cortex-A7 cores, measured at 6.551 ms a frame for
-> a full-screen layer blit against 3.977 through `MI_GFX` — **before a single
-> sprite exists**. That is the budget this module has to fit inside, and it
-> sharpens the "measure before building the tilemap" instruction rather than
-> softening it.
+> ~~The cost is real … compositing moves to two Cortex-A7 cores, measured at
+> 6.551 ms a frame for a full-screen layer blit against 3.977 through
+> `MI_GFX`.~~
+
+> **Superseded three days later — 2026-08-08.** The note above routed this module
+> onto `Driver::Software` because the `mini` backend could not blit a source
+> rectangle, blend or modulate. **It can now.** Items 2, 3, 10 and 11 landed and
+> were verified on hardware, and the blend output is byte-identical to SDL's own
+> software renderer on the same device
+> ([results.md](../2026-07-25-target-validation/results.md)).
 >
-> Full options, costs and the recommended split are in
-> [miyoo-sdl2-fork § 8.6](../2026-07-31-miyoo-sdl2-fork/).
+> So the routing decision disappears rather than being taken. This module is
+> written once against `gfx::renderer`, works on all five targets, and on the
+> Miyoo Mini the blending is done by `MI_GFX` rather than by two Cortex-A7 cores
+> — which is the 2.6 ms a frame the note above was preparing to spend.
+> `Driver::Software` remains available and is still the better choice for
+> *desk-testability*, but it is no longer needed for capability.
+>
+> **What survives, and now matters more than the routing question did:**
+>
+> - **The 640×480 texture cap.** Item 4 corrects the Flip's geometry but does not
+>   lift the cap, so an atlas cannot exceed the panel on this target. That is a
+>   live design constraint for `gfx::Atlas` — panel-sized sheets, or splitting —
+>   and it is the one remaining argument for `Driver::Software` here.
+> - **The fill-rate instruction below is unchanged**, and is now testable on
+>   hardware that blits correctly rather than on hardware that draws the wrong
+>   pixels quickly.
+> - **Item 13 pays into this work.** `loaders::load_image` produces `ABGR8888`,
+>   the backend advertises only `RGB565` and `ARGB8888`, and
+>   `E_MI_GFX_FMT_ABGR8888` is native — so every atlas upload currently pays a
+>   conversion that one line removes.
+>
+> Options and costs, including what is left of the `Driver::Software` case, are
+> in [miyoo-sdl2-fork §§ 8.6–8.7](../2026-07-31-miyoo-sdl2-fork/).
 
 ## Risks
 
