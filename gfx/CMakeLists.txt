@@ -20,6 +20,7 @@
 set(WREEL_GFX_SOURCES
     animation.cc
     atlas.cc
+    tilemap.cc
     system.cc
     renderer/context.cc
     renderer/layer.cc

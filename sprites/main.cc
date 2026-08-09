@@ -27,6 +27,10 @@ void usage()
         "  --fps <n>                 frame cap, 0 for uncapped\n"
         "  --seconds <n>             exit after n seconds; 0 runs until quit\n"
         "  --software                force the software driver\n"
+        "  --tilemap                 draw data/sunnyland.tmx behind the\n"
+        "                            sprites, and report the fill rate\n"
+        "  --no-scroll               hold the tilemap camera still\n"
+        "  --tile-scale <n>          draw tiles at n x size\n"
         "  --screenshot <path.bmp>   render a few frames, save, exit\n"
         "  --frames <n>              frames to render before a screenshot\n"
         "  -h, --help                this text\n"
@@ -68,6 +72,14 @@ int main(int argc, char** argv)
             options.fullscreen = false;
         } else if (arg == "--software") {
             options.software = true;
+        } else if (arg == "--tilemap") {
+            options.tilemap = true;
+        } else if (arg == "--no-scroll") {
+            options.scroll = false;
+        } else if (arg == "--tile-scale" && i + 1 < argc) {
+            if (!parse_int(argv[++i], options.tile_scale, "--tile-scale")) {
+                return 2;
+            }
         } else if (arg == "--size" && i + 2 < argc) {
             if (!parse_int(argv[++i], options.width, "--size") ||
                 !parse_int(argv[++i], options.height, "--size")) {

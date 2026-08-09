@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -7,6 +8,7 @@
 #include <gfx/atlas.hpp>
 #include <gfx/renderer/context.hpp>
 #include <gfx/system.hpp>
+#include <gfx/tilemap.hpp>
 #include <rig/input.hpp>
 #include <rig/timing.hpp>
 
@@ -41,6 +43,22 @@ struct Options {
     // Force the software driver even where a GPU exists. The Miyoo Mini gets it
     // regardless; this is how the same path gets exercised on a dev box.
     bool software = false;
+
+    // Draw data/sunnyland.tmx behind the sprites. This is the fill-rate
+    // instrument the snapshot asks for before a tilemap is designed around
+    // per-tile blitting: the map's backdrop layer covers every cell, so the
+    // whole target is blitted every frame and the exit line reports what that
+    // cost.
+    bool tilemap = false;
+
+    // Scroll the camera rather than holding it still. A static camera lets a
+    // driver do nothing between frames, which measures the wrong thing.
+    bool scroll = true;
+
+    // Integer scale for the tilemap. Raising it covers the same screen with
+    // fewer, larger blits, which is what separates a per-call cost from a
+    // per-pixel one.
+    int tile_scale = 1;
 };
 
 // One animated thing on screen.
@@ -66,6 +84,7 @@ public:
 
 private:
     void load();
+    void load_tilemap();
     void update(double delta);
     void draw();
 
@@ -83,6 +102,17 @@ private:
     // renderer and must not outlive it.
     gfx::Atlas _atlas;
     gfx::AnimationSet _animations;
+
+    // Optional, and by pointer because TileMap owns a TileSet which owns a
+    // Texture — there is no default to construct without a renderer.
+    std::unique_ptr<gfx::TileMap> _map;
+    double _camera = 0.0;
+    int _camera_direction = 1;
+
+    // Tiles blitted on the most recent frame, and the running total, so a
+    // measured run reports work done rather than only frames per second.
+    int _tiles_drawn = 0;
+    long long _tiles_total = 0;
 
     std::vector<Actor> _actors;
 

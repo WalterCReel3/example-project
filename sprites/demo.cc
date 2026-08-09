@@ -5,10 +5,12 @@
 #include <loaders/animations.hpp>
 #include <loaders/image.hpp>
 #include <loaders/sparrow.hpp>
+#include <loaders/tmx.hpp>
 #include <rig/assets.hpp>
 #include <util/format.hpp>
 #include <util/logging.hpp>
 
+#include <cstdio>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -68,6 +70,36 @@ Demo::Demo(const Options& options)
     util::log_info("sprites: input %s", _pad.description().c_str());
 
     load();
+    if (_options.tilemap) {
+        load_tilemap();
+    }
+}
+
+void Demo::load_tilemap()
+{
+    const loaders::TmxMap map =
+        loaders::load_tmx(rig::asset_path("sunnyland.tmx"));
+
+    gfx::TileSet tiles(upload_sheet(_context, map.tileset.image),
+                       map.tileset.tile_width, map.tileset.tile_height,
+                       map.tileset.columns, map.tileset.tile_count,
+                       map.tileset.margin, map.tileset.spacing);
+
+    if (!tiles.fits_texture()) {
+        util::log_warning("sprites: tileset claims %d tiles that do not fit "
+                          "its %dx%d image",
+                          map.tileset.tile_count, tiles.texture().width(),
+                          tiles.texture().height());
+    }
+
+    _map.reset(
+        new gfx::TileMap(std::move(tiles), map.layers, map.width, map.height));
+    _map->set_object_layers(map.object_layers);
+
+    util::log_info("sprites: map %dx%d tiles, %zu layers, %d tiles per screen "
+                   "row",
+                   map.width, map.height, map.layers.size(),
+                   _context.width() / map.tile_width);
 }
 
 void Demo::load()
@@ -133,6 +165,22 @@ void Demo::step(double delta)
     const double speed = 60.0 * _hero.scale;
     _hero_position += speed * delta * _hero_direction;
 
+    if (_map && _options.scroll) {
+        // Across the map and back. Scrolling matters for the measurement: a
+        // still camera lets a driver skip work between frames, and the number
+        // wanted here is the cost of drawing a moving screenful.
+        const double map_span =
+            _map->pixel_width() * _options.tile_scale - _context.width();
+        _camera += 80.0 * delta * _camera_direction;
+        if (_camera > map_span) {
+            _camera = map_span;
+            _camera_direction = -1;
+        } else if (_camera < 0.0) {
+            _camera = 0.0;
+            _camera_direction = 1;
+        }
+    }
+
     const double span = _context.width() - 33.0 * _hero.scale;
     if (_hero_position > span) {
         _hero_position = span;
@@ -170,6 +218,12 @@ void Demo::draw()
 {
     _context.clear(background);
 
+    if (_map) {
+        _tiles_drawn = _map->draw(_context, static_cast<int>(_camera), 0,
+                                  _options.tile_scale);
+        _tiles_total += _tiles_drawn;
+    }
+
     for (const Actor& actor : _actors) {
         actor.sprite.draw(_context, actor.x, actor.y, actor.scale);
     }
@@ -206,6 +260,20 @@ void Demo::run()
     util::log_info("sprites: %llu frames, %.1f fps average",
                    static_cast<unsigned long long>(clock.frames()),
                    clock.fps());
+
+    if (_map && clock.frames() > 0) {
+        const double per_frame = static_cast<double>(_tiles_total) /
+                                 static_cast<double>(clock.frames());
+        const double ms = clock.fps() > 0.0 ? 1000.0 / clock.fps() : 0.0;
+        util::log_info(
+            "sprites: tilemap %d layers, %.0f tiles/frame, %.3f ms/frame, "
+            "%.2f us/tile",
+            static_cast<int>(_map->layers().size()), per_frame, ms,
+            per_frame > 0.0 ? ms * 1000.0 / per_frame : 0.0);
+        std::printf("tiles/frame %.0f  ms/frame %.3f  fps %.1f  us/tile %.2f\n",
+                    per_frame, ms, clock.fps(),
+                    per_frame > 0.0 ? ms * 1000.0 / per_frame : 0.0);
+    }
 }
 
 bool Demo::render_to_file(const std::string& path, int frames)

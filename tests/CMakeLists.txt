@@ -15,6 +15,7 @@ wreel_add_test(test_file    LIBS wreel::util wreel::posix)
 wreel_add_test(test_logging LIBS wreel::util wreel::posix)
 wreel_add_test(test_json    LIBS wreel::util)
 wreel_add_test(test_number  LIBS wreel::util)
+wreel_add_test(test_integer LIBS wreel::util)
 wreel_add_test(test_obj     LIBS wreel::loaders wreel::posix)
 wreel_add_test(test_string  LIBS wreel::util)
 # Parses only — no Context, no texture, no image load — which is the property
@@ -63,6 +64,11 @@ wreel_add_test(test_atlas    LIBS wreel::gfx wreel::loaders)
 # texture, and therefore a Context.
 wreel_add_test(test_animation
                LIBS wreel::gfx wreel::loaders wreel::posix)
+
+# Parser cases are headless; the culling cases need a Context, because "drew the
+# whole map" and "drew the visible rectangle" look identical on screen and only
+# differ in the tile count draw() returns.
+wreel_add_test(test_tmx      LIBS wreel::gfx wreel::loaders wreel::posix)
 
 # --- Priority queue ----------------------------------------------------------
 #
