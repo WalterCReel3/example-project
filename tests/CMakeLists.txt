@@ -17,6 +17,9 @@ wreel_add_test(test_json    LIBS wreel::util)
 wreel_add_test(test_number  LIBS wreel::util)
 wreel_add_test(test_obj     LIBS wreel::loaders wreel::posix)
 wreel_add_test(test_string  LIBS wreel::util)
+# Parses only — no Context, no texture, no image load — which is the property
+# that keeps it in this group. See include/loaders/sparrow.hpp.
+wreel_add_test(test_sparrow LIBS wreel::loaders wreel::posix)
 wreel_add_test(test_xml     LIBS wreel::util wreel::posix)
 wreel_add_test(test_audio   LIBS wreel::audio)
 
@@ -49,6 +52,18 @@ wreel_add_test(test_playlist
 # tests run under the dummy audio driver.
 wreel_add_test(test_renderer LIBS wreel::gfx)
 
+# Same, and for a stronger reason: half of it reads back rendered pixels through
+# Context::save_screenshot to assert which atlas cell landed where. That is the
+# assertion test_renderer.cc could not make before Texture and the source-rect
+# draw existed.
+wreel_add_test(test_atlas    LIBS wreel::gfx wreel::loaders)
+
+# Playback is arithmetic over supplied deltas, so most of this needs nothing —
+# but the cases that resolve animation names against the real atlas need a
+# texture, and therefore a Context.
+wreel_add_test(test_animation
+               LIBS wreel::gfx wreel::loaders wreel::posix)
+
 # --- Priority queue ----------------------------------------------------------
 #
 # test_string.cc above is the important one and is not yet complete.
@@ -59,7 +74,5 @@ wreel_add_test(test_renderer LIBS wreel::gfx)
 #
 # Still to write:
 #   test_errors   — posix::wrap() errno dispatch across the generated types
-#   test_sparrow  — loaders::load_sparrow against data/jetpackdude.xml, once the
-#                   atlas type exists
 #
 # See docs/TARGETS.md § "Where the test surface actually is".

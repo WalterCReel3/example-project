@@ -55,10 +55,11 @@ larger in others.
 | Piece | State |
 |---|---|
 | `gfx::renderer::Context` | window, renderer, `clear`, `present`, `draw_surface`, `draw_text`, and an explicit `Driver` preference |
-| `gfx::Spritesheet` / `SpritesheetFrame` | renderer-neutral frame list; `SpritesheetFrame` is a plain aggregate. **No consumers** |
+| ~~`gfx::Spritesheet` / `SpritesheetFrame`~~ | **deleted 2026-08-09.** `gfx::Atlas` / `gfx::AtlasFrame` replace them |
+| `gfx::Atlas` | **done 2026-08-09** — `Texture` plus a named frame table, trim-aware; `test_atlas`, 8 cases / 45 assertions |
 | `loaders::load_image` | `IMG_Load` plus a convert to `ABGR8888`, returns `SDL_Surface*` |
 | `util::xml` | **done 2026-07-26** — pugixml `v1.16` behind `include/util/xml.hpp`; `test_xml`, 19 cases / 116 assertions |
-| `loaders/sparrow.cc` | **entirely commented out** — every line. No longer blocked: `util/xml.hpp` now exists |
+| `loaders/sparrow.cc` | **done 2026-08-09** — parses to plain data, no `Context`; `test_sparrow`, 17 cases / 126 assertions |
 | Tilemap | nothing. No code, no assets, no format |
 | Entities | nothing |
 
@@ -97,6 +98,45 @@ Settled 2026-07-25, before implementation.
   independently. *Not* in scope: collision, camera, scene graph, physics, input
   mapping. Those are a game layer and belong in their own snapshot.
 
+### Settled 2026-08-09, before writing `gfx::Atlas`
+
+- **The type is `gfx::Atlas`, and "sheet" stays free.** Not a naming
+  preference — the two words name different things, and both are needed. An
+  *atlas* is arbitrarily packed, indexed by name, optionally trimmed, which is
+  exactly Sparrow; a *sprite sheet* is a uniform grid indexed by number, which
+  is what the TMX tileset will be. Spending "Spritesheet" on the Sparrow case
+  would use the grid word for the non-grid thing and leave nothing to call the
+  tileset. It is also what the format calls itself: the root element of
+  `data/jetpackdude.xml` is `<TextureAtlas>`.
+- **Parsing is split from uploading.** `loaders::load_sparrow(path)` returns
+  plain data — the frame table plus the `imagePath` the document declares — and
+  touches no `Context`, no SDL and no filesystem beyond the XML. `gfx::Atlas` is
+  assembled from that plus a `Texture` by the caller, who is also the one who
+  resolves `imagePath` through `rig::asset_path()`.
+
+  This is the precedent `include/loaders/obj.hpp` records: `load_obj` was
+  changed to produce a plain `gfx::Mesh` specifically so the parser built and
+  tested on targets with no GPU. `test_sparrow` runs headless and under
+  qemu for the same reason.
+- **Names resolve to an index once; drawing takes the index.** A `std::string`
+  hash or compare per sprite per frame is affordable for eight sprites and not
+  for a tilemap on two Cortex-A7 cores, so `Atlas::find()` is a load-time call
+  and `Atlas::draw()` takes what it returned. `AnimatedSprite` will hold
+  resolved indexes rather than names for the same reason.
+- **`Atlas::draw` is a member, not a `Context::draw` overload.** `Atlas` sits
+  above `gfx::renderer`, and an overload would point the dependency the wrong
+  way. It exists rather than leaving call sites to pair `texture()` with a
+  frame rect because of trim: a trimmed frame's destination must be shifted by
+  the trim offset, and a hand-rolled two-liner is precisely where that gets
+  forgotten — presenting as a sprite a few pixels out of place with nothing to
+  point at.
+- **`gfx::Spritesheet` is deleted rather than reworked**, which closes the first
+  open question below. It had no consumers, held a non-owning `SDL_Surface*`,
+  and its `offset_x`/`offset_y` contradicted the only code that ever filled them
+  (the commented-out 2016 `load_sparrow` put Sparrow's `x`/`y` into the *offset*
+  pair and zeroed the rect). There was nothing to preserve but the shape, and
+  the shape was wrong.
+
 ## Proposed shape
 
 ```
@@ -106,8 +146,7 @@ gfx::renderer::Texture          owns an SDL_Texture, created once
 Context::draw(const Texture&, const Rect* src, const Rect* dst)
 
 gfx::Atlas                       named frames over one Texture
-                                 (gfx::Spritesheet, given a Texture and an owner)
-loaders::load_sparrow(path)      -> gfx::Atlas          (revives sparrow.cc)
+loaders::load_sparrow(path)      -> frame table + imagePath, no Texture
 
 gfx::AnimatedSprite              frame sequence + timing over an Atlas
 gfx::TileMap                     tilesets, tile layers, object layers
@@ -140,12 +179,48 @@ Ordered so that something is visible on screen as early as possible.
 - [x] Retire or re-express `draw_surface` in terms of `Texture` so the per-call
       upload has exactly one remaining caller (`draw_text`) rather than two.
       Done 2026-07-27 — re-expressed rather than retired
-- [ ] `gfx::Atlas` over `Texture`, reusing `SpritesheetFrame`
-- [ ] `loaders::load_sparrow` — uncomment and rewrite against `util::xml`;
-      `test_sparrow.cc` against `data/jetpackdude.xml`
-- [ ] Source a sheet for `jetpackdude.xml`, or replace the atlas fixture with one
-      whose image is actually present
-- [ ] `gfx::AnimatedSprite` — frame sequence, frame duration, looping
+- [x] `gfx::Atlas` over `Texture`. Done 2026-08-09. `SpritesheetFrame` was not
+      reused as this line assumed — see "Settled" above; `gfx::AtlasFrame`
+      replaces it and `gfx::Spritesheet` is deleted. `tests/test_atlas.cc`,
+      8 cases / 45 assertions, half of them reading back rendered pixels, which
+      is the assertion `test_renderer.cc` left a note asking for
+- [x] `loaders::load_sparrow` — rewritten against `util::xml`, returning plain
+      data. Done 2026-08-09. `tests/test_sparrow.cc`, 17 cases / 126 assertions
+      against `data/jetpackdude.xml` plus scratch files for trimming and the
+      malformed cases. Worth knowing: Sparrow's `frameX`/`frameY` are stated in
+      the opposite sense to the one a blit wants — negative, measured from the
+      cropped region back to the original's origin — and the loader negates them
+      once so that no consumer has to remember which way round it goes
+- [x] An atlas fixture whose image is actually present. Done 2026-08-09, and not
+      by sourcing a sheet for `jetpackdude.xml` — that art is the project's own
+      from 2016 and has not been located. Instead `data/foxy.{png,xml}` is
+      generated by `tools/pack_atlas.py` from Sunny Land (Luis Zuno / Ansimuz,
+      **CC0**, licence acquired 2026-08-09): 36 frames, 12 animations, 33×32
+      authored, trimmed to a 140×270 sheet.
+
+      Three things this bought beyond a drawable fixture. It is the first asset
+      in `data/` that is unambiguously **shippable** — `glyphs-16x16.png` still
+      is not. Every frame is trimmed, so the trim path is exercised by real data
+      rather than only by scratch files. And `tools/` now exists as the place
+      offline asset tooling lives, with a pinned venv and the build kept free of
+      any Python dependency
+
+- [x] `jetpackdude.xml` keeps its place as the *untrimmed* parser fixture — a
+      real exporter's output of a shape `foxy.xml` no longer contains. It cannot
+      be drawn and does not need to be
+- [x] `gfx::AnimatedSprite` — frame sequence, frame duration, looping. Done
+      2026-08-09, split in two: `gfx::Animation` is the shared definition and
+      `gfx::AnimatedSprite` the per-entity playback state, so ten actors running
+      the same animation share one copy of it and hold their own position.
+      Copyable, so it can live in the entity store's vector.
+      `tests/test_animation.cc`, 27 cases / 230 assertions
+
+- [x] The animation sidecar. Sparrow describes where the frames are and nothing
+      about how they play, so `fps` and loop mode live in `foxy.anim.xml`,
+      seeded by `tools/pack_atlas.py` and read through `util::xml`. XML rather
+      than JSON: there is still no `util::json` facade — CLAUDE.md requires one
+      before nlohmann appears outside a test — and the atlas beside it is XML,
+      as TMX will be
 - [x] Frame timing — **done 2026-07-27** as `rig::FrameClock`, and `skratch` is
       off `SDL_Delay(10)`. The clamped-delta and fps arithmetic is split out as
       `rig::FrameTiming` so it is tested without sleeping.
@@ -154,7 +229,13 @@ Ordered so that something is visible on screen as early as possible.
 - [ ] `gfx::TileMap` + `loaders::load_tmx`, CSV layer data, external `.tsx`
 - [ ] A tilemap fixture in `data/` authored in Tiled
 - [ ] `game::Entities` — flat store, update tick, draw ordering
-- [ ] A `sprites` demo executable, separate from `skratch`
+- [x] A `sprites` demo executable, separate from `skratch`. Done 2026-08-09 —
+      and separate from `coppers` too, which is the raster-effect demo where
+      this is the 2D game path. Twelve animations playing independently off one
+      sheet plus a 4× hero walking across, `--screenshot` for a headless check,
+      and no GPU requirement so it builds on `miyoomini`. **That last part is
+      the point beyond the demo**: the fill-rate risk below is about per-sprite
+      blitting on two Cortex-A7 cores, and this is the binary that answers it
 
 > **The Miyoo Mini's driver stopped being this snapshot's blocker, 2026-08-05.**
 > Everything here needs source-rect blits, blend and colour modulation, and the
@@ -226,13 +307,17 @@ it is better answered before the API sets.
 
 ## Open questions
 
-- Does `gfx::Spritesheet` survive as the atlas type, or become an implementation
-  detail of `gfx::Atlas`? It currently holds a non-owning `SDL_Surface*` and has
-  no consumers, so there is nothing to preserve except the shape.
-- How are assets addressed? Paths are relative today, which
-  [packaging-distribution](../2026-07-25-packaging-distribution/) has already
-  flagged as broken the moment a launcher changes directory. `SDL_GetBasePath()`
-  is the fix and this is the work that will first care.
+- ~~Does `gfx::Spritesheet` survive as the atlas type, or become an
+  implementation detail of `gfx::Atlas`?~~ **Answered 2026-08-09: neither.** It
+  is deleted — see "Settled" above.
+- ~~How are assets addressed?~~ **Answered 2026-07-27**, ahead of this work
+  rather than by it: `rig::asset_path()` prefers `$WREEL_DATA_DIR`, then `data/`
+  beside the executable, then the working directory. The live question it leaves
+  is narrower and belongs to the atlas: a Sparrow document declares an
+  `imagePath` relative to itself, and resolving that against `asset_path()`
+  rather than against the document's own directory is a guess that happens to be
+  right for a flat `data/`. `load_sparrow` therefore returns the path as
+  declared and does not resolve it.
 - Where does the entity store live — a new `game/` module, or inside the demo
   executable until a second consumer exists? Leaning toward the latter, since a
   module boundary drawn before there are two users tends to be drawn wrong.
@@ -245,5 +330,5 @@ it is better answered before the API sets.
 - [2026-07-26-gfx-renderer-and-gles2](../2026-07-26-gfx-renderer-and-gles2/) — the
   rename, and why there are two renderers
 - [software-3d-rasteriser](../2026-07-25-software-3d-rasteriser/) — what was deferred
-- `include/gfx/renderer/context.hpp`, `include/gfx/spritesheet.hpp`,
-  `loaders/sparrow.cc`
+- `include/gfx/renderer/context.hpp`, `include/gfx/atlas.hpp`,
+  `include/loaders/sparrow.hpp`

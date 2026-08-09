@@ -7,6 +7,7 @@
 # tests/test_obj.cc possible on the GPU-less targets.
 
 set(WREEL_LOADERS_SOURCES
+    animations.cc
     image.cc
     obj.cc
     sparrow.cc)
