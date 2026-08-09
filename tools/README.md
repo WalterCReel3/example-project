@@ -62,3 +62,23 @@ holds get expressed, since a repeated id holds that frame for another tick.
 
 `--fps` sets the default for animations *new* to the file; existing entries keep
 theirs. `--no-animations` skips the file entirely.
+
+## `make_tilemap.py`
+
+Generates the Tiled fixture — `tileset.png`, `sunnyland.tsx` and
+`sunnyland.tmx` — from the Sunny Land pack.
+
+```sh
+tools/.venv/bin/python tools/make_tilemap.py --out data
+```
+
+Deterministic, like the atlas packer, so an unchanged map regenerates to
+identical bytes. Unlike the atlas packer there is nothing here to hand-tune yet:
+the map is a fixed layout function. Edit it in Tiled and the tool will overwrite
+you — either stop running it, or move the change into `build_layers()`.
+
+Two properties are load-bearing for the fill-rate measurement, so do not
+"improve" them casually: the map is **larger than any target panel**, so a
+renderer has to cull rather than draw everything, and its backdrop layer covers
+**every cell**, so a screenful is a screenful of blits. A map with sky would
+leave half the target unpainted and report a number that flatters the renderer.
