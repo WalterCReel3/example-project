@@ -82,10 +82,6 @@ private:
     // Miyoo Mini and the combined string was.
     std::string hud_text() const;
     std::string hud_text_second() const;
-
-    // Plots the HUD into the layer with the glyph sheet, for renderers that
-    // cannot draw a sub-rectangle. Must be called inside the layer's lock.
-    void plot_hud(gfx::renderer::LayerLock& pixels);
     // Rebuilds the layer, the bar field and the message at a new height. The
     // layer's size is fixed at construction, so switching resolution means
     // replacing it rather than resizing it.
@@ -102,12 +98,6 @@ private:
     // The HUD's rasterised width is logged once, because a texture cannot be
     // wider than the panel on the Miyoo Mini.
     bool _hud_measured;
-
-    // True where the renderer does not apply blend modes, so the HUD is plotted
-    // into the layer — which composites on the CPU — rather than drawn as a
-    // texture that would arrive opaque. Set from the driver's name; see the
-    // constructor.
-    bool _layer_only;
 
     // First member so it is destroyed last: SDL_Quit must not run before the
     // window, the layer or the font are gone.

@@ -50,6 +50,7 @@ int Mini_CreateWindowFramebuffer(_THIS, SDL_Window *window, Uint32 *format, void
 int Mini_UpdateWindowFramebuffer(_THIS, SDL_Window *window, const SDL_Rect *rects, int numrects)
 {
     SDL_Surface *surface = (SDL_Surface *) SDL_GetWindowData(window, MINI_SURFACE);
+    const SDL_Color unmodulated = {0xff, 0xff, 0xff, 0xff};
     SDL_Rect src = {0};
     SDL_Rect dst = {0};
     int c0 = 0;
@@ -96,7 +97,10 @@ int Mini_UpdateWindowFramebuffer(_THIS, SDL_Window *window, const SDL_Rect *rect
     dst.x = (FB_W - dst.w) / 2;
     dst.y = (FB_H - dst.h) / 2;
 
-    GFX_Copy(surface->pixels, src, dst, surface->pitch, 0, E_MI_GFX_ROTATE_180);
+    /* The window surface replaces the frame rather than compositing over it,
+       and carries no modulation. */
+    GFX_Copy(surface->pixels, src, dst, surface->pitch, surface->format->format,
+             SDL_BLENDMODE_NONE, unmodulated, E_MI_GFX_ROTATE_180);
     GFX_Flip();
     return 0;
 }

@@ -1202,15 +1202,22 @@ must be composited into one streaming texture first — which is what
 
 What that makes true elsewhere in the tree:
 
-- **`coppers`' HUD needs a CPU path.** Decision 2 of its snapshot pins the HUD to
-  the texture path deliberately, so the instrument does not move with the thing
-  being measured. On this device that pin makes the instrument invisible instead.
-  The decision needs revisiting rather than quietly breaking.
-- **`--cpu-scroller` is not a comparison option here, it is the only correct
-  one.** The texture path draws, and draws wrong.
-- **`software-2d-sprites-tiling` cannot assume `Context::draw()`.** `Atlas`,
-  `AnimatedSprite` and `TileMap` are source-rect blits by definition; on this
-  target they have to composite into a layer.
+- ~~**`coppers`' HUD needs a CPU path.**~~ **Withdrawn 2026-08-08.** The pin in
+  decision 2 of its snapshot — HUD on the texture path, so the instrument does
+  not move with the thing being measured — holds on this device again now that
+  the backend blends. `Demo::_layer_only`, the CPU HUD it selected, and the
+  layer-compositing helper written for it are all removed.
+- ~~**`--cpu-scroller` is not a comparison option here, it is the only correct
+  one.**~~ **Withdrawn 2026-08-08.** The texture path drew wrong because source
+  rectangles were broken; items 2 and 3 fixed that. It remains the only path
+  *built* for this target, which is a build option rather than a correctness
+  claim.
+- ~~**`software-2d-sprites-tiling` cannot assume `Context::draw()`.**~~
+  **It can, as of 2026-08-08.** `Atlas`, `AnimatedSprite` and `TileMap` are
+  source-rect blits by definition, and this backend now honours a source rect in
+  both axes, takes the format from the texture, blends, and modulates — items 2,
+  3, 10 and 11, verified on the device. Compositing into a layer remains a
+  performance choice rather than a correctness requirement.
 - **`Layer::set_readback()` is not a nicety.** It is the only way to capture a
   frame on the one device where a screenshot is the only way to see the output.
 

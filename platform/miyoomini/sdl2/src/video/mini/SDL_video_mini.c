@@ -111,28 +111,125 @@ void GFX_Clear(void)
     MI_SYS_MemsetPa(gfx.tmp.phyAddr, 0, TMP_SIZE);
 }
 
-int GFX_Copy(const void *pixels, SDL_Rect src_rt, SDL_Rect dst_rt, int pitch, int alpha, int rotate)
+/* The blitter's format, from SDL's. Only the formats this driver advertises,
+   plus the RGB888 the window framebuffer uses — SDL never hands the backend
+   anything else, because the frontend converts through a native texture first. */
+static MI_GFX_ColorFmt_e mi_color_format(uint32_t sdl_format)
+{
+    switch (sdl_format) {
+    case SDL_PIXELFORMAT_RGB565:
+        return E_MI_GFX_FMT_RGB565;
+    case SDL_PIXELFORMAT_ABGR8888:
+        return E_MI_GFX_FMT_ABGR8888;
+    case SDL_PIXELFORMAT_RGB888:
+        /* XRGB8888: the alpha byte is unused rather than absent, and every
+           blend that reads it is off for this surface. */
+    case SDL_PIXELFORMAT_ARGB8888:
+    default:
+        return E_MI_GFX_FMT_ARGB8888;
+    }
+}
+
+/* SDL's blend modes onto MI_GFX's DirectFB-derived operands.
+ *
+ * All four are mandatory: SDL_render.c's IsSupportedBlendMode returns true for
+ * BLEND, ADD, MOD and MUL without consulting the backend, so a driver cannot
+ * refuse one — it can only apply it or lie about having done so.
+ *
+ * NONE is what this function used to hardcode: BLD_ONE with BLD_ZERO is
+ * src*1 + dst*0. The path gfx::renderer::Layer takes therefore produces the
+ * same operands as before, which is what makes an unchanged device run the
+ * check on this change.
+ */
+static void mi_blend(MI_GFX_Opt_t *opt, SDL_BlendMode blend)
+{
+    opt->eDFBBlendFlag = E_MI_GFX_DFB_BLEND_NOFX;
+
+    switch (blend) {
+    case SDL_BLENDMODE_BLEND:
+        opt->eSrcDfbBldOp = E_MI_GFX_DFB_BLD_SRCALPHA;
+        opt->eDstDfbBldOp = E_MI_GFX_DFB_BLD_INVSRCALPHA;
+        opt->eDFBBlendFlag = E_MI_GFX_DFB_BLEND_ALPHACHANNEL;
+        break;
+    case SDL_BLENDMODE_ADD:
+        opt->eSrcDfbBldOp = E_MI_GFX_DFB_BLD_SRCALPHA;
+        opt->eDstDfbBldOp = E_MI_GFX_DFB_BLD_ONE;
+        opt->eDFBBlendFlag = E_MI_GFX_DFB_BLEND_ALPHACHANNEL;
+        break;
+    case SDL_BLENDMODE_MOD:
+        opt->eSrcDfbBldOp = E_MI_GFX_DFB_BLD_DESTCOLOR;
+        opt->eDstDfbBldOp = E_MI_GFX_DFB_BLD_ZERO;
+        break;
+    case SDL_BLENDMODE_MUL:
+        opt->eSrcDfbBldOp = E_MI_GFX_DFB_BLD_DESTCOLOR;
+        opt->eDstDfbBldOp = E_MI_GFX_DFB_BLD_INVSRCALPHA;
+        opt->eDFBBlendFlag = E_MI_GFX_DFB_BLEND_ALPHACHANNEL;
+        break;
+    case SDL_BLENDMODE_NONE:
+    default:
+        opt->eSrcDfbBldOp = E_MI_GFX_DFB_BLD_ONE;
+        opt->eDstDfbBldOp = E_MI_GFX_DFB_BLD_ZERO;
+        break;
+    }
+}
+
+/* SDL_SetTextureColorMod and SetAlphaMod, which MI_GFX spells as a global
+ * constant colour plus a flag saying which of its channels to use.
+ *
+ * COLORIZE multiplies the source RGB by the constant's RGB; COLORALPHA does the
+ * same for alpha. They are independent flags over one colour register, so both
+ * can be set at once and an unmodulated blit sets neither.
+ */
+static void mi_modulate(MI_GFX_Opt_t *opt, SDL_Color mod)
+{
+    opt->u32GlobalSrcConstColor =
+        ((MI_U32)mod.a << 24) | ((MI_U32)mod.r << 16) |
+        ((MI_U32)mod.g << 8) | (MI_U32)mod.b;
+
+    if ((mod.r != 0xff) || (mod.g != 0xff) || (mod.b != 0xff)) {
+        opt->eDFBBlendFlag |= E_MI_GFX_DFB_BLEND_COLORIZE;
+    }
+    if (mod.a != 0xff) {
+        opt->eDFBBlendFlag |= E_MI_GFX_DFB_BLEND_COLORALPHA;
+    }
+}
+
+int GFX_Copy(const void *pixels, SDL_Rect src_rt, SDL_Rect dst_rt, int pitch, uint32_t format, SDL_BlendMode blend, SDL_Color mod, int rotate)
 {
     MI_U16 u16Fence = 0;
-    int is_rgb565 = (pitch / src_rt.w) == 2 ? 1 : 0;
+    const int bpp = SDL_BYTESPERPIXEL(format);
+    const int staged = src_rt.h * pitch;
 
-    debug("%s, pixels=%p, is_rgb565=%d\n", __func__, pixels, is_rgb565);
-    memcpy(gfx.tmp.virAddr, pixels, src_rt.h * pitch);
+    debug("%s, pixels=%p, format=%08x\n", __func__, pixels, format);
 
-    gfx.hw.opt.u32GlobalSrcConstColor = 0;
+    if ((staged <= 0) || (staged > TMP_SIZE)) {
+        debug("%s, %d bytes will not fit the %d byte staging buffer\n",
+            __func__, staged, TMP_SIZE);
+        return -1;
+    }
+
+    /* From the rect's first row, not the texture's. The blitter is told to read
+       from row 0 of what was staged, so the two agree — copying from the top
+       while reading from src_rt.y is what left an atlas showing the previous
+       blit's leftovers. */
+    memcpy(gfx.tmp.virAddr, (const uint8_t *)pixels + (src_rt.y * pitch), staged);
+
     gfx.hw.opt.eRotate = rotate;
-    gfx.hw.opt.eSrcDfbBldOp = E_MI_GFX_DFB_BLD_ONE;
-    gfx.hw.opt.eDstDfbBldOp = 0;
-    gfx.hw.opt.eDFBBlendFlag = 0;
+    mi_blend(&gfx.hw.opt, blend);
+    mi_modulate(&gfx.hw.opt, mod);
 
+    /* The staged surface is as wide as the source texture and as tall as the
+       rect, so x offsets still index into it and y has already been consumed by
+       the copy above. Deriving the width from the pitch rather than from the
+       rect is what makes a sub-rectangle narrower than its texture work. */
     gfx.hw.src.rt.s32Xpos = src_rt.x;
-    gfx.hw.src.rt.s32Ypos = src_rt.y;
+    gfx.hw.src.rt.s32Ypos = 0;
     gfx.hw.src.rt.u32Width = src_rt.w;
     gfx.hw.src.rt.u32Height = src_rt.h;
-    gfx.hw.src.surf.u32Width = src_rt.w;
+    gfx.hw.src.surf.u32Width = bpp ? (uint32_t)(pitch / bpp) : (uint32_t)src_rt.w;
     gfx.hw.src.surf.u32Height = src_rt.h;
     gfx.hw.src.surf.u32Stride = pitch;
-    gfx.hw.src.surf.eColorFmt = is_rgb565 ? E_MI_GFX_FMT_RGB565 : E_MI_GFX_FMT_ARGB8888;
+    gfx.hw.src.surf.eColorFmt = mi_color_format(format);
     gfx.hw.src.surf.phyAddr = gfx.tmp.phyAddr;
 
     gfx.hw.dst.rt.s32Xpos = dst_rt.x;

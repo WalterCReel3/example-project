@@ -38,7 +38,6 @@ Demo::Demo(const Options& options)
     : _options(options)
     , _exit(false)
     , _hud_measured(false)
-    , _layer_only(false)
     , _system()
     , _context()
     , _layer()
@@ -79,45 +78,6 @@ Demo::Demo(const Options& options)
     _options.cpu_scroller = true;
 #endif
     _cpu_scroller = make_cpu_scroller(*_glyphs);
-
-    // Where blending is a no-op, the HUD is plotted into the layer rather than
-    // drawn as a texture.
-    //
-    // The Miyoo Mini's render backend is the case in hand, and blending is the
-    // whole of the reason. draw_text() rasterises with TTF_RenderUTF8_Blended
-    // and uploads through SDL_CreateTextureFromSurface, which sets
-    // SDL_BLENDMODE_BLEND; this backend accepts the mode and never applies it,
-    // so the text's rectangle would arrive opaque over the copper bars instead
-    // of just its glyphs. Plotting into the layer composites on the CPU, where
-    // alpha works.
-    //
-    // Detected at runtime by name rather than compiled in per target, because
-    // three different SDL2 builds for this device have now been seen and the
-    // name is the only thing that reliably tells them apart. A firmware that
-    // ships a fixed one will simply stop matching.
-    //
-    // The flags and the B button still work: this changes the default, not the
-    // capability, so the comparison the demo exists for stays available
-    // wherever it means anything.
-    if (_context->driver_name() == "Miyoo Mini") {
-        _layer_only = true;
-
-        // Logged whenever the driver matches, not only when something had to be
-        // overridden. On the target that omits the texture scroller at build
-        // time there is nothing left to override, and a silent run would leave
-        // no record of *why* the HUD is in the layer.
-        util::log_warning("%s does not apply blend modes; plotting the HUD "
-                          "into the layer",
-                          _context->driver_name().c_str());
-
-        // A separate cause behind the same name, kept separate because the two
-        // will stop being true at different times. The texture scroller blits
-        // glyphs out of an atlas, and this backend stages a source
-        // sub-rectangle from row 0 while telling the blitter to read from the
-        // rect's y. Normally moot — the scroller is not built for this target —
-        // and it matters only if WREEL_COPPERS_TEXTURE_SCROLLER is forced on.
-        _options.cpu_scroller = true;
-    }
 
     if (!_options.mute) {
         // Two of the three filenames contain spaces, which is why these are
@@ -354,16 +314,6 @@ void Demo::draw_frame(double t)
             scroller().plot(pixels,
                             scroll_state(t, pixels.width(), pixels.height()));
         }
-
-        // The HUD goes in here too where the renderer does not blend. Its cost
-        // then lands in the plot stage rather than the blit stage, which is
-        // worth knowing when reading the numbers: the
-        // instrument is inside the thing it measures. --no-hud remains the way
-        // to take a clean reading, and the exit summary is unaffected either
-        // way.
-        if (_options.hud && _layer_only) {
-            plot_hud(pixels);
-        }
     } // unlocked here, which is what makes the plot timing meaningful
 
     const double blit_start = rig::FrameClock::now();
@@ -383,9 +333,9 @@ void Demo::draw_frame(double t)
             *_context, scroll_state(t, _context->width(), _context->height()));
     }
 
-    // Drawn as a texture only where that works. Where it does not, it was
-    // already plotted into the layer above.
-    if (_options.hud && !_layer_only) {
+    // At the target's resolution rather than the layer's, so the instrument
+    // does not scale with the thing it is measuring.
+    if (_options.hud) {
         draw_hud();
     }
 
@@ -428,110 +378,6 @@ std::string Demo::hud_text_second() const
                             : "silent");
 }
 
-// Copies a rasterised text surface into the locked layer, alpha-blended.
-//
-// This exists so the HUD keeps SDL_ttf and Speedy.fon where the renderer cannot
-// draw a sub-rectangle. It deliberately does NOT use the glyph sheet: the sheet
-// is 16px uppercase ASCII 32-91, so a sixty-character line of figures would
-// neither fit nor read — and more importantly, decision 2 of this demo's
-// snapshot pins the HUD to a different mechanism from the scroller on purpose,
-// so that the instrument does not move with the thing it measures. Only the
-// transport changes here, not the rasteriser.
-//
-// It wants to live in gfx::renderer rather than in a demo: compositing a
-// surface into a layer is what every sprite on this target will have to do.
-// Left here until software-2d-sprites-tiling needs it, so the interface is
-// designed against two callers rather than guessed at with one.
-void blit_surface_into_layer(gfx::renderer::LayerLock& pixels,
-                             SDL_Surface* surface, int left, int top)
-{
-    SDL_Surface* argb =
-        SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_ARGB8888, 0);
-    if (!argb) {
-        return;
-    }
-
-    const std::uint32_t* src = static_cast<const std::uint32_t*>(argb->pixels);
-    const int src_stride =
-        argb->pitch / static_cast<int>(sizeof(std::uint32_t));
-
-    for (int y = 0; y < argb->h; ++y) {
-        const int dy = top + y;
-        if (dy < 0 || dy >= pixels.height()) {
-            continue;
-        }
-
-        std::uint32_t* row = pixels.row(dy);
-
-        for (int x = 0; x < argb->w; ++x) {
-            const int dx = left + x;
-            if (dx < 0 || dx >= pixels.width()) {
-                continue;
-            }
-
-            const std::uint32_t s = src[y * src_stride + x];
-            const unsigned a = (s >> 24) & 0xffu;
-            if (a == 0) {
-                continue;
-            }
-            if (a == 255) {
-                row[dx] = s;
-                continue;
-            }
-
-            // Blended rather than thresholded, because TTF_RenderUTF8_Blended
-            // antialiases and a 1-bit test would make the HUD crawl.
-            const std::uint32_t d = row[dx];
-            const unsigned inv = 255u - a;
-            const unsigned r =
-                (((s >> 16) & 0xffu) * a + ((d >> 16) & 0xffu) * inv) / 255u;
-            const unsigned g =
-                (((s >> 8) & 0xffu) * a + ((d >> 8) & 0xffu) * inv) / 255u;
-            const unsigned b = ((s & 0xffu) * a + (d & 0xffu) * inv) / 255u;
-            row[dx] = gfx::renderer::Layer::pack(static_cast<unsigned char>(r),
-                                                 static_cast<unsigned char>(g),
-                                                 static_cast<unsigned char>(b));
-        }
-    }
-
-    SDL_FreeSurface(argb);
-}
-
-void Demo::plot_hud(gfx::renderer::LayerLock& pixels)
-{
-    if (!_font) {
-        return;
-    }
-
-    SDL_Color white;
-    white.r = 255;
-    white.g = 255;
-    white.b = 255;
-    white.a = 255;
-
-    int y = 2;
-
-    for (int i = 0; i < 2; ++i) {
-        const std::string text = i == 0 ? hud_text() : hud_text_second();
-
-        SDL_Surface* rendered =
-            TTF_RenderUTF8_Blended(_font, text.c_str(), white);
-        if (!rendered) {
-            continue;
-        }
-
-        blit_surface_into_layer(pixels, rendered, 2, y);
-
-        if (!_hud_measured && i == 1) {
-            _hud_measured = true;
-            util::log_info("hud: plotted into the %dx%d layer, lines %dpx tall",
-                           pixels.width(), pixels.height(), rendered->h);
-        }
-
-        y += rendered->h + 1;
-        SDL_FreeSurface(rendered);
-    }
-}
 
 void Demo::draw_hud()
 {

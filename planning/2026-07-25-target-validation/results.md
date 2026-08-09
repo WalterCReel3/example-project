@@ -844,3 +844,80 @@ different phases, so the per-phase columns are indicative and the frame rate is
 capped in both. What is not indicative is the right-hand column existing at all —
 tier 2's six items buy, on one target, what one already-landed function buys
 through code shared with the other four.
+
+---
+
+## 2026-08-08 — the atlas blockers and blending, on hardware
+
+Items 2, 3, 10 and 11 in one device trip, as
+[miyoo-sdl2-fork § 8.7](../2026-07-31-miyoo-sdl2-fork/) planned them: all four
+live in `Mini_QueueCopy` and `GFX_Copy`, and each has its own verdict. Library
+`4c3d6ce8`.
+
+**All four moved, and nothing else did.**
+
+```
+  SDL_RenderCopy sub-rect  OK        the requested band reached the screen
+  sub-rect, RGB565         OK        a 16-bit texture kept its format through a narrow sub-rect
+  SDL_SetTextureBlendMode  OK        blended: 6f8000 over red
+  SDL_SetTextureColorMod   OK
+```
+
+**The blend result is byte-identical to SDL's own software renderer.**
+`6f8000 over red` is exactly what the reference implementation produced on this
+device on 2026-08-02. The accelerated path and the reference agree to the pixel,
+which is a stronger result than the check was built to give — it was written to
+detect "blended at all", not "blended correctly".
+
+**And it answers § 8.7's one genuinely untested question.** Whether blending
+composes with the fixed `E_MI_GFX_ROTATE_180` in a single `BitBlit` had never
+been exercised; both live in `MI_GFX_Opt_t` and nothing said they interact.
+`screen transform` still reads rotated 180 with the same four quadrant colours,
+and `partial destination` still puts the framebuffer box at 400,300 un-rotating
+to the requested 80,60. **They do not interact.** Recorded as measured rather
+than as "nothing went wrong".
+
+Unchanged and expected to be: `SDL_RenderClear` and `SDL_RenderFillRect` still
+IGNORED — items 8 and 12, genuinely behind the command queue — render-to-texture
+still IGNORED, the texture cap still enforced at 640×480, audio at 22050 Hz.
+
+### The `coppers` guard, and why its threshold was wrong
+
+Item 10's guard was that `gfx::renderer::Layer` asks for `SDL_BLENDMODE_NONE`,
+so a correct mapping emits the `BLD_ONE`/`BLD_ZERO` the hardcode did and the
+demo must be unchanged.
+
+| Run | Driver | plot | blit | present | **total** |
+|---|---|---|---|---|---|
+| 2026-08-01 | unmodified graft | 2.920 | **4.425** | 9.348 | 16.693 |
+| 2026-08-02 | items 1, 21, 20 | 2.031 | **3.977** | 10.680 | 16.688 |
+| 2026-08-08 | + items 2, 3, 10, 11 | 2.562 | **4.418** | 9.715 | 16.695 |
+
+Today's blit is within **0.007 ms** of the pre-change run, and the total frame
+time is identical across all three to seven microseconds. The loop is cap-bound
+at ~16.69 ms, so time moves between stages rather than being added: present fell
+0.97 ms while plot and blit rose 0.97 together.
+
+**The stated threshold — "blit ≈ 3.977" — was not a valid constant, and saying
+so is the useful part.** The demo cycles layer size and the three runs did not do
+the same work: today's log shows a single `layer: 640x480` and no transitions,
+while both earlier runs cycled down to 320×240, where the staging copy is 307 KB
+instead of 1.2 MB. Comparing one stage across runs with different phase mixes
+measures the phase mix. The 08-01 run is the like-for-like comparison and it
+matches.
+
+So: no systematic cost from the blend mapping, established. A tight per-stage
+regression check on this demo, not established — the instrument varies by up to
+0.9 ms between runs for reasons unrelated to the driver.
+
+**Before item 7, pin the workload.** `COPPERS_ARGS="--no-hud --seconds 20"` with
+a fixed layer size gives a comparison that does not drift. § 2.3 requires exactly
+this kind of before/after run for `RunCommandQueue`, and phase drift would hide
+the thing it is looking for.
+
+### What is now true of the driver we build
+
+`Atlas`, `AnimatedSprite` and `TileMap` have what they need from this renderer:
+source rectangles honoured in both axes, the format taken from the texture, alpha
+blending, and colour and alpha modulation. What remains missing is queue-bound —
+`SDL_RenderClear`, `SDL_RenderFillRect` — and `Layer` covers both.

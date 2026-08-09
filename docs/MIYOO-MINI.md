@@ -559,15 +559,18 @@ drawn a blended sprite on the device.
 > the rows below hold for it as well as for the prebuilt — they are the same
 > driver sources. See [TARGETS.md](TARGETS.md) § The Miyoo Mini exception.
 
-> **Where the two libraries part company — 2026-08-02.** The table still
-> describes the *shipped prebuilt* exactly. Against the copy we build, three rows
-> have moved and the rest have not:
+> **Where the two libraries part company — 2026-08-02, extended 2026-08-08.**
+> The table still describes the *shipped prebuilt* exactly. Against the copy we
+> build, four rows have moved and the rest have not:
 >
 > - **`SDL_UpdateTexture` copies.** The use-after-free is fixed and D27 is
 >   withdrawn, so `Context::draw_surface()` is usable here.
-> - **Sub-rectangle *placement* is correct.** The destination `y` mirror landed;
->   the source-rect `y` and the format inference did not, so a sub-rect copy is
->   still wrong — for two reasons now instead of three, both on the source side.
+> - **Sub-rectangle copies are correct**, as of 2026-08-08 — placement, source
+>   rect and pixel format. An atlas blits correctly on this device.
+> - **Blend modes and colour/alpha modulation are applied**, same date. The
+>   blend output matches SDL's own software renderer to the pixel. So the two
+>   `silent no-op` rows below, and the sub-rectangle row, describe the shipped
+>   prebuilt and no longer the copy we build.
 > - **The software renderer presents**, so the last column stops being the whole
 >   story: every state row below is a gap in *this backend*, not in this device.
 >   § 4.4.
@@ -785,8 +788,11 @@ whether or not the alternative exists.
 
 Consequences carried into the codebase:
 
-- `coppers` detects the driver by name and defaults to CPU composition — the CPU
-  scroller and a HUD plotted into the layer.
+- ~~`coppers` detects the driver by name and defaults to CPU composition.~~
+  **Removed 2026-08-08**: the backend blends and honours source rectangles, so
+  the driver-name override and the CPU HUD it selected are gone. The CPU
+  scroller remains the only one *built* for this target, which is a build
+  option — see `coppers/CMakeLists.txt`.
 - `Layer::set_readback()` exists because it is the only way to capture a frame
   where `SDL_RenderReadPixels` is unsupported.
 - `Context` probes four sources for its output size and refuses to run with
