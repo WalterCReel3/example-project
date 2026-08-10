@@ -133,12 +133,12 @@ void Demo::load()
     const int top = _context.height() / 3;
 
     for (gfx::AnimationSet::Index i = 0; i < _animations.size(); ++i) {
-        Actor actor;
+        Entity actor;
         actor.sprite = gfx::AnimatedSprite(_atlas, _animations[i]);
         actor.scale = scale;
         actor.x = static_cast<int>(i % columns) * cell + cell / 8;
         actor.y = top + static_cast<int>(i / columns) * cell;
-        _actors.push_back(actor);
+        _entities.add(actor);
     }
 
     // And one large one walking across the top, to make the trim handling
@@ -148,22 +148,28 @@ void Demo::load()
     if (_hero_animation == gfx::AnimationSet::npos) {
         _hero_animation = 0;
     }
-    _hero.sprite = gfx::AnimatedSprite(_atlas, _animations[_hero_animation]);
-    _hero.scale = scale * 2;
-    _hero.y = top - 34 * _hero.scale;
+    Entity hero;
+    hero.sprite = gfx::AnimatedSprite(_atlas, _animations[_hero_animation]);
+    hero.scale = scale * 2;
+    hero.y = top - 34 * hero.scale;
+    // 60 pixels a second at 1x, so the walk reads the same on a 320-wide panel
+    // as on a 640-wide one. The store integrates it.
+    hero.velocity_x = 60.0 * hero.scale;
+    // In front of the grid, which is what the layer is for.
+    hero.layer = 1;
+    _hero = _entities.add(hero);
+}
+
+void Demo::play_hero(const gfx::Animation& animation)
+{
+    if (Entity* hero = _entities.find(_hero)) {
+        hero->sprite.play(animation);
+    }
 }
 
 void Demo::step(double delta)
 {
-    for (Actor& actor : _actors) {
-        actor.sprite.advance(delta);
-    }
-    _hero.sprite.advance(delta);
-
-    // 60 pixels a second at 1x, so the walk reads the same on a 320-wide panel
-    // as on a 640-wide one.
-    const double speed = 60.0 * _hero.scale;
-    _hero_position += speed * delta * _hero_direction;
+    _entities.update(delta);
 
     if (_map && _options.scroll) {
         // Across the map and back. Scrolling matters for the measurement: a
@@ -181,15 +187,23 @@ void Demo::step(double delta)
         }
     }
 
-    const double span = _context.width() - 33.0 * _hero.scale;
-    if (_hero_position > span) {
-        _hero_position = span;
+    // Turn the hero around at the edges. The store integrates the position;
+    // what it does not model is anything reacting to where that position ends
+    // up, which is the game layer this deliberately stops short of.
+    Entity* hero = _entities.find(_hero);
+    if (hero == nullptr) {
+        return;
+    }
+
+    const double span = _context.width() - 33.0 * hero->scale;
+    if (hero->x > span) {
+        hero->x = span;
         _hero_direction = -1;
-    } else if (_hero_position < 0.0) {
-        _hero_position = 0.0;
+    } else if (hero->x < 0.0) {
+        hero->x = 0.0;
         _hero_direction = 1;
     }
-    _hero.x = static_cast<int>(_hero_position);
+    hero->velocity_x = 60.0 * hero->scale * _hero_direction;
 }
 
 void Demo::update(double delta)
@@ -200,13 +214,13 @@ void Demo::update(double delta)
 
     if (_pad.pressed(rig::Button::A) || _pad.pressed(rig::Button::Right)) {
         _hero_animation = (_hero_animation + 1) % _animations.size();
-        _hero.sprite.play(_animations[_hero_animation]);
+        play_hero(_animations[_hero_animation]);
         util::log_info("sprites: hero playing \"%s\"",
                        _animations[_hero_animation].name.c_str());
     } else if (_pad.pressed(rig::Button::Left)) {
         _hero_animation =
             (_hero_animation + _animations.size() - 1) % _animations.size();
-        _hero.sprite.play(_animations[_hero_animation]);
+        play_hero(_animations[_hero_animation]);
         util::log_info("sprites: hero playing \"%s\"",
                        _animations[_hero_animation].name.c_str());
     }
@@ -224,10 +238,9 @@ void Demo::draw()
         _tiles_total += _tiles_drawn;
     }
 
-    for (const Actor& actor : _actors) {
-        actor.sprite.draw(_context, actor.x, actor.y, actor.scale);
-    }
-    _hero.sprite.draw(_context, _hero.x, _hero.y, _hero.scale);
+    // Camera 0 for the entities: the grid and the hero are laid out in screen
+    // space, and only the tilemap scrolls.
+    _entities.draw(_context, 0, 0);
 }
 
 void Demo::run()

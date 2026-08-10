@@ -184,6 +184,29 @@ function(_wreel_onion_app out_commands)
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 "$<TARGET_FILE:${APP_TARGET}>" "${app_dir}/${APP_TARGET}")
 
+    # Strip the staged copy, never the one in build/.
+    #
+    # A Release build here still carries debug info — not from our flags, which
+    # are -Os -DNDEBUG with no -g, but from the toolchain's static libstdc++ and
+    # libgcc, which -static-libstdc++ links in along with their debug sections.
+    # It is proportional to how much of that gets instantiated, so it hits the
+    # binaries that use the most templates hardest: sprites was 8.79 MB against
+    # coppers' 2.98 MB for 1.67 MB and 1.60 MB of actual code.
+    #
+    # None of it is usable on the device — there is no debugger there and the
+    # binary that would be symbolised is this stripped copy — so it is pure SD
+    # card. sprites goes 8.79 MB -> 1.71 MB. The unstripped binary stays in
+    # build/ for anything that wants to symbolise a backtrace off-device.
+    if(CMAKE_STRIP)
+        list(APPEND commands
+            COMMAND "${CMAKE_STRIP}" "${app_dir}/${APP_TARGET}")
+    else()
+        message(WARNING
+            "No CMAKE_STRIP for this toolchain, so ${APP_TARGET} ships with its "
+            "debug sections. Harmless, but several times larger than it needs "
+            "to be on the card.")
+    endif()
+
     # Assets, from the property the target carries. Optional: wreel-diag draws
     # everything it needs and opens no files, so it has no such property and
     # gets no data/ directory rather than an empty one.
@@ -273,6 +296,21 @@ function(_wreel_add_onion_bundle target)
     # needing to edit a file on the SD card to get at it — with the device in
     # hand and the demo misbehaving — is exactly the wrong moment for that.
     set(bundle_depends)
+
+    # The sprites demo is the 2D game path — atlas, animation, tilemap — where
+    # coppers is the raster one. It gets its own entry for the same reason
+    # wreel-diag does: reaching it should not mean editing a file on the card
+    # with the device in hand.
+    if(TARGET sprites)
+        _wreel_onion_app(sprites_commands
+            DIR         "Sprites"
+            TARGET      "sprites"
+            LABEL       "Sprites"
+            DESCRIPTION "Atlas, animation and tilemap, with a fill-rate report"
+            ARGS        "$SPRITES_ARGS")
+        list(APPEND bundle_depends sprites)
+    endif()
+
     if(TARGET wreel-diag)
         _wreel_onion_app(diag_commands
             DIR         "WreelDiag"
@@ -289,11 +327,15 @@ function(_wreel_add_onion_bundle target)
     endif()
 
     # The tarball is built from the parent of App/ so it unpacks straight over
-    # the root of an SD card, and carries both entries.
-    set(tarball "${CMAKE_SOURCE_DIR}/pkg/coppers-${PROJECT_VERSION}-onion.tar.gz")
+    # the root of an SD card, and carries every entry staged above.
+    #
+    # Named for the project rather than for coppers: it stopped being one demo's
+    # bundle when wreel-diag was added, and carries three entries now.
+    set(tarball "${CMAKE_SOURCE_DIR}/pkg/wreel-${PROJECT_VERSION}-onion.tar.gz")
 
     add_custom_target(bundle-onion
         ${demo_commands}
+        ${sprites_commands}
         ${diag_commands}
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_SOURCE_DIR}/pkg"
         COMMAND "${CMAKE_COMMAND}" -E chdir "${WREEL_ONION_BUNDLE_ROOT}"

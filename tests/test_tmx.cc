@@ -9,6 +9,14 @@
 // data/sunnyland.tmx is the fixture: 64x36 tiles of 16x16, an external
 // sunnyland.tsx, CSV layer data and an object layer, which is the shape Tiled
 // writes by default.
+//
+// Contexts here ask for Driver::Software explicitly. These cases are about
+// atlas, animation and tilemap logic, not about driver selection — that is
+// test_renderer's job — and leaving the choice open is not harmless: the
+// miyoomini build compiles SDL's SSD202D render backend in, so off-device
+// (under qemu) a PreferAccelerated request selects `mini`, finds no MI_GFX, and
+// segfaults. Asking for the driver these cases actually want makes them
+// deterministic on every target.
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
@@ -331,7 +339,8 @@ TEST_CASE("a missing map file throws the posix error, not a format error")
 TEST_CASE("source rectangles are grid arithmetic, margin and spacing included")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
     gfx::renderer::Texture texture(context, 64, 64);
 
     const gfx::TileSet plain(std::move(texture), 16, 16, 4, 16);
@@ -360,7 +369,8 @@ TEST_CASE("source rectangles are grid arithmetic, margin and spacing included")
 TEST_CASE("fits_texture catches a tileset that outruns its image")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
 
     gfx::renderer::Texture small(context, 32, 32);
     // Claims 16 tiles of 16x16 in a 32x32 image, which holds 4.
@@ -376,7 +386,8 @@ TEST_CASE("draw visits only the tiles that intersect the target")
 {
     VideoFixture video;
     // 64x64 target: four 16x16 tiles across and four down.
-    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
 
     const loaders::TmxMap map = loaders::load_tmx("data/sunnyland.tmx");
     gfx::TileSet tiles = load_tileset(context, map);
@@ -402,7 +413,8 @@ TEST_CASE("draw visits only the tiles that intersect the target")
 TEST_CASE("a camera off the map's left edge keeps the partial column")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
 
     const loaders::TmxMap map = loaders::load_tmx("data/sunnyland.tmx");
     gfx::TileSet tiles = load_tileset(context, map);
@@ -430,7 +442,8 @@ TEST_CASE("a camera off the map's left edge keeps the partial column")
 TEST_CASE("an invisible layer draws nothing, and scale enlarges tiles")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
 
     const loaders::TmxMap map = loaders::load_tmx("data/sunnyland.tmx");
     gfx::TileSet tiles = load_tileset(context, map);
@@ -454,7 +467,8 @@ TEST_CASE("an invisible layer draws nothing, and scale enlarges tiles")
 TEST_CASE("draw over all layers counts every blit, empties excluded")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
 
     const loaders::TmxMap map = loaders::load_tmx("data/sunnyland.tmx");
     gfx::TileSet tiles = load_tileset(context, map);

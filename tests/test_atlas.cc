@@ -11,6 +11,14 @@
 // Texture and Context::draw(src, dst) added, and asserting on it here is the
 // point — a source rectangle off by one cell, or a trim offset applied in the
 // wrong direction, both draw something perfectly plausible.
+//
+// Contexts here ask for Driver::Software explicitly. These cases are about
+// atlas, animation and tilemap logic, not about driver selection — that is
+// test_renderer's job — and leaving the choice open is not harmless: the
+// miyoomini build compiles SDL's SSD202D render backend in, so off-device
+// (under qemu) a PreferAccelerated request selects `mini`, finds no MI_GFX, and
+// segfaults. Asking for the driver these cases actually want makes them
+// deterministic on every target.
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
@@ -149,7 +157,8 @@ TEST_CASE("find resolves a name to its index, and npos for one it does not "
           "have")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 8, 8, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 8, 8, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
     const gfx::Atlas atlas = make_atlas(context, sheet_frames());
 
     CHECK(atlas.size() == 4);
@@ -169,7 +178,8 @@ TEST_CASE("find resolves a name to its index, and npos for one it does not "
 TEST_CASE("a duplicated name resolves to the first in document order")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 8, 8, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 8, 8, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
 
     gfx::Atlas::Frames frames = sheet_frames();
     frames[2].id = "red";
@@ -185,7 +195,8 @@ TEST_CASE("a duplicated name resolves to the first in document order")
 TEST_CASE("contains_frames accepts a frame table that fits its sheet")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 8, 8, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 8, 8, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
     const gfx::Atlas atlas = make_atlas(context, sheet_frames());
 
     CHECK(atlas.texture().width() == 4);
@@ -195,7 +206,8 @@ TEST_CASE("contains_frames accepts a frame table that fits its sheet")
 TEST_CASE("contains_frames rejects a frame running off the sheet")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 8, 8, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 8, 8, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
 
     // The usual cause is an atlas paired with the wrong image, which SDL does
     // not report: the blit clamps or reads neighbouring cells.
@@ -233,7 +245,8 @@ TEST_CASE("an untrimmed frame reports its region size, a trimmed one its frame "
 TEST_CASE("draw blits the named cell, not a neighbouring one")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 8, 8, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 8, 8, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
     const gfx::Atlas atlas = make_atlas(context, sheet_frames());
 
     context.clear({0, 0, 0, 255});
@@ -257,7 +270,8 @@ TEST_CASE("draw blits the named cell, not a neighbouring one")
 TEST_CASE("draw places an untrimmed frame at exactly the given point")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 8, 8, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 8, 8, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
     const gfx::Atlas atlas = make_atlas(context, sheet_frames());
 
     context.clear({0, 0, 0, 255});
@@ -273,7 +287,8 @@ TEST_CASE("draw places an untrimmed frame at exactly the given point")
 TEST_CASE("scale multiplies the frame and its trim offset together")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 32, 32, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 32, 32, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
 
     // A 1x1 cell sitting 2 across and 1 down inside its untrimmed box.
     gfx::Atlas::Frames frames = sheet_frames();
@@ -302,7 +317,8 @@ TEST_CASE("scale multiplies the frame and its trim offset together")
 TEST_CASE("a scale below one draws nothing rather than inverting the rect")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 16, 16, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 16, 16, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
     const gfx::Atlas atlas = make_atlas(context, sheet_frames());
 
     context.clear({0, 0, 0, 255});
@@ -326,7 +342,8 @@ TEST_CASE("a scale below one draws nothing rather than inverting the rect")
 TEST_CASE("data/foxy.xml and data/foxy.png describe the same sheet")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
 
     const loaders::SparrowAtlas parsed = loaders::load_sparrow("data/foxy.xml");
 
@@ -352,7 +369,8 @@ TEST_CASE("data/foxy.xml and data/foxy.png describe the same sheet")
 TEST_CASE("a trimmed frame from the real atlas draws inside its frame box")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
 
     const loaders::SparrowAtlas parsed = loaders::load_sparrow("data/foxy.xml");
     SDL_Surface* image = loaders::load_image("data/" + parsed.image_path);
@@ -410,7 +428,8 @@ TEST_CASE("a trimmed frame from the real atlas draws inside its frame box")
 TEST_CASE("draw shifts a trimmed frame by its trim offset")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 8, 8, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 8, 8, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
 
     // The cropped image sits 2 across and 1 down inside its untrimmed frame.
     gfx::Atlas::Frames frames = sheet_frames();

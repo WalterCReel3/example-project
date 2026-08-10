@@ -11,7 +11,8 @@
 
 add_executable(sprites
     main.cc
-    demo.cc)
+    demo.cc
+    entities.cc)
 
 wreel_set_target_defaults(sprites)
 
@@ -31,7 +32,10 @@ set_target_properties(sprites PROPERTIES
 set_property(TARGET sprites PROPERTY WREEL_BUNDLE_ASSETS
     "foxy.png"
     "foxy.xml"
-    "foxy.anim.xml")
+    "foxy.anim.xml"
+    "tileset.png"
+    "sunnyland.tmx"
+    "sunnyland.tsx")
 
 install(TARGETS sprites
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"

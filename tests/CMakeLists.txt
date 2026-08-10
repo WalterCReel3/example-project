@@ -73,6 +73,14 @@ wreel_add_test(test_animation
 # differ in the tile count draw() returns.
 wreel_add_test(test_tmx      LIBS wreel::gfx wreel::loaders wreel::posix)
 
+# sprites/entities.cc is compiled in rather than linked, because the store lives
+# in the demo and the demo is an executable — the same arrangement test_bars has
+# with coppers/bars.cc. Worth a library when a second consumer appears, which is
+# also when the store should leave sprites/.
+wreel_add_test(test_entities
+               SOURCES test_entities.cc ../sprites/entities.cc
+               LIBS wreel::gfx)
+
 # --- Priority queue ----------------------------------------------------------
 #
 # test_string.cc above is the important one and is not yet complete.

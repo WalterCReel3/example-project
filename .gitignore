@@ -48,6 +48,8 @@ local.md
 
 core
 core.*
+# qemu-user writes these when a cross-built binary faults under emulation.
+qemu_*.core
 
 # OS cruft
 .DS_Store

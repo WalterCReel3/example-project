@@ -12,6 +12,8 @@
 #include <rig/input.hpp>
 #include <rig/timing.hpp>
 
+#include "entities.hpp"
+
 //============================================================================
 //
 // sprites — the gfx::Atlas / gfx::AnimatedSprite demo
@@ -61,14 +63,6 @@ struct Options {
     int tile_scale = 1;
 };
 
-// One animated thing on screen.
-struct Actor {
-    gfx::AnimatedSprite sprite;
-    int x = 0;
-    int y = 0;
-    int scale = 1;
-};
-
 class Demo
 {
 public:
@@ -91,6 +85,7 @@ private:
     // Advances every actor and steps the hero across the screen. Split out so
     // both run() and render_to_file() drive the same simulation.
     void step(double delta);
+    void play_hero(const gfx::Animation& animation);
 
     Options _options;
 
@@ -114,12 +109,13 @@ private:
     int _tiles_drawn = 0;
     long long _tiles_total = 0;
 
-    std::vector<Actor> _actors;
+    // Every animated thing on screen, including the hero, so the store is what
+    // the demo actually runs on rather than something tested beside it.
+    Entities _entities;
 
     // The large one that walks across, and which animation it is playing.
-    Actor _hero;
+    Entities::Id _hero = Entities::none();
     gfx::AnimationSet::Index _hero_animation = 0;
-    double _hero_position = 0.0;
     int _hero_direction = 1;
 };
 

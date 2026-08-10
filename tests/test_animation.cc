@@ -14,6 +14,14 @@
 //     machine stuck, and one that reports it a frame early cuts the animation.
 //   - Loop::PingPong. The ends are shown once, not twice, and the arithmetic
 //     that avoids stepping frame by frame is where that is easy to get wrong.
+//
+// Contexts here ask for Driver::Software explicitly. These cases are about
+// atlas, animation and tilemap logic, not about driver selection — that is
+// test_renderer's job — and leaving the choice open is not harmless: the
+// miyoomini build compiles SDL's SSD202D render backend in, so off-device
+// (under qemu) a PreferAccelerated request selects `mini`, finds no MI_GFX, and
+// segfaults. Asking for the driver these cases actually want makes them
+// deterministic on every target.
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
@@ -501,7 +509,8 @@ TEST_CASE("a missing sidecar throws the posix error, not a format error")
 TEST_CASE("data/foxy.anim.xml resolves against data/foxy.xml")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
 
     const loaders::SparrowAtlas parsed = loaders::load_sparrow("data/foxy.xml");
     SDL_Surface* image = loaders::load_image("data/" + parsed.image_path);
@@ -538,7 +547,8 @@ TEST_CASE("data/foxy.anim.xml resolves against data/foxy.xml")
 TEST_CASE("animation_from_prefix matches on the whole prefix")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
 
     const loaders::SparrowAtlas parsed = loaders::load_sparrow("data/foxy.xml");
     SDL_Surface* image = loaders::load_image("data/" + parsed.image_path);
@@ -571,7 +581,8 @@ TEST_CASE("animation_from_prefix matches on the whole prefix")
 TEST_CASE("a sidecar naming a frame the atlas lacks is rejected")
 {
     VideoFixture video;
-    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
 
     const loaders::SparrowAtlas parsed = loaders::load_sparrow("data/foxy.xml");
     SDL_Surface* image = loaders::load_image("data/" + parsed.image_path);
