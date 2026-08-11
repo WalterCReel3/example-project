@@ -1,6 +1,6 @@
 # 2D: sprites, atlases, tiling, entities
 
-**Status:** `complete` — every task below is done; what remains is device verification, which is tracked in [target-validation](../2026-07-25-target-validation/)
+**Status:** `done` — every task below is done; what remains is device verification, which is tracked in [target-validation](../2026-07-25-target-validation/). Succeeded by [2026-08-10-game-layer-and-demo](../2026-08-10-game-layer-and-demo/), which picks up the collision/camera/input scope this one deliberately excluded
 **Written:** 2026-07-25
 **Blocked by:** nothing
 
