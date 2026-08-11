@@ -17,9 +17,10 @@
 # See planning/2026-07-26-gfx-renderer-and-gles2/ and
 # docs/TARGETS.md § "Graphics renderers".
 
-# Renderer-agnostic: pure data, no rendering calls.
 set(WREEL_GFX_SOURCES
-    spritesheet.cc
+    animation.cc
+    atlas.cc
+    tilemap.cc
     system.cc
     renderer/context.cc
     renderer/layer.cc

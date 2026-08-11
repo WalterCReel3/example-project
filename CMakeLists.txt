@@ -97,6 +97,7 @@ endif()
 
 if(WREEL_BUILD_DEMOS)
     add_subdirectory(coppers)
+    add_subdirectory(sprites)
 endif()
 
 if(WREEL_BUILD_TESTS)

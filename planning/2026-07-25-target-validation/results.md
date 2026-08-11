@@ -921,3 +921,94 @@ the thing it is looking for.
 source rectangles honoured in both axes, the format taken from the texture, alpha
 blending, and colour and alpha modulation. What remains missing is queue-bound —
 `SDL_RenderClear`, `SDL_RenderFillRect` — and `Layer` covers both.
+
+## 2026-08-09 — tilemap fill rate: per-pixel, not per-call, and scaling is the trap
+
+[software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/) carries a
+standing instruction: *measure before building the tilemap on the assumption that
+per-tile blitting is viable.* `gfx::TileMap` now exists in its naive form — one
+`SDL_RenderCopy` per visible tile — and `sprites --tilemap` is the instrument.
+These are its first numbers.
+
+**Dev box only.** x86-64, `desktop-software` (SDL's own software renderer, the
+Miyoo Mini's code path), `SDL_VIDEODRIVER=dummy` so `present()` is a no-op and
+the figure is blit cost with no vsync in it. Best of three four-second runs,
+uncapped, camera scrolling. `data/sunnyland.tmx`, whose backdrop layer covers
+every cell — a map with sky would leave half the screen unpainted and flatter
+the renderer.
+
+| Configuration | ms/frame | Tilemap alone | Tiles |
+|---|---|---|---|
+| 640×480, sprites only | 0.416 | — | — |
+| 640×480, + tilemap at 1× | 1.578 | **1.162** | 1295 |
+| 640×480, + tilemap at 2× | 3.422 | **3.006** | 315 |
+| 640×480, + tilemap at 4× | 3.239 | **2.823** | 88 |
+| 320×240, sprites only | 0.068 | — | — |
+| 320×240, + tilemap at 1× | 0.354 | **0.286** | 314 |
+
+### The cost is per pixel, and the experiment that shows it
+
+The obvious worry about per-tile blitting is call overhead: 1295 `SDL_RenderCopy`
+calls to paint one screen sounds like the expensive part, and the obvious fix is
+to cache a layer into one texture and blit it once.
+
+**That would not help.** Covering the same 640×480 with 315 blits instead of 1295
+is 2.6× *slower*, and with 88 blits it is still 2.4× slower. Fewer calls, more
+time — so the calls were not what cost.
+
+The per-pixel figure is flat, which is the same result from the other side:
+
+    640×480 at 1×   1295 tiles × 256 px = 331,520 px in 1.162 ms → 3.51 ns/px
+    320×240 at 1×    314 tiles × 256 px =  80,384 px in 0.286 ms → 3.56 ns/px
+
+Two resolutions, a 4× difference in work, the same nanoseconds per pixel. This
+renderer moves ~285 Mpixel/s here and the tile count is not what it is charging
+for.
+
+### So scaling is the thing to avoid, not the call count
+
+The 2× and 4× rows are not slower because they are bigger — they cover exactly
+the same screen. They are slower because a destination rectangle that differs
+from the source takes SDL's stretch path, which costs several times a 1:1 copy
+per pixel.
+
+That is consistent with what [§ fill rate](#) already recorded from the other
+direction: a lower internal resolution is a net *loss* on the software driver.
+Both are the same fact — on this driver, scaling is expensive and 1:1 is cheap —
+and it now has a second, independent measurement behind it.
+
+**Consequences for the tilemap, which is what the instruction was for:**
+
+- **Do not build a tile cache or a dirty-rectangle scheme to cut call count.**
+  The measurement says there is nothing there. The naive per-tile renderer is the
+  right one, and `gfx::TileMap` stays as it is.
+- **The lever is overdraw, not batching.** Three layers over a fully covered
+  screen paint it up to three times. Flattening static layers, or not drawing a
+  backdrop that a later layer fully occludes, removes pixels — which is what this
+  renderer charges for.
+- **Draw tiles at 1:1 wherever possible.** If a target wants larger art, larger
+  art is cheaper than a scaled blit of small art.
+
+### What this does not answer
+
+The device. Two Cortex-A7 cores and the Mini's memory are not this machine, and a
+per-pixel cost scales with both. Taking the 640×480 figure at 1.162 ms here, a
+10–20× slowdown puts a fully covered screen at **12–23 ms a frame**, which is at
+or over the 60 fps budget; the same arithmetic at 320×240 gives 3–6 ms, which is
+comfortable. That range is too wide to design against, and it is a guess.
+
+It also ignores `MI_GFX`. Since 2026-08-08 the `mini` backend blends in hardware,
+so the device may not be paying CPU cost for this at all — which would make the
+extrapolation above meaningless in the good direction.
+
+**To settle it**, on the device:
+
+```sh
+sprites --tilemap --software --seconds 20 --fps 0            # panel resolution
+sprites --tilemap --software --seconds 20 --fps 0 --size 320 240
+sprites --tilemap --seconds 20 --fps 0                       # whatever the driver picks
+```
+
+The last line of each run reports `tiles/frame`, `ms/frame`, `fps` and `us/tile`,
+and the log carries the same. Device runs are the user's; this file takes the
+numbers when they come back.

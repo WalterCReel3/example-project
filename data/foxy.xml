@@ -1,0 +1,39 @@
+<?xml version='1.0' encoding='utf-8'?>
+<TextureAtlas imagePath="foxy.png">
+    <SubTexture name="climb.000" x="0" y="0" width="19" height="23" frameX="-7" frameY="-7" frameWidth="33" frameHeight="32" />
+    <SubTexture name="climb.001" x="19" y="0" width="19" height="24" frameX="-7" frameY="-7" frameWidth="33" frameHeight="32" />
+    <SubTexture name="climb.002" x="38" y="0" width="19" height="23" frameX="-7" frameY="-7" frameWidth="33" frameHeight="32" />
+    <SubTexture name="climb.003" x="57" y="0" width="19" height="24" frameX="-7" frameY="-7" frameWidth="33" frameHeight="32" />
+    <SubTexture name="crouch.000" x="0" y="24" width="18" height="22" frameX="-6" frameY="-10" frameWidth="33" frameHeight="32" />
+    <SubTexture name="crouch.001" x="18" y="24" width="20" height="19" frameX="-8" frameY="-13" frameWidth="33" frameHeight="32" />
+    <SubTexture name="crouch.002" x="38" y="24" width="20" height="19" frameX="-8" frameY="-13" frameWidth="33" frameHeight="32" />
+    <SubTexture name="dizzy.000" x="0" y="46" width="23" height="28" frameX="-2" frameY="-4" frameWidth="33" frameHeight="32" />
+    <SubTexture name="dizzy.001" x="23" y="46" width="24" height="25" frameX="-3" frameY="-7" frameWidth="33" frameHeight="32" />
+    <SubTexture name="dizzy.002" x="47" y="46" width="23" height="23" frameX="-4" frameY="-9" frameWidth="33" frameHeight="32" />
+    <SubTexture name="dizzy.003" x="70" y="46" width="23" height="28" frameX="-8" frameY="-4" frameWidth="33" frameHeight="32" />
+    <SubTexture name="dizzy.004" x="93" y="46" width="24" height="25" frameX="-5" frameY="-7" frameWidth="33" frameHeight="32" />
+    <SubTexture name="dizzy.005" x="117" y="46" width="23" height="23" frameX="-5" frameY="-9" frameWidth="33" frameHeight="32" />
+    <SubTexture name="hurt.000" x="0" y="74" width="23" height="26" frameX="-5" frameY="-5" frameWidth="33" frameHeight="32" />
+    <SubTexture name="hurt.001" x="23" y="74" width="25" height="25" frameX="-4" frameY="-6" frameWidth="33" frameHeight="32" />
+    <SubTexture name="hurt2.000" x="0" y="100" width="22" height="19" frameX="-2" frameY="-12" frameWidth="33" frameHeight="32" />
+    <SubTexture name="idle.000" x="0" y="119" width="18" height="22" frameX="-6" frameY="-10" frameWidth="33" frameHeight="32" />
+    <SubTexture name="idle.001" x="18" y="119" width="19" height="21" frameX="-5" frameY="-11" frameWidth="33" frameHeight="32" />
+    <SubTexture name="idle.002" x="37" y="119" width="21" height="20" frameX="-3" frameY="-12" frameWidth="33" frameHeight="32" />
+    <SubTexture name="idle.003" x="58" y="119" width="19" height="21" frameX="-5" frameY="-11" frameWidth="33" frameHeight="32" />
+    <SubTexture name="jump.000" x="0" y="141" width="23" height="21" frameX="-4" frameY="-9" frameWidth="33" frameHeight="32" />
+    <SubTexture name="jump.001" x="23" y="141" width="21" height="22" frameX="-5" frameY="-7" frameWidth="33" frameHeight="32" />
+    <SubTexture name="lookup.000" x="0" y="163" width="21" height="22" frameX="-3" frameY="-10" frameWidth="33" frameHeight="32" />
+    <SubTexture name="roll.000" x="0" y="185" width="17" height="18" frameX="-8" frameY="-14" frameWidth="33" frameHeight="32" />
+    <SubTexture name="roll.001" x="17" y="185" width="18" height="17" frameX="-7" frameY="-14" frameWidth="33" frameHeight="32" />
+    <SubTexture name="roll.002" x="35" y="185" width="17" height="18" frameX="-8" frameY="-14" frameWidth="33" frameHeight="32" />
+    <SubTexture name="roll.003" x="52" y="185" width="18" height="17" frameX="-7" frameY="-14" frameWidth="33" frameHeight="32" />
+    <SubTexture name="run.000" x="0" y="203" width="18" height="22" frameX="-6" frameY="-10" frameWidth="33" frameHeight="32" />
+    <SubTexture name="run.001" x="18" y="203" width="20" height="22" frameX="-5" frameY="-9" frameWidth="33" frameHeight="32" />
+    <SubTexture name="run.002" x="38" y="203" width="18" height="22" frameX="-6" frameY="-10" frameWidth="33" frameHeight="32" />
+    <SubTexture name="run.003" x="56" y="203" width="18" height="22" frameX="-7" frameY="-10" frameWidth="33" frameHeight="32" />
+    <SubTexture name="run.004" x="74" y="203" width="17" height="22" frameX="-8" frameY="-9" frameWidth="33" frameHeight="32" />
+    <SubTexture name="run.005" x="91" y="203" width="18" height="22" frameX="-7" frameY="-10" frameWidth="33" frameHeight="32" />
+    <SubTexture name="victory.000" x="0" y="225" width="19" height="24" frameX="-5" frameY="-8" frameWidth="33" frameHeight="32" />
+    <SubTexture name="wall-grab.000" x="0" y="249" width="21" height="21" frameX="-4" frameY="-9" frameWidth="33" frameHeight="32" />
+    <SubTexture name="wall-grab.001" x="21" y="249" width="23" height="21" frameX="-2" frameY="-9" frameWidth="33" frameHeight="32" />
+</TextureAtlas>

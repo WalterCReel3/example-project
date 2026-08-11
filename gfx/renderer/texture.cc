@@ -1,5 +1,7 @@
 #include <gfx/renderer/texture.hpp>
 
+#include <util/algorithm.hpp>
+
 #include <SDL.h>
 
 #include <stdexcept>
@@ -37,7 +39,7 @@ Texture::Texture(Context& context, int width, int height)
     , _width(width)
     , _height(height)
 {
-    if (width <= 0 || height <= 0) {
+    if (!util::all_positive(width, height)) {
         throw std::runtime_error("texture dimensions must be positive");
     }
 

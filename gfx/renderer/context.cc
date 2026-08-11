@@ -1,5 +1,7 @@
 #include <gfx/renderer/context.hpp>
 
+#include <util/algorithm.hpp>
+
 #include <SDL.h>
 #include <SDL_ttf.h>
 #include <cstring>
@@ -349,7 +351,7 @@ void Context::draw_text(const std::string& text, TTF_Font* font,
 
 bool Context::save_screenshot(const std::string& path) const
 {
-    if (!_renderer || _width <= 0 || _height <= 0) {
+    if (!_renderer || !util::all_positive(_width, _height)) {
         util::log_error("screenshot: no renderer");
         return false;
     }

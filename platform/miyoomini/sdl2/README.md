@@ -104,7 +104,7 @@ returned:
 
 ```sh
 cmake --build build/miyoomini --target bundle-onion
-# copy pkg/coppers-*-onion.tar.gz onto the card, run "Wreel Diagnostics"
+# copy pkg/wreel-*-onion.tar.gz onto the card, run "Wreel Diagnostics"
 # from the Apps menu, then read App/WreelDiag/diag.txt
 ```
 

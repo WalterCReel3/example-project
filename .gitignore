@@ -48,7 +48,23 @@ local.md
 
 core
 core.*
+# qemu-user writes these when a cross-built binary faults under emulation.
+qemu_*.core
 
 # OS cruft
 .DS_Store
 Thumbs.db
+
+# Python tooling in tools/ runs from a local virtualenv, rebuilt from
+# tools/requirements.txt rather than committed.
+/tools/.venv/
+__pycache__/
+
+# The Sunny Land pack as purchased: 5.9M of PSDs, .ase sources, preview GIFs and
+# licence PDFs that nothing in the build reads. Its licence permits
+# redistribution — this is a size decision, not a legal one. What the tree needs
+# from it is committed: the frames tools/pack_atlas.py consumes are in
+# data/sunny-land/, and the atlas it generates is data/foxy.{png,xml}. See
+# data/PROVENANCE.md.
+/data/Sunny-land-files/
+/data/Sunny-land-files.zip

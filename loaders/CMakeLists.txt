@@ -7,9 +7,11 @@
 # tests/test_obj.cc possible on the GPU-less targets.
 
 set(WREEL_LOADERS_SOURCES
+    animations.cc
     image.cc
     obj.cc
-    sparrow.cc)
+    sparrow.cc
+    tmx.cc)
 
 add_library(wreel_loaders STATIC ${WREEL_LOADERS_SOURCES})
 add_library(wreel::loaders ALIAS wreel_loaders)

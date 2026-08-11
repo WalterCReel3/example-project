@@ -1,5 +1,7 @@
 #include <gfx/gles2/context.hpp>
 
+#include <util/algorithm.hpp>
+
 #include <gfx/gles2/api.hpp>
 
 #include <util/logging.hpp>
@@ -155,7 +157,7 @@ void Context::present()
 
 bool Context::save_screenshot(const std::string& path) const
 {
-    if (!api_loaded() || _width <= 0 || _height <= 0) {
+    if (!api_loaded() || !util::all_positive(_width, _height)) {
         util::log_error("screenshot: no context");
         return false;
     }

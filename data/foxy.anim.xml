@@ -1,0 +1,15 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Animations atlas="foxy.xml">
+    <Animation name="climb" fps="8" loop="repeat" frames="4" />
+    <Animation name="crouch" fps="10" loop="once" frames="3" />
+    <Animation name="dizzy" fps="10" loop="repeat" frames="6" />
+    <Animation name="hurt" fps="10" loop="once" frames="2" />
+    <Animation name="hurt2" fps="6" loop="once" frames="1" />
+    <Animation name="idle" fps="6" loop="repeat" frames="4" />
+    <Animation name="jump" fps="8" loop="once" frames="2" />
+    <Animation name="lookup" fps="6" loop="repeat" frames="1" />
+    <Animation name="roll" fps="14" loop="once" frames="4" />
+    <Animation name="run" fps="12" loop="repeat" frames="6" />
+    <Animation name="victory" fps="6" loop="repeat" frames="1" />
+    <Animation name="wall-grab" fps="6" loop="pingpong" frames="2" />
+</Animations>
