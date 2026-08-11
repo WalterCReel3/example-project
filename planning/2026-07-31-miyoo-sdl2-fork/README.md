@@ -998,9 +998,12 @@ device runs.
       flags, bounds-check `update_texture`'s 100-entry table, advertise
       `ABGR8888`, and the `MI_SYS_Munmap` size from `9eff61a4` (§7.1). Small,
       self-contained, no capability change
-- [ ] **Item 4 — `max_texture_*` from `FB_W`/`FB_H`.** Correct, and
-      **unverifiable without a Mini Flip in hand**. Land it saying so rather
-      than implying it was tested
+- [ ] **Item 4 — `max_texture_*` from `FB_W`/`FB_H`.** Correct, and verifiable:
+      **corrected 2026-08-10, the Mini Flip is in hand.** This task previously
+      read "unverifiable without a Mini Flip in hand" and § 8.7 said the same. No
+      Flip *run* had happened, and the absence of a run got written down as an
+      absence of hardware — a claim nobody could check from the desk, which is
+      why it survived. Land it with a device run like any other item
 - [x] Revise D25 to whatever survives, and withdraw D27 when item 1 lands. Done
       2026-08-02, and revisited 2026-08-05 when §8.6 found two of D25's
       consequence bullets were wrong about *why* they were true
@@ -1092,8 +1095,12 @@ whole rectangle would arrive opaque over the copper bars.
 - **It removes four driver items from the sprites module's critical path** —
   2, 3, 10, 11 — and the texture cap with them. The software renderer advertises
   `max 0x0`, unlimited, against the backend's 640×480. That also disposes of
-  item 4 and the Mini Flip, on the one target where the cap is wrong and cannot
-  be tested.
+  item 4 and the Mini Flip, on the one target where the cap is wrong.
+
+  > **Corrected 2026-08-10.** This said "and cannot be tested". The Flip is in
+  > hand and always was; see the item 4 task above. The argument here is
+  > unaffected — the software renderer still routes around the cap — but it was
+  > leaning on a second reason that does not exist.
 - **The device loop mostly disappears for engine work.** `desktop-software`
   exercises the identical renderer, so correctness becomes a desk question and
   the SD card is for integration.
