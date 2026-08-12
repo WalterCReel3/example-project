@@ -1,16 +1,16 @@
 # Publishing the Miyoo Mini SDL2 drivers as their own repository
 
-**Status:** `snapshot` — assessed, not started
+**Status:** `in progress` — scope decided 2026-08-10, stage 1 started
 **Written:** 2026-08-08
-**Blocked by:** nothing, but see § 5 — the honest version needs a second device
-or an explicit scope statement
+**Blocked by:** nothing
 **Serves:** [packaging-distribution](../2026-07-25-packaging-distribution/), the
 LGPL obligation recorded in
 [platform/miyoomini/sdl2/PROVENANCE.md](../../platform/miyoomini/sdl2/PROVENANCE.md),
 and anyone else shipping SDL2 on this device
-**Decision:** **not taken.** One thing is settled and it shapes everything else:
-the conformance and example tooling would be **new, minimal, portable C**, not an
-extraction of `wreel-diag` — § 3
+**Decision:** **taken 2026-08-10 — scope B, built so that C is a release-time
+choice rather than a rebuild.** The repository is `sdl2-mini`, our own code in it
+is zlib, and the conformance tooling is **new, minimal, portable C** that
+supersedes `wreel-diag` rather than running beside it — §§ 3, 7
 
 ---
 
@@ -146,11 +146,26 @@ becoming someone else's unknown blob.
 ## 5. The constraints that do not go away
 
 - **One device, one firmware.** Everything verified here is a Miyoo Mini Plus on
-  Onion. The Flip's 752×560 panel is unowned and item 4 is explicitly
-  unverifiable without one; stock firmware has had far less exposure than Onion.
-  Publishing implies a support matrix we have not earned, and this project's own
-  rule is not to claim more than was verified. **A README that states exactly
-  what was tested is the minimum honest version**, and it costs nothing.
+  Onion. Publishing implies a support matrix we have not earned, and this
+  project's own rule is not to claim more than was verified. **A README that
+  states exactly what was tested is the minimum honest version**, and it costs
+  nothing.
+
+  > **Corrected 2026-08-10: the Flip is owned, and always was.** This bullet said
+  > the 752×560 panel was unowned; the fork snapshot's stage-1 task list called
+  > item 4 "unverifiable without a Mini Flip in hand" and its § 8.7 called it
+  > "the one target where the cap is wrong and cannot be tested". All three are
+  > wrong, and they are the same error copied forward — no Flip *run* had
+  > happened, and the document turned a gap in the evidence into a claim about
+  > the hardware. The two are not the same thing and only one of them is
+  > checkable from here, which is exactly why it went unchallenged for ten days.
+  >
+  > What it changes: item 4 (`max_texture_width/height` are literals the Flip
+  > detection never reaches) moves from *unfixable-in-good-conscience* to
+  > ordinary stage-1 work with a device run behind it, the tested-on matrix
+  > becomes two panels rather than one, and the open question about "the artefact
+  > for the Flip" below dissolves. Stock firmware still has far less exposure
+  > than Onion, and that part of the bullet stands.
 - **The base differs from the ecosystem's.** Ours is SDL 2.32.10; both forks are
   2.0.20. The symbol set is a strict superset — 839 against 798, checked at stage
   0 — so it links and resolves. But twelve years of render-frontend change sit
@@ -178,22 +193,85 @@ our problem — and also where the reuse actually lands for most of the audience
 
 ---
 
+## 7. Decision, 2026-08-10
+
+**Scope B, built so that C is a release-time choice rather than a rebuild.**
+
+### The gate as written was larger than the thing it gated
+
+Stage 0 below said nothing was worth starting until B or C was chosen, "because
+the tooling effort differs by a lot". That reason does not survive § 2's own
+table: **C is B plus prebuilt releases**, so the conformance tool, the evidence
+and the examples are identical in both. The effort differs between *A and B*, not
+between B and C. Stage 1 and stage 2 are a strict prefix of scope C's work, and
+the B/C choice can be made when there is something to publish.
+
+What genuinely had to be decided up front is narrower and cheaper: whether the
+standalone build is reproducible by a stranger from day one. It is — the build
+runs in the existing `union-miyoomini-toolchain` container, records the toolchain
+it used, and emits a checksum beside the library. That costs a few lines now and
+means choosing C later is a tag rather than a rebuild.
+
+**The trigger for actually publishing a binary:** when the C tool's verdict table
+has been produced on hardware *from the standalone build* rather than from this
+tree, on both panels. That is the evidence § 5 says has not been earned yet, and
+producing it is stage 2 regardless.
+
+### Settled with it
+
+| | |
+|---|---|
+| **Repository** | `sdl2-mini` — the drivers call themselves `mini` throughout (`SDL_MINI`, `Mini_VideoDriver`, the `"Miyoo Mini"` render backend), and the name does not read as a third clone next to `sdl2-mmiyoo` and `sdl2-steward-fu` |
+| **Licence, our code** | **zlib**, matching upstream SDL2. The build glue, the C tool and the examples are new work; keeping them zlib leaves the LGPL boundary sitting exactly on steward-fu's driver files, which is the property `WREEL_SDL2_LINKAGE=SHARED` depends on, and lets someone lift an example into their app without thinking about it |
+| **Licence, drivers** | **LGPL-2.1**, unchanged and non-negotiable — `PROVENANCE.md` travels with them |
+| **The C tool** | **supersedes `wreel-diag`**, and is allowed to be a superset of it. § 3's "two instruments drifting" risk is closed by not having two |
+
+### On the C tool superseding `wreel-diag`
+
+The open question below asked whether it would, and noted it was cheaper to aim
+at than to retrofit. It is aimed at.
+
+The thing to be careful about is *sequencing*, not intent: the C tool is written
+for the public repository's purpose and is not held back by this repository's
+schedule for retiring `wreel-diag`. Concretely it takes no dependency on `util`,
+`rig` or the readback layer — it is C against SDL2 and libc — and it emits the
+verdict table in a form this repository can consume later. `wreel-diag` keeps
+running here until the C tool's table has matched it on a device run; after that,
+retiring it is a separate and much smaller decision.
+
+---
+
 ## Tasks
 
-**Stage 0 — decide the scope.** Nothing below is worth starting until 3 or 4 is
-chosen, because the tooling effort differs by a lot.
+**Stage 0 — decide the scope. DONE 2026-08-10**, § 7.
 
-- [ ] Pick between scope B and scope C, on § 6
+- [x] ~~Pick between scope B and scope C~~ **B, and the gate turned out to be
+      A-vs-B rather than B-vs-C** — C is a superset of B by § 2's own table, so
+      the choice was deferrable and the reason given for blocking on it was
+      wrong. Settled with it: the repository name, zlib for our own code, and the
+      C tool superseding `wreel-diag` rather than running beside it
 
 **Stage 1 — the repository, scope A**
 
-- [ ] Driver sources, patch, `graft.cmake`, `PROVENANCE.md`, licence
-- [ ] A standalone build that fetches pinned SDL2 and produces
+- [x] Driver sources, patch, `graft.cmake`, `PROVENANCE.md`, licence — done
+      2026-08-10 at `~/Source/sdl2-mini`, uncommitted
+- [x] A standalone build that fetches pinned SDL2 and produces
       `libSDL2-2.0.so.0` — CMake, not the autoconf route § 4 of the fork snapshot
-      priced and rejected
-- [ ] A README stating **exactly** what hardware and firmware it was tested on
-- [ ] Cross-reference from this repository's `PROVENANCE.md`, so the two do not
+      priced and rejected. **Built and inspected**: 1,480,704 bytes of armv7,
+      839 exported symbols — the same count § 8's stage 0 measured, now
+      reproduced from a build that shares no CMake code with this tree — and
+      neither `libEGL.so` nor `libGLESv2.so` in `DT_NEEDED`. Not run on hardware
+- [x] A README stating **exactly** what hardware and firmware it was tested on —
+      including that nothing has been run from *that* build yet, which is the
+      part the rule actually costs something to keep
+- [x] Cross-reference from this repository's `PROVENANCE.md`, so the two do not
       drift into disagreeing about what was changed
+- [ ] **Mechanise the `src/` sync.** The drivers are copied into the public
+      repository, not shared, so the two can diverge silently — a fix in one, a
+      bug report against the other, and nothing in either to say which is which.
+      `PROVENANCE.md` carries a `diff -r` and a land-in-both rule, which is a
+      convention rather than a mechanism and will hold exactly as long as
+      somebody remembers it
 
 **Stage 2 — the C tooling, scope B**
 
@@ -203,23 +281,32 @@ chosen, because the tooling effort differs by a lot.
       dependencies beyond SDL2 and libc
 - [ ] Examples: blended sprite, atlas sub-rect, software-renderer fallback,
       framebuffer readback
-- [ ] Decide whether it supersedes `wreel-diag` here or runs alongside it
+- [x] ~~Decide whether it supersedes `wreel-diag` here or runs alongside it~~
+      **supersedes**, § 7 — with the sequencing caveat that `wreel-diag` keeps
+      running here until the C tool's table has matched it on a device run
 
 **Stage 3 — releases, scope C, only if chosen**
 
-- [ ] Reproducible build with the toolchain recorded and checksums published
+- [ ] Reproducible build with the toolchain recorded and checksums published —
+      *the build side is stage 1 by § 7; what is left here is the publishing*
 - [ ] A tested-on matrix that is honest about what has not been tested
+- [ ] Item 4 (`max_texture_width/height`) fixed and **run on the Flip**, which
+      § 5's correction makes ordinary work rather than a blind fix
 
 ---
 
 ## Risks
 
-**Two instruments drifting.** § 3. The mitigation is to decide early whether the
-C tool becomes the single instrument.
+**~~Two instruments drifting~~** — **closed 2026-08-10** by § 7: the C tool is
+the single instrument. What replaces it is a smaller, bounded risk — the window
+between the C tool existing and `wreel-diag` being retired, during which the two
+can still disagree. That window ends at one device run and is worth watching
+rather than designing around.
 
 **Publishing implies a support matrix we do not have.** § 5. Mitigated only by
 saying so in the README, which requires the discipline to keep saying it when
-someone asks whether it works on their Flip.
+someone asks whether it works on a device or firmware that has had no run —
+which, with the Flip now in the matrix, means stock firmware and the plain Mini.
 
 **The 2.32 base breaking a 2.0.20-era port.** § 5. Unmitigable in general;
 worth a prominent note, and worth keeping the symbol-superset evidence published
@@ -239,12 +326,15 @@ and it belongs in that repository's README rather than only here.
   [§ 5](../2026-07-31-miyoo-sdl2-fork/) rejects *offering* them uninvited and
   that still stands; a public repository makes them findable without anyone
   spending time on anyone else's timeline, which is the point.
-- **Does the C tool replace `wreel-diag`?** Cheaper to aim at than to retrofit,
-  and it decides how much of stage 2 is duplicated work.
-- **What is the artefact for the Flip?** Item 4 fixes the texture cap for a panel
-  nobody here owns. Publishing a build for hardware we cannot test is exactly
-  what § 5 warns against — but leaving Flip users on a driver with a known wrong
-  constant is not obviously better.
+- ~~**Does the C tool replace `wreel-diag`?**~~ **Answered 2026-08-10: yes**, § 7.
+- ~~**What is the artefact for the Flip?**~~ **Dissolved 2026-08-10.** It rested
+  on the panel being unowned, which § 5's correction shows it never was. Item 4
+  is a normal fix with a normal device run behind it, and the Flip is a row in
+  the tested-on matrix rather than a hole in it.
+- **Which firmwares get a run?** Onion on the Plus is the only one with real
+  exposure. Stock is untested on both panels and the plain Mini is untested
+  outright. This is now the honest edge of the matrix, and it is where the
+  support-surface risk actually lives.
 
 ## References
 
