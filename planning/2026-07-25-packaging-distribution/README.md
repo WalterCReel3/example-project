@@ -1,6 +1,7 @@
 # Packaging and distribution
 
-**Status:** `snapshot`
+**Status:** `in-progress` — the Onion layout landed 2026-07-27 and shipped to a
+device 2026-08-01; the remaining three firmwares and the Steam depot are open
 **Written:** 2026-07-25
 **Unblocked:** 2026-07-27 — see below. `coppers` gave the handheld targets
 something worth putting on an SD card, and the bundle and the validation run are

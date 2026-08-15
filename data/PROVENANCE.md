@@ -56,9 +56,10 @@ The packer trims transparent margins, so the sheet is 140×270 rather than the
 198×384 the pack's own `atlas.png` uses, and every frame carries Sparrow trim
 attributes. That is deliberate beyond the size saving: before this, nothing in
 `data/` exercised the trim path, and a trim offset applied with the wrong sign
-draws a sprite a few pixels out of place rather than failing. The tool's
-`--verify` pass rebuilds each frame from the atlas and compares it to its
-source, which is what makes that convention checked rather than asserted.
+draws a sprite a few pixels out of place rather than failing. The tool's verify
+pass rebuilds each frame from the atlas and compares it to its source, which is
+what makes that convention checked rather than asserted. It runs by default;
+`--no-verify` is what turns it off.
 
 `foxy.anim.xml` is a different kind of file: generated *once* as a starting
 point and edited by hand after, since Sparrow carries no timing and the frame

@@ -29,6 +29,12 @@ Each `README.md` opens with one of:
 | `done` | Landed. Kept for the reasoning, not the checklist. |
 | `superseded` | Replaced by a later snapshot, which is linked. |
 
+**These five words, and no others.** Two documents drifted to `delivered` and
+`closed <date>`, which is how the table below came to disagree with the documents
+it indexes — the index is maintained by hand against these statuses, so a word
+outside the list silently stops matching. Put the nuance after the status, where
+`in-progress — stage 0 passed 2026-08-01` already does it well.
+
 ## Current snapshots
 
 | Topic | Status | Summary |
@@ -41,8 +47,8 @@ Each `README.md` opens with one of:
 | [2026-07-25-target-validation](2026-07-25-target-validation/) | `in-progress` | Prove the cross and Steam presets on real toolchains and hardware. Steps 1–2 done; the device toolchain, containers and hardware remain |
 | [2026-07-26-coppers-cracktro](2026-07-26-coppers-cracktro/) | `in-progress` | A copper-bar cracktro on `gfx::renderer`. Stages 0–3 landed 2026-07-27: `rig`, the locked-pixels layer, `Texture` and the source-rect blit, both scroller paths, music and input. **Stage 4 is the on-device measurement and needs hardware** |
 | [2026-07-25-packaging-distribution](2026-07-25-packaging-distribution/) | `in-progress` | Handheld bundles per firmware, Steam depot layout. Its first firmware landed 2026-07-27 in the snapshot below; the remaining three layouts and the Steam depot are still open |
-| [2026-07-29-gles-free-runtime](2026-07-29-gles-free-runtime/) | `in-progress` | Drop the 21.8 MB SwiftShader GL blob from the handheld bundle. **The vendored SDL2 references zero symbols from it** — the dependency is a link-time artefact, so this was a build step rather than a rebuild. Stages 1–2 done: **29.5 MiB → 8.7 MiB staged, ~13 MB → 3.6 MB compressed**, and it runs on hardware — on stock firmware as well as Onion. Stage 3, pinning what we ship, remains |
-| [2026-07-27-onion-bundle](2026-07-27-onion-bundle/) | `in-progress` | Getting `coppers` onto the Miyoo Mini Plus in hand. **Answers the project's largest open question — upstream SDL2 cannot drive that panel, so the firmware's patched copy is mandatory.** The `App/Coppers/` bundle is implemented and verified on the dev box; the device trip is stages 0–3 |
+| [2026-07-29-gles-free-runtime](2026-07-29-gles-free-runtime/) | `done` | Drop the 21.8 MB SwiftShader GL blob from the handheld bundle. **The vendored SDL2 references zero symbols from it** — the dependency is a link-time artefact, so this was a build step rather than a rebuild. Stages 1–3 landed: **29.5 MiB → 8.7 MiB staged, ~13 MB → 3.6 MB compressed**, and it runs on hardware — on stock firmware as well as Onion. Closed 2026-08-01 by a route it argued against: the project now compiles its own SDL2 with the GL path not compiled, so there is no blob left to drop |
+| [2026-07-27-onion-bundle](2026-07-27-onion-bundle/) | `done` | Getting `coppers` onto the Miyoo Mini Plus in hand. **Answers the project's largest open question — upstream SDL2 cannot drive that panel, so the firmware's patched copy is mandatory.** Delivered 2026-08-01: MainUI lists the App and launches it, and `coppers` played 859 frames at 59.7 fps with audio. What is left of stage 2 is the measurement sweep, which is [coppers-cracktro](2026-07-26-coppers-cracktro/)'s stage 4 rather than this one's |
 | [2026-07-31-miyoo-sdl2-fork](2026-07-31-miyoo-sdl2-fork/) | `in-progress` | Build and maintain our own SDL2 for the Miyoo Mini. **Stage 0 passed on hardware 2026-08-01**: the drivers are grafted onto the pinned SDL 2.32.10, and `coppers` ran 859 frames at 59.7 fps with audio, indistinguishable from the prebuilt it replaces. The bundle's `lib/` went from four binaries we did not build to one we do — no EGL of unknown licence, no 21.8 MB SwiftShader, no unidentifiable json-c. `wreel-diag` then measured the conformance gap instead of inferring it: **D27's use-after-free confirmed** (it crashed the tool first), blend mode, colour mod and `FillRect` all silently ignored, and **the 180° rotation settled as correct panel compensation** — the question § 6 called the most expensive one to get wrong. Tier 1 next; tier 2 contested by one function, `Mini_UpdateWindowFramebuffer` |
 | [2026-07-25-midi-live-visuals](2026-07-25-midi-live-visuals/) | `snapshot` | The secondary goal: MIDI-driven demo-style graphics |
 | [2026-08-10-game-layer-and-demo](2026-08-10-game-layer-and-demo/) | `snapshot` | The game layer the 2D snapshot scoped out on day one — collision, camera, input mapping — defined by writing a small game rather than in the abstract. **Avoidance, not combat**: Foxy forages an orchard while three animals patrol it. Picks up the entity store's recorded promotion trigger (a second consumer now exists), pulls the overdraw lever [results.md](2026-07-25-target-validation/results.md) identified after the tile-cache idea died, and is the first thing that needs `rig::Pad`'s guessed button mapping to be right. Found one real gap while scoping: **`load_tmx` reads no properties at all**, which is why collision is authored as a named layer. Carries sound too — generated 8-bit effects from a new `tools/make_sfx.py`, which costs no codec because `minimal` is already WAV + tracker, and no engine code because `audio::Sound` exists. Music is `emerald-droplets.xm` by malmen, the first module here with an attributable licence |
@@ -301,3 +307,47 @@ poisons what the previous one left, and reports SKIPPED rather than guessing.
 The control run on `desktop-software` — where SDL's own software renderer is a
 correct implementation of the same contract — is what makes any of it
 interpretable.
+
+## 2026-08-14: the index had drifted from the documents it indexes
+
+Not a re-ordering. A sync, prompted by asking the ordinary question this file
+exists to answer — *what is available to work on next* — and finding that the
+answer it gave was wrong in both directions.
+
+Two documents were finished and the table still advertised their remaining stages
+as work: `onion-bundle` shipped to a device on 2026-08-01 and
+`gles-free-runtime` closed the same day. Meanwhile `packaging-distribution` still
+opened with `snapshot` after its first firmware layout had landed and been run on
+hardware. Both failures have the same mechanic — the statuses are maintained by
+hand in two places, and the two documents that drifted had each invented a status
+word (`delivered`, `closed <date>`) outside the vocabulary above, so nothing was
+matching anything. The vocabulary section now says so.
+
+Stale checkboxes were the more expensive half, because a task list is what someone
+actually picks work off:
+
+- `onion-bundle`'s stages 2 and 3 were entirely unticked on a document whose own
+  header said it had shipped. Ticked against evidence, with two left open and one
+  reassigned: the `wreel-probe` capture on a device is genuinely outstanding, the
+  headless static-build check was never run, and the measurement sweep belongs to
+  [coppers-cracktro](2026-07-26-coppers-cracktro/) stage 4 rather than to the
+  bundle.
+- `target-validation`'s `results.md` carried a "Still outstanding" table in the
+  middle of a file that is not in date order, listing two steps that later
+  sections in the same file close. Dated and corrected in place.
+- `game-layer-and-demo` asked for a `PROVENANCE.md` row that already exists, and
+  `midi-live-visuals` asked for a frame clock that `rig::FrameClock` already is.
+
+Two corrections that are not status drift, found by reading the tool instead of
+the document that describes it. `pack_atlas.py` has **no `--verify` flag** — the
+verify pass is on by default and `--no-verify` turns it off — and three documents
+instructed otherwise, one of them as a command to run. And the ingest task assumed
+a copy-and-rename where the source frames are 1-based and unpadded against a
+verifier that opens `{index:03d}.png`, so the copy renumbers too.
+
+**The transferable part is that "no open questions remain" is a claim like any
+other.** `game-layer-and-demo` said it, and settling it took one look at how
+`pack_atlas.py` derives animation names: the frog and the opossum both have an
+`idle`, that document argues at length that frame names are expensive to change
+after the fact, and the case had no decision. It is recorded as an open question
+now rather than discovered halfway through the ingest.

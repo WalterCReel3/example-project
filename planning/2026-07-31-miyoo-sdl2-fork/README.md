@@ -1209,7 +1209,9 @@ rework.
 
 **Stage 3 — reconsider tier 3**
 
-- [ ] The §6 experiment, in both axes, then item 14 if it says so
+- [ ] ~~The §6 experiment, in both axes~~ — **both answered**: § 6 on 2026-08-01,
+      and the blending-versus-rotation axis in § 8.7 on 2026-08-08. What is left of
+      this box is item 14 alone, on that evidence
 - [ ] Revisit 15–18 with stage 1's device evidence in hand
 
 **Not scheduled, and deliberately so**
