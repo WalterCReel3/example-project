@@ -133,7 +133,7 @@ void Demo::load()
     const int top = _context.height() / 3;
 
     for (gfx::AnimationSet::Index i = 0; i < _animations.size(); ++i) {
-        Entity actor;
+        game::Entity actor;
         actor.sprite = gfx::AnimatedSprite(_atlas, _animations[i]);
         actor.scale = scale;
         actor.x = static_cast<int>(i % columns) * cell + cell / 8;
@@ -148,7 +148,7 @@ void Demo::load()
     if (_hero_animation == gfx::AnimationSet::npos) {
         _hero_animation = 0;
     }
-    Entity hero;
+    game::Entity hero;
     hero.sprite = gfx::AnimatedSprite(_atlas, _animations[_hero_animation]);
     hero.scale = scale * 2;
     hero.y = top - 34 * hero.scale;
@@ -162,7 +162,7 @@ void Demo::load()
 
 void Demo::play_hero(const gfx::Animation& animation)
 {
-    if (Entity* hero = _entities.find(_hero)) {
+    if (game::Entity* hero = _entities.find(_hero)) {
         hero->sprite.play(animation);
     }
 }
@@ -190,7 +190,7 @@ void Demo::step(double delta)
     // Turn the hero around at the edges. The store integrates the position;
     // what it does not model is anything reacting to where that position ends
     // up, which is the game layer this deliberately stops short of.
-    Entity* hero = _entities.find(_hero);
+    game::Entity* hero = _entities.find(_hero);
     if (hero == nullptr) {
         return;
     }

@@ -89,8 +89,10 @@ effect running at a real frame rate would be the first evidence either way.
 - [ ] JSON mapping file per controller, loaded through the `util::json` facade
 - [ ] One effect end to end — a fragment shader through `gfx::gles2`, or a
       CPU-plotted one through `gfx::renderer` if the Miyoo Mini is a target for it
-- [ ] Frame timing: the demo loop currently `SDL_Delay(10)`s unconditionally,
-      which is neither a frame cap nor vsync
+- [x] Frame timing — **done elsewhere.** `rig::FrameClock` landed with the coppers
+      work and `skratch` holds one; the unconditional `SDL_Delay(10)` this task was
+      written against survives only as a comment. A `visuals/` executable uses the
+      same clock rather than growing its own
 - [ ] A `visuals/` executable, separate from `skratch`
 
 ## Open questions

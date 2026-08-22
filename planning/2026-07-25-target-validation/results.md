@@ -550,16 +550,19 @@ Recorded as D19 in
 
 ---
 
-## Still outstanding
+## 2026-07-27 — still outstanding, as of this date
 
-The steps this snapshot lists that no amount of dev-box work can close:
+**This section is dated, and two of its four rows have since closed.** It is kept
+in place because the entries below it were written against this view of the world.
+This file is not read top to bottom in date order — check the row before acting on
+it.
 
-| Step | Needs |
-|---|---|
-| 3 — Miyoo Mini device toolchain (GCC 8.3) | the toolchain container |
-| 4 — on-device run | a Miyoo Mini Plus or Flip |
-| 5 — Steam Runtime | the sniper container |
-| Mali GLES2 | an RK3326 or H700 device |
+| Step | Needs | Since |
+|---|---|---|
+| 3 — Miyoo Mini device toolchain (GCC 8.3) | the toolchain container | **closed 2026-07-27** — see the step 3 section below |
+| 4 — on-device run | a Miyoo Mini Plus or Flip | **closed 2026-07-28**, and again properly 2026-08-01 |
+| 5 — Steam Runtime | the sniper container | still open |
+| Mali GLES2 | an RK3326 or H700 device | still open |
 
 `coppers` is now the thing to run for step 4, alongside `wreel-probe`. Between them
 they answer the display path, the video driver, the gamepad enumeration, the audio

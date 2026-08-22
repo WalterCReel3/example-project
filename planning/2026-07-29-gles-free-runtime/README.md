@@ -1,6 +1,6 @@
 # Shipping the Miyoo Mini bundle without a GL stack
 
-**Status:** `closed 2026-08-01` — the goal is met at source rather than by patching
+**Status:** `done` — closed 2026-08-01, the goal met at source rather than by patching
 
 > **Closed, and by a route this document argued against.** Stages 1–3 landed as
 > written and took the bundle from 30 MB to 8.8 MiB by removing an unused

@@ -11,12 +11,12 @@
 
 add_executable(sprites
     main.cc
-    demo.cc
-    entities.cc)
+    demo.cc)
 
 wreel_set_target_defaults(sprites)
 
 target_link_libraries(sprites PRIVATE
+    wreel::game
     wreel::loaders
     wreel::gfx
     wreel::rig

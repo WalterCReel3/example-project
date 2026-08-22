@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include <game/entities.hpp>
 #include <gfx/animation.hpp>
 #include <gfx/atlas.hpp>
 #include <gfx/renderer/context.hpp>
@@ -11,8 +12,6 @@
 #include <gfx/tilemap.hpp>
 #include <rig/input.hpp>
 #include <rig/timing.hpp>
-
-#include "entities.hpp"
 
 //============================================================================
 //
@@ -111,10 +110,10 @@ private:
 
     // Every animated thing on screen, including the hero, so the store is what
     // the demo actually runs on rather than something tested beside it.
-    Entities _entities;
+    game::Entities _entities;
 
     // The large one that walks across, and which animation it is playing.
-    Entities::Id _hero = Entities::none();
+    game::Entities::Id _hero = game::Entities::none();
     gfx::AnimationSet::Index _hero_animation = 0;
     int _hero_direction = 1;
 };

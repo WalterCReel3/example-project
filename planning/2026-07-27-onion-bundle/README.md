@@ -1,6 +1,6 @@
 # Delivering `coppers` to a Miyoo Mini Plus on OnionOS
 
-**Status:** `delivered` — launched from the Apps menu and ran, 2026-08-01
+**Status:** `done` — launched from the Apps menu and ran, 2026-08-01
 **Written:** 2026-07-27
 
 > **It runs.** MainUI lists the App and launches it; `coppers` played 859 frames
@@ -656,22 +656,34 @@ container works, but it is a second container in the loop rather than one comman
 
 **Stage 2 — the device**
 
-- [ ] Copy to the SD card; enable SSH in Tweaks
-- [ ] Confirm `ldd --version`, and that `libstdc++.so.6`, `libz.so.1` and
-      `libgcc_s.so.1` are present — the vendored GL stack needs all three, and the
-      evidence for them is the toolchain's sysroot rather than the device
-- [ ] **The static build first**, since it is the only one that can run headless:
-      `SDL_VIDEODRIVER=dummy ./coppers-static --screenshot frame.bmp --frames 3`.
-      A valid BMP proves the toolchain, loader, glibc floor, asset resolution and
-      render path without involving MI_GFX at all
-- [ ] Then the bundle, which goes through `mmiyoo` whether you want it to or not.
-      **This is where the SDL2 question gets its practical answer**
-- [ ] `wreel-probe > probe.txt` — the display path, the video driver, the real mode
-- [ ] Launch from the Apps menu and look at the panel
+- [x] Copy to the SD card; enable SSH in Tweaks — done 2026-07-28
+- [x] Confirm `ldd --version`, and that `libstdc++.so.6`, `libz.so.1` and
+      `libgcc_s.so.1` are present — done 2026-07-28, the run's own loader trace is
+      the record. The clause about the vendored GL stack needing all three is moot
+      now: that stack is gone, and since 2026-08-01 `lib/` holds only the SDL2 we
+      build
+- [ ] ~~**The static build first**~~ — **not run, and no longer the cheap first
+      check.** The bundle went straight onto the device and answered the SDL2
+      question directly. Kept because a headless
+      `SDL_VIDEODRIVER=dummy ./coppers-static --screenshot frame.bmp --frames 3`
+      is still the way to separate a toolchain fault from a display one, which is
+      worth having the next time something does not load
+- [x] Then the bundle, which goes through `mmiyoo` whether you want it to or not.
+      **This is where the SDL2 question gets its practical answer** — answered
+      2026-07-28: upstream cannot drive the panel, the patched copy can. Superseded
+      2026-08-01 by the SDL2 this project builds itself
+- [ ] `wreel-probe > probe.txt` — the display path, the video driver, the real mode.
+      **Still outstanding**, and it is the last unchecked deliverable in
+      [target-validation](../2026-07-25-target-validation/) § Deliverables
+- [x] Launch from the Apps menu and look at the panel — done 2026-08-01. The first
+      attempt on 2026-07-28 launched and drew nothing (D22, D23); both were fixed
+      and the second trip showed bars
 - [ ] The rest of the first-pass sequence in
       [target-validation/results.md](../2026-07-25-target-validation/results.md):
       fill rate at both internal resolutions, both scroller paths, the pad
-      enumeration line
+      enumeration line. **Owned by
+      [coppers-cracktro](../2026-07-26-coppers-cracktro/) stage 4**, not by this
+      snapshot — the 2026-08-01 run took native-resolution numbers only
 
 **Follow-ups, none blocking a first run**
 
@@ -697,10 +709,15 @@ container works, but it is a second container in the loop rather than one comman
 
 **Stage 3 — write down what happened**
 
-- [ ] `results.md` gets real output, per command
-- [ ] `docs/DEVELOPMENT.md § Status` rows move
-- [ ] `docs/TARGETS.md` records the SDL2 exception with its reasoning and the pin
-- [ ] Correct packaging-distribution's "no dynamic libraries" claim
+- [x] `results.md` gets real output, per command — done; the 2026-07-28,
+      2026-08-01, 2026-08-02 and 2026-08-08 sections are device runs
+- [x] `docs/DEVELOPMENT.md § Status` rows move — done; the OnionOS bundle, SDL2 on
+      `miyoomini`, `wreel-diag` and Miyoo Mini input rows all carry device dates
+- [x] `docs/TARGETS.md` records the SDL2 exception with its reasoning and the pin —
+      done, § "the escape hatch is `-DWREEL_USE_SYSTEM_SDL2=ON`" onward, and the
+      2.32.10 pin in the dependency table
+- [x] Correct packaging-distribution's "no dynamic libraries" claim — done; struck
+      through with the correction in place
 
 ---
 
