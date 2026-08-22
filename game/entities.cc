@@ -1,9 +1,9 @@
-#include "entities.hpp"
+#include <game/entities.hpp>
 
 #include <algorithm>
 #include <utility>
 
-namespace sprites
+namespace game
 {
 
 Entities::Id Entities::add(Entity entity)
@@ -143,4 +143,4 @@ int Entities::draw(gfx::renderer::Context& context, int camera_x,
     return drawn;
 }
 
-} // namespace sprites
+} // namespace game

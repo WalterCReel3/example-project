@@ -72,6 +72,7 @@ include(Dependencies)
 # include/<module>/. Dependencies run one way:
 #     demo -> loaders -> util -> posix
 #          -> rig     -> util
+#          -> game    -> gfx  -> util
 # ---------------------------------------------------------------------------
 
 add_subdirectory(posix)
@@ -80,6 +81,7 @@ add_subdirectory(rig)
 add_subdirectory(audio)
 add_subdirectory(gfx)
 add_subdirectory(loaders)
+add_subdirectory(game)
 
 if(WREEL_BUILD_PROBE)
     add_subdirectory(probe)

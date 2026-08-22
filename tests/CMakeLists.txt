@@ -33,6 +33,15 @@ wreel_add_test(test_audio   LIBS wreel::audio)
 wreel_add_test(test_assets  LIBS wreel::rig)
 wreel_add_test(test_timing  LIBS wreel::rig)
 
+# Free functions over a TileLayer and two rectangles, so despite linking
+# wreel::game — and through it wreel::gfx — it opens no window, loads no
+# texture and reads no fixture. The layers are built in the test.
+wreel_add_test(test_collide LIBS wreel::game)
+
+# Arithmetic over supplied positions — the camera is told where its target is
+# rather than reading one off an entity store, so this needs no context either.
+wreel_add_test(test_camera  LIBS wreel::game)
+
 # coppers/bars.cc is compiled into the test rather than linked, because the demo
 # is an executable and its sources are not a library. Worth a library if a second
 # consumer ever appears; not worth one for a single test.
@@ -73,13 +82,10 @@ wreel_add_test(test_animation
 # differ in the tile count draw() returns.
 wreel_add_test(test_tmx      LIBS wreel::gfx wreel::loaders wreel::posix)
 
-# sprites/entities.cc is compiled in rather than linked, because the store lives
-# in the demo and the demo is an executable — the same arrangement test_bars has
-# with coppers/bars.cc. Worth a library when a second consumer appears, which is
-# also when the store should leave sprites/.
-wreel_add_test(test_entities
-               SOURCES test_entities.cc ../sprites/entities.cc
-               LIBS wreel::gfx)
+# Links the store rather than compiling it in, because it is a module now and
+# not a source file inside one demo. Needs a Context for the draw-order case
+# only, which is why it sits with test_atlas rather than in the headless group.
+wreel_add_test(test_entities LIBS wreel::game)
 
 # --- Priority queue ----------------------------------------------------------
 #

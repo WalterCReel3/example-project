@@ -1,1 +1,4 @@
+# pack_atlas.py and make_tilemap.py only. make_sfx.py is stdlib-only and is not
+# to grow a dependency: a synthesiser that needs numpy to make five blips has
+# picked the wrong problem.
 Pillow==12.3.0

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include <game/collide.hpp>
 #include <gfx/animation.hpp>
 #include <gfx/renderer/context.hpp>
 
@@ -11,32 +12,51 @@
 //
 // A flat entity store
 //
-//     sprites::Entities entities;
-//     const sprites::Entities::Id id = entities.add(actor);
+//     game::Entities entities;
+//     const game::Entities::Id id = entities.add(actor);
 //     entities.update(delta);
 //     entities.draw(context, camera_x, camera_y);
 //
-// Position, a sprite, an update tick and a draw order. Not a component system,
-// not a scene graph, and deliberately not either: collision, camera and physics
-// are a game layer with their own snapshot, and this exists to drive several
-// animated things independently, which is what
-// planning/2026-07-25-software-2d-sprites-tiling/ asked for.
+// Position, a sprite, an update tick and a draw order. Not a component system
+// and not a scene graph: this drives several animated things independently and
+// hands out stable handles to them, and the rest of the game layer — collision,
+// camera, input actions — sits beside it rather than inside it.
 //
-// **Why this lives in sprites/ and not in a game/ module.** That snapshot left
-// the question open and leaned this way, on the grounds that a boundary drawn
-// before there are two users tends to be drawn wrong. There is still one user.
-// Promoting it is a file move plus a namespace, and it should happen when a
-// second consumer turns up and says what the interface actually needs to be —
-// not before, on a guess about what that will be.
+// An Entity also carries a collision box and a behaviour tag, but the store
+// only stores them: update() integrates position and advances sprites and does
+// not test the boxes, and nothing here dispatches on a tag. They live on the
+// entity because that is where a caller doing either of those jobs needs to
+// find them, not because this store performs them.
 //
 // Storage is an array of structs rather than parallel arrays. At the scale this
 // runs at — tens of entities, not tens of thousands — the cache argument for a
 // structure of arrays does not pay for the ergonomics it costs, and the honest
 // reason to reach for one would be a measurement that does not exist yet.
 //
+// The store is not templated over its payload. Two consumers do not say where
+// the seam between "storage" and "what is stored" belongs, and a demo that does
+// not read a field pays a few unused bytes across tens of entities for the
+// privilege of not guessing. See planning/2026-08-10-game-layer-and-demo/,
+// decision 5.
+//
 //============================================================================
-namespace sprites
+namespace game
 {
+
+// No behaviour attached. Negative so that a consumer enum starting at its
+// natural 0 cannot collide with it.
+//
+// The tag is an opaque int and this module never learns what any value means:
+// a demo declares its own `enum class Behaviour { Player, Frog, ... }` and
+// casts once, at the spawn site. Spelling those actors out here would put one
+// demo's vocabulary inside the module every other demo is meant to share.
+//
+// The type is signed *because* of the sentinel — the two are one decision. A
+// C++ enumeration numbers from 0 unless told otherwise, so reserving 0 would
+// swallow whichever actor the consumer happened to list first, and the symptom
+// is that one actor stops responding while spawning, drawing and moving
+// correctly. That reads as an input bug, not a tag bug.
+constexpr int no_behaviour = -1;
 
 struct Entity {
     // World pixels, not screen: draw() subtracts the camera. Doubles because
@@ -57,6 +77,38 @@ struct Entity {
     // screen draws in front — the usual 2D depth cue, and the reason this is
     // not simply insertion order.
     int layer = 0;
+
+    // The collision box, RELATIVE TO (x, y) — not absolute world space. Use
+    // world_box() to get the absolute one; do not read `box` against a tile
+    // grid directly.
+    //
+    // Relative because (x, y) is the only position this entity has. update()
+    // integrates velocity into it, so an absolute box would be a second copy
+    // of the position that every mover has to remember to advance in step, and
+    // when one path forgets, both members still hold perfectly valid boxes
+    // that simply disagree. Storing the offset makes that state unreachable.
+    //
+    // Spawning stays readable despite the offset: a gfx::MapObject carries
+    // x/y/width/height in map-origin pixels, which is the space (x, y) is
+    // already in, so a spawn writes `entity.x = object.x; entity.y = object.y;
+    // entity.box = {0.0, 0.0, object.width, object.height}`. The offset is
+    // non-zero only when the box is deliberately inset from the sprite.
+    //
+    // Default is an empty box, which game::overlaps and game::overlaps_solid
+    // both read as "there is nothing here" — so an entity nobody gave a box to
+    // collides with nothing rather than being a point collider at its feet.
+    Aabb box;
+
+    // Which rule drives this entity, or no_behaviour for none. Opaque to this
+    // module: see the note on no_behaviour above.
+    int behaviour = no_behaviour;
+
+    // The collision box in world space. The one place (x, y) and `box` are
+    // combined, so a caller cannot get the addition backwards.
+    Aabb world_box() const
+    {
+        return Aabb{x + box.x, y + box.y, box.width, box.height};
+    }
 };
 
 class Entities
@@ -146,4 +198,4 @@ private:
     mutable std::vector<std::uint32_t> _order;
 };
 
-} // namespace sprites
+} // namespace game
