@@ -1384,3 +1384,279 @@ the pair above: the staging copy ignoring `srt.y`, and the format inferred from
 [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/) must
 still composite into a layer here rather than calling `Context::draw()` with a
 source rect.
+
+---
+
+## D28 — `Entities::draw` truncates world coordinates instead of flooring
+
+**WRONG.** `game/entities.cc`
+
+The blit converted each entity's position to pixels with a plain cast:
+
+```cpp
+entity.sprite.draw(context, static_cast<int>(entity.x) - camera_x,
+                   static_cast<int>(entity.y) - camera_y, entity.scale);
+```
+
+A conversion from `double` to `int` rounds **toward zero**, not down. That makes
+the world-to-pixel mapping non-monotonic across the origin: every value in the
+open interval `(-1, 1)` — two full units of travel — lands in the same pixel
+column, while every other column spans exactly one unit. An entity easing left
+across zero therefore holds still for twice as long as it does anywhere else and
+then jumps two columns at once. Both axes had it, independently.
+
+Nothing about it is visible with a positive camera and a positive world origin,
+which is why it survived: it only fires where a coordinate is actually negative,
+and the demo content so far has not put one there.
+
+**Confirmed by measurement, not by reading.** The pixel-readback cases in
+`tests/test_entities.cc` blit a 1×1 white atlas frame and find the lit column
+through `SDL_RenderReadPixels`. Against the truncating code they failed 6
+assertions across 3 cases, with the values truncation predicts — `-0.5` and
+`0.5` both landing in column 32, and `right - left == 0` where one pixel of
+separation was expected.
+
+**Fixed** 2026-08-29: both axes go through a file-local `to_pixel()` applying
+`std::floor`. One function rather than two conversions in place, so a later
+change cannot correct one axis and leave the other — which the failing cases
+showed is the shape this defect takes. `test_entities` is 22 cases / 126
+assertions green on `desktop-software` and `desktop-debug`.
+
+The unrepresentable cases are unchanged and still unguarded: a coordinate
+outside `int`'s range, **or one that is not a number**, is undefined on
+conversion whether it is floored first or not. `std::floor` is the identity on
+both — NaN floors to NaN, an infinity floors to itself — so neither is filtered
+before the cast, and `update()` reaches an infinity in a single tick from an
+infinite `velocity_x`.
+
+NaN is worth naming separately rather than folding into "out of range", because
+it is not out of range in the sense a bound check tests: every comparison
+against NaN is false, so the obvious guard — reject when `world < lo || world >
+hi` — passes NaN straight through to the cast it was written to prevent. A
+guard has to test for it on its own.
+
+Nothing at this scale produces any of them, and picking a coordinate bound, and
+choosing between clamping and throwing, remains a separate decision from fixing
+the rounding.
+
+---
+
+## D29 — `read_object_layer` drops `gid`, so a tile object's `y` is its bottom edge and `game::Level` reads it as its top
+
+**WRONG — latent.** `loaders/tmx.cc`, `include/gfx/tilemap.hpp`
+
+Tiled measures a *tile object* — an object placed from a tileset, which carries a
+`gid` attribute and draws that tile's image — from a different corner than it
+measures a point or a rectangle. From the upstream TMX reference, on `<object>`:
+
+> When the object has a `gid` set, then it is represented by the image of the
+> tile with that global ID. The image alignment currently depends on the map
+> orientation. In orthogonal orientation it's aligned to the bottom-left while in
+> isometric it's aligned to the bottom-center.
+
+Verified 2026-08-30 against `doc.mapeditor.org/en/stable/reference/tmx-map-format/`,
+which serves Tiled 1.12.2, by two independent fetches of the live page — not
+recalled. The sentence is current, not superseded.
+
+It is, however, no longer the whole rule. Tiled 1.4 added `objectalignment` to
+`<tileset>`, values `unspecified | topleft | top | topright | left | center |
+right | bottomleft | bottom | bottomright`, and the reference says of the
+default: "The default value is `unspecified`, for compatibility reasons. When
+unspecified, tile objects use `bottomleft` in orthogonal mode and `bottom` in
+isometric mode." So bottom-left is the default for orthogonal maps and the only
+case a map that never sets the attribute can produce — but a tileset *may*
+declare any of the other nine, and a fix that assumes bottom-left is assuming the
+default rather than reading it.
+
+`read_object_layer` in `loaders/tmx.cc` reads six attributes:
+
+```cpp
+object.id = node_object.attribute_int("id", 0);
+object.name = node_object.attribute("name", "");
+object.type = node_object.attribute("type", "");
+object.x = node_object.attribute_double("x", 0.0);
+object.y = node_object.attribute_double("y", 0.0);
+object.width = node_object.attribute_double("width", 0.0);
+object.height = node_object.attribute_double("height", 0.0);
+```
+
+`gid` is not among them, and `gfx::MapObject` has no member to hold it — the
+distinction is discarded at the struct, not merely unread at the parse. The
+comment above those members states the convention the rest of the tree then
+relies on, and it is true of exactly the two object kinds it names:
+
+```cpp
+// Pixels. Tiled measures a point or rectangle object from the map origin.
+```
+
+`game::Level`'s constructor checks each spawn with
+
+```cpp
+span_inside(object.y, object.height, pixel_height())
+```
+
+and `span_inside(lo, extent, limit)` requires `lo >= 0` and `lo + extent <=
+limit` — that is, it reads `y` as the **top** edge of a downward-growing span.
+For a tile object `y` is the bottom edge, so the loader hands `Level` a number in
+one convention and `Level` interprets it in another, with nothing in between that
+could notice.
+
+Two consequences, both worked against the code as it stands:
+
+1. **Loud, and pointing at the wrong thing.** A 16×16 tile object resting on the
+   floor of a 64×48 level is written `y="48" height="16"`. `span_inside(48, 16,
+   48)` computes `48 + 16 = 64 <= 48` → false, and the constructor throws
+   `spawn ... is outside the 64x48 pixel level` for an object the author can see
+   sitting inside the map. The message is accurate about what it measured and
+   useless about what is wrong.
+
+2. **Silent, and worse.** One near the top, `y="16" height="16"`, actually
+   occupies `[0, 16)`. `span_inside(16, 16, 48)` computes `32 <= 48` → true. It
+   passes, and the entity is placed 16 pixels — one tile — below where the author
+   put it. This is the failure mode the spawn bounds check exists to prevent,
+   arriving *through* the check.
+
+**Reachability: latent, verified rather than assumed.** The only `.tmx` in the
+tree is `data/sunnyland.tmx`, generated by `tools/make_tilemap.py`, and its
+object layer is
+
+```xml
+<object id="1" name="spawn" type="point" x="64" y="480" />
+<object id="2" name="goal" type="point" x="928" y="480" />
+```
+
+— no `gid`, no `width`/`height`, so both take `span_inside`'s degenerate branch
+and the wrong convention cannot be reached from any in-tree input. `test_tmx.cc`'s
+one object-layer case uses the same point objects. Nothing consumes
+`Level::spawns()` yet either, so consequence 2 is today a property of the
+loader's contract rather than of any code that would mis-draw. It fires the first
+time an author opens Tiled and marks a spawn with visible art, which is the
+natural way to mark one.
+
+Recording it as WRONG rather than HYGIENE is deliberate: a tile object is
+ordinary, legal TMX that `load_tmx` accepts today without complaint and returns a
+wrong number for. The code is not correct-but-fragile; it is incorrect on an
+input it already admits, and only the absence of that input in the repository
+keeps it from mattering.
+
+**Not fixed.** Recorded 2026-08-30. Which fix is right is a decision about loader
+semantics that has not been made, and there are two:
+
+- **A — `load_tmx` normalises.** Read `gid`, and for a non-zero one convert to
+  the top-left convention before the object leaves the loader, so `MapObject`
+  means one thing everywhere and `Level` needs no change. The cost is that
+  "subtract `height`" is only correct for `objectalignment` of `unspecified` or
+  `bottomleft`; doing it properly means reading `objectalignment` in
+  `read_tileset_body`, carrying it on `TmxTileset`, and resolving the object's
+  `gid` to its tileset — cheap here, since `load_tmx` already rejects a map with
+  more than one tileset and already follows an external `.tsx`, but it is real
+  work and it is the loader silently rewriting authored coordinates. There is
+  also a trap in it: a tile object whose `width`/`height` are absent defaults
+  both to `0.0`, and subtracting zero would look like it worked.
+
+- **B — `load_tmx` refuses.** Read `gid`, and throw `TmxFormatError` naming the
+  object when it is non-zero, in the same shape as the existing refusals of
+  infinite maps and multiple tilesets. Small, honest, and it converts a silent
+  mis-placement into a message at load time. The cost is that it forbids the
+  natural authoring gesture outright: an author who wants art on the spawn marker
+  is told no, with no supported way to do it until A is built anyway.
+
+The tradeoff is not really "which is correct" — both are — but **when to spend
+the alignment work**. B is a guard that costs almost nothing and can be replaced
+by A later without breaking a map that ever loaded, because every map B accepts,
+A also accepts identically. A is the end state and does more than is needed for
+any map that exists. B first, then A when a level actually wants tile objects, is
+the ordering that leaves no window where a coordinate is silently wrong; picking
+A now is defensible if tile-object spawns are expected soon enough that shipping
+a refusal for them is churn.
+
+Either way `gfx::MapObject`'s comment needs to stop naming only points and
+rectangles, and if A is chosen it should say which convention the struct holds
+after normalisation.
+
+---
+
+## D30 — `read_layer`'s tile-count check wraps on a 32-bit `size_t`, so an empty layer can declare any size
+
+**WRONG — reachable on `miyoomini` only.** `loaders/tmx.cc`
+
+`read_layer` compared the number of CSV entries it parsed against the layer's
+declared cell count, computing that count in `std::size_t`:
+
+```cpp
+const std::size_t expected =
+    static_cast<std::size_t>(layer.width) * layer.height;
+if (layer.tiles.size() != expected) { throw TmxFormatError(...); }
+```
+
+`width` and `height` are `int`, and their product does not fit in a 32-bit
+`std::size_t`. A layer declaring `width="65536" height="65536"` is exactly 2^32
+cells, which is **0** in that type, so `<data encoding="csv"></data>` — zero
+entries — compares equal to its declared size and the layer is accepted. Nothing
+downstream re-checks it: `load_tmx` never compares a layer's dimensions against
+the map's, so `load_tmx` returns normally with a `gfx::TileLayer` declaring a
+65536×65536 grid and holding no tiles. `gfx::TileLayer::operator()` is unchecked
+`tiles[y * width + x]`, so the first consumer to index by the declared width and
+height reads far past the end.
+
+The wrap is not unique to those dimensions — any pair whose product is a multiple
+of 2^32 and whose factors clear the other guards does it, `131072x32768` among
+them.
+
+**Target-dependent, and this is the whole of its reachability.** It requires a
+32-bit `std::size_t`. Per the matrix in [docs/TARGETS.md](../../docs/TARGETS.md),
+`miyoomini` (`armv7-a`) is the only such row — `rk3326` and `h700` are `aarch64`
+and the desktop and Steam presets are `x86_64`, all with a 64-bit `size_t` where
+a product of two `int`s cannot wrap. Recording it as "latent on the handhelds"
+would be wrong twice over: it is not latent on the one target it applies to, and
+it does not apply to the other two handhelds.
+
+**The `reserve` was not a mitigation.** It was reported as probably unreachable
+because `layer.tiles.reserve()` runs first and would likely throw `length_error`.
+It does not, and it cannot: `reserve` is called with *the same wrapping
+expression*, so on the wrapping input it receives 0 and returns immediately.
+`reserve` throws only for products that do **not** wrap and exceed
+`vector<int>::max_size()` — measured at 536,870,911 on the armv7 toolchain — which
+is a disjoint set of inputs from the ones that trigger this defect.
+
+**Confirmed by running it on the target toolchain, not by reading.** Built with
+the `miyoomini` preset (union-miyoomini-toolchain GCC 8.3, `arm-linux-gnueabihf`,
+`ELF 32-bit LSB … ARM`) and run under `qemu-arm-static`. Against the unfixed
+code, a case feeding the document above through `load_tmx` reported
+`CHECK_THROWS_AS(...) did NOT throw at all!` — the malformed layer was accepted.
+A parallel probe on the same toolchain printed `sizeof(size_t)=4`,
+`(size_t)65536*65536 = 0`, and `reserve() RETURNED, capacity=0`.
+
+**Fixed** 2026-08-30: `expected` is computed as `unsigned long long`, which is at
+least 64 bits on every target and so cannot wrap for a product of two `int`s. This
+matches the check `game::Level`'s constructor already makes on its collision
+layer, so the two do not diverge. The `reserve` above it is deliberately left in
+`std::size_t` and carries a comment saying why: reserving a wrapped value costs
+only a reallocation, whereas widening it would have the vector throw
+`length_error` in place of the `TmxFormatError` that names the real problem.
+`test_tmx` is 20 cases / 2410 assertions green on `miyoomini` under `qemu-arm`,
+and 26/26 test binaries pass on `desktop-software` and `desktop-debug`.
+
+The regression case in `tests/test_tmx.cc` returns early where
+`sizeof(std::size_t) >= sizeof(unsigned long long)`, so it asserts only on
+`miyoomini`. That is not a weakened test, it is the defect's actual extent — but
+it does mean **the desktop presets cannot detect a regression here**, and a
+future change to this check has to be re-run under the cross preset to be
+covered. The 64-bit hosts are not merely uninteresting: the same document would
+have `reserve` ask for 16 GB before reaching the check, so a runtime skip would
+not have been cheap either.
+
+### What this does not cover — an open question about `gfx::TileLayer`, not a defect
+
+Both this check and `game::Level`'s are the *same invariant enforced twice, by
+different consumers*. `gfx::TileLayer` documents `tiles.size() == width * height`
+in a comment and enforces it nowhere; `operator()` indexes without a bound. Each
+caller that cares re-derives the check, which is why this one could be wrong in a
+way the neighbouring one was not.
+
+Whether that invariant belongs in `gfx::TileLayer` — a checked accessor, a
+validating factory, or leaving it as a documented precondition — is a design
+question about `gfx` and has not been decided. Nothing here establishes that the
+draw path is broken: `gfx::TileMap` was not audited for this and is not being
+claimed as defective. Recorded so the next person to add a third consumer knows
+there are already two hand-written copies of the same rule.

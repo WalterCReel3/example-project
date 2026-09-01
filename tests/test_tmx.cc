@@ -29,6 +29,7 @@
 
 #include <SDL.h>
 
+#include <cstddef>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -285,6 +286,42 @@ TEST_CASE("a layer whose data is the wrong length is rejected")
     const ScratchFile file(
         "test_tmx.scratch.tmx",
         map_of("", "  <data encoding=\"csv\">1,2,3</data>\n"));
+    CHECK_THROWS_AS(loaders::load_tmx(file.path()), loaders::TmxFormatError);
+}
+
+// A tile layer's declared cell count is the product of two ints, compared
+// against the number of CSV entries parsed. 65536x65536 is exactly 2^32, so
+// where std::size_t is 32 bits that product is 0 in that type and an empty
+// <data> matches the declared size exactly — the layer is accepted carrying a
+// rectangle nothing can fill, and every consumer that trusts the declared size
+// reads past the end of `tiles`.
+//
+// miyoomini is the only 32-bit row in the target matrix, so there is nothing
+// to assert on a 64-bit host: there the product does not wrap, and the same
+// document would make read_layer's reserve() ask for 16 GB before reaching the
+// check. So the body returns on `sizeof(std::size_t) >= sizeof(unsigned long
+// long)` before it asserts anything, and doctest still reports it as a passing
+// case — contributing zero assertions. On the desktop presets this case proves
+// nothing, and a coverage total that counts it is one case short of what it
+// claims.
+TEST_CASE("a tile layer whose cell count overflows size_t is rejected")
+{
+    if (sizeof(std::size_t) >= sizeof(unsigned long long)) {
+        return;
+    }
+
+    const ScratchFile file(
+        "test_tmx.scratch.tmx",
+        "<map version=\"1.10\" orientation=\"orthogonal\" width=\"2\" "
+        "height=\"2\" tilewidth=\"16\" tileheight=\"16\">\n"
+        " <tileset firstgid=\"1\" name=\"t\" tilewidth=\"16\" "
+        "tileheight=\"16\" tilecount=\"4\" columns=\"2\">\n"
+        "  <image source=\"t.png\" width=\"32\" height=\"32\"/>\n"
+        " </tileset>\n"
+        " <layer name=\"l\" width=\"65536\" height=\"65536\">\n"
+        "  <data encoding=\"csv\"></data>\n"
+        " </layer>\n"
+        "</map>\n");
     CHECK_THROWS_AS(loaders::load_tmx(file.path()), loaders::TmxFormatError);
 }
 

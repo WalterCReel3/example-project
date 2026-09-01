@@ -42,6 +42,18 @@ wreel_add_test(test_collide LIBS wreel::game)
 # rather than reading one off an entity store, so this needs no context either.
 wreel_add_test(test_camera  LIBS wreel::game)
 
+# Sits here rather than with test_atlas because game::Level takes parsed layers
+# instead of a gfx::TileMap, which is the whole reason it does: a TileMap owns a
+# texture and would have pulled a Context into what is validation arithmetic.
+# The layers are built in the test, so no .tmx is read either.
+wreel_add_test(test_level   LIBS wreel::game)
+
+# The most headless test here: game::ActionMap is a template over a documented
+# Source concept, so the fixture is a stub written in the test rather than a
+# rig::Pad. It links wreel::game only for action_name and the constructor — no
+# device is opened, and rig::Button is a plain enum in a header.
+wreel_add_test(test_action  LIBS wreel::game)
+
 # coppers/bars.cc is compiled into the test rather than linked, because the demo
 # is an executable and its sources are not a library. Worth a library if a second
 # consumer ever appears; not worth one for a single test.
@@ -83,8 +95,10 @@ wreel_add_test(test_animation
 wreel_add_test(test_tmx      LIBS wreel::gfx wreel::loaders wreel::posix)
 
 # Links the store rather than compiling it in, because it is a module now and
-# not a source file inside one demo. Needs a Context for the draw-order case
-# only, which is why it sits with test_atlas rather than in the headless group.
+# not a source file inside one demo. A third of its cases need a Context — the
+# draw counts, the pixel-rounding cases and the two that pin draw order by
+# reading back which colour landed on top — which is why it sits with test_atlas
+# rather than in the headless group.
 wreel_add_test(test_entities LIBS wreel::game)
 
 # --- Priority queue ----------------------------------------------------------
