@@ -2,22 +2,24 @@
 //
 // Nearly all of it is headless: the store integrates positions and orders
 // indexes, and an AnimatedSprite with no atlas advances perfectly well without
-// one. Only the draw-order case needs a Context, and it checks the order
-// entities were visited in rather than pixels — what matters is that the sort
-// key is (layer, y) and that dead slots are skipped.
+// one. The cases that need a Context are the ones that read pixels back, and
+// both groups of them are at the foot of the file: which sprite ends up on top
+// and which pixel a world coordinate lands in are only observable there.
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
 #include <game/collide.hpp>
 #include <game/entities.hpp>
+#include <gfx/animation.hpp>
+#include <gfx/atlas.hpp>
 #include <gfx/system.hpp>
 #include <gfx/tilemap.hpp>
 
 #include <SDL.h>
 
+#include <cstdint>
 #include <memory>
-#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -403,40 +405,33 @@ TEST_CASE("draw counts live entities and skips removed ones")
     CHECK(entities.draw(context, 0, 0) == 2);
 }
 
-TEST_CASE("draw order is layer first, then y")
+TEST_CASE("drawing does not reorder the store")
 {
-    // Ordering is observable through the store's own iteration rather than
-    // through pixels: a sprite with no atlas draws nothing, and asserting on
-    // the sort key directly is what the ordering rule actually says.
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+
     game::Entities entities;
 
-    // Deliberately added out of order.
+    // Deliberately added out of draw order.
     entities.add(at(0.0, 50.0, /*layer=*/1)); // front layer, high up
     entities.add(at(0.0, 10.0, /*layer=*/0)); // back layer, high up
     entities.add(at(0.0, 90.0, /*layer=*/0)); // back layer, low down
     entities.add(at(0.0, 20.0, /*layer=*/1)); // front layer, high up
 
+    REQUIRE(entities.draw(context, 0, 0) == 4);
+
+    // The sort is over a private index vector, not over the slots, so the
+    // positions handed out by add() stay put and each() still reports the order
+    // things were added in. What the sort actually orders is pinned in pixels
+    // at the foot of this file.
     std::vector<std::pair<int, double>> keys;
     entities.each([&keys](game::Entity& e) { keys.push_back({e.layer, e.y}); });
 
-    // Storage order is insertion order — the sort happens at draw time.
     REQUIRE(keys.size() == 4u);
-    CHECK(keys[0].first == 1);
-
-    // Reproduce what draw() sorts by, since draw() itself reports only a count.
-    std::sort(
-        keys.begin(), keys.end(),
-        [](const std::pair<int, double>& a, const std::pair<int, double>& b) {
-            if (a.first != b.first) {
-                return a.first < b.first;
-            }
-            return a.second < b.second;
-        });
-
-    CHECK(keys[0] == std::make_pair(0, 10.0)); // back layer first
-    CHECK(keys[1] == std::make_pair(0, 90.0)); // then lower down, same layer
-    CHECK(keys[2] == std::make_pair(1, 20.0)); // front layer after
-    CHECK(keys[3] == std::make_pair(1, 50.0));
+    CHECK(keys[0] == std::make_pair(1, 50.0));
+    CHECK(keys[1] == std::make_pair(0, 10.0));
+    CHECK(keys[2] == std::make_pair(0, 90.0));
+    CHECK(keys[3] == std::make_pair(1, 20.0));
 }
 
 TEST_CASE("an empty store draws nothing without touching the renderer")
@@ -446,4 +441,346 @@ TEST_CASE("an empty store draws nothing without touching the renderer")
 
     game::Entities entities;
     CHECK(entities.draw(context, 0, 0) == 0);
+}
+
+//============================================================================
+// Blit rounding
+//============================================================================
+
+namespace
+{
+
+// A one-pixel opaque white atlas, so "where did this land" has exactly one
+// answer. The frame is untrimmed, which keeps the trim offset out of the
+// arithmetic under test.
+gfx::Atlas white_pixel(gfx::renderer::Context& context)
+{
+    SDL_Surface* surface =
+        SDL_CreateRGBSurfaceWithFormat(0, 1, 1, 32, SDL_PIXELFORMAT_RGBA32);
+    REQUIRE(surface != nullptr);
+    SDL_FillRect(surface, nullptr,
+                 SDL_MapRGBA(surface->format, 255, 255, 255, 255));
+
+    gfx::renderer::Texture sheet(context, surface);
+    SDL_FreeSurface(surface);
+
+    gfx::AtlasFrame frame;
+    frame.id = "dot.000";
+    frame.source = gfx::renderer::Rect{0, 0, 1, 1};
+
+    gfx::Atlas::Frames frames;
+    frames.push_back(frame);
+
+    return gfx::Atlas(std::move(sheet), std::move(frames));
+}
+
+// The whole framebuffer as ARGB8888, row-major, one entry per pixel.
+std::vector<std::uint32_t> read_framebuffer(gfx::renderer::Context& context)
+{
+    const int width = context.width();
+    const int height = context.height();
+
+    std::vector<std::uint32_t> pixels(
+        static_cast<std::size_t>(width) * static_cast<std::size_t>(height), 0);
+    REQUIRE(SDL_RenderReadPixels(context.renderer(), nullptr,
+                                 SDL_PIXELFORMAT_ARGB8888, pixels.data(),
+                                 width * 4) == 0);
+
+    return pixels;
+}
+
+// Draws one entity at (x, y) with the given camera and reports the column the
+// white pixel landed in, or -1 if nothing was lit. Column, not row: the y cases
+// below read the row out of the same helper by swapping the axes at the call
+// site.
+int lit_column(gfx::renderer::Context& context, const gfx::Atlas& atlas,
+               const gfx::Animation& animation, double x, double y,
+               int camera_x, int camera_y)
+{
+    game::Entities entities;
+    game::Entity entity = at(x, y);
+    entity.sprite = gfx::AnimatedSprite(atlas, animation);
+    entities.add(std::move(entity));
+
+    context.clear(gfx::renderer::Color{0, 0, 0, 255});
+    REQUIRE(entities.draw(context, camera_x, camera_y) == 1);
+
+    const int width = context.width();
+    const int height = context.height();
+    const std::vector<std::uint32_t> pixels = read_framebuffer(context);
+
+    for (int row = 0; row < height; ++row) {
+        for (int column = 0; column < width; ++column) {
+            const std::uint32_t pixel =
+                pixels[static_cast<std::size_t>(row) *
+                           static_cast<std::size_t>(width) +
+                       static_cast<std::size_t>(column)];
+            if ((pixel & 0x00ffffffu) != 0u) {
+                return column;
+            }
+        }
+    }
+
+    return -1;
+}
+
+// Same, reporting the row.
+int lit_row(gfx::renderer::Context& context, const gfx::Atlas& atlas,
+            const gfx::Animation& animation, double x, double y, int camera_x,
+            int camera_y)
+{
+    game::Entities entities;
+    game::Entity entity = at(x, y);
+    entity.sprite = gfx::AnimatedSprite(atlas, animation);
+    entities.add(std::move(entity));
+
+    context.clear(gfx::renderer::Color{0, 0, 0, 255});
+    REQUIRE(entities.draw(context, camera_x, camera_y) == 1);
+
+    const int width = context.width();
+    const int height = context.height();
+    const std::vector<std::uint32_t> pixels = read_framebuffer(context);
+
+    for (int row = 0; row < height; ++row) {
+        for (int column = 0; column < width; ++column) {
+            const std::uint32_t pixel =
+                pixels[static_cast<std::size_t>(row) *
+                           static_cast<std::size_t>(width) +
+                       static_cast<std::size_t>(column)];
+            if ((pixel & 0x00ffffffu) != 0u) {
+                return row;
+            }
+        }
+    }
+
+    return -1;
+}
+
+gfx::Animation held_frame()
+{
+    gfx::Animation animation;
+    animation.name = "dot";
+    animation.frames.push_back(0);
+    animation.seconds_per_frame = 0.0; // a single held pose
+    return animation;
+}
+
+} // namespace
+
+TEST_CASE("a negative world x floors to its pixel rather than truncating")
+{
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    const gfx::Atlas atlas = white_pixel(context);
+    const gfx::Animation animation = held_frame();
+
+    // The camera is negative so that a negative world x is on screen at all;
+    // it shifts every column by the same whole number and so cannot itself
+    // change the rounding.
+    const int camera = -32;
+
+    // floor(-0.5) == -1, so column 31. Truncation toward zero would give 0 and
+    // put this in column 32, on top of the positive case below.
+    CHECK(lit_column(context, atlas, animation, -0.5, 0.0, camera, 0) == 31);
+    CHECK(lit_column(context, atlas, animation, -0.001, 0.0, camera, 0) == 31);
+    CHECK(lit_column(context, atlas, animation, -1.0, 0.0, camera, 0) == 31);
+}
+
+TEST_CASE("the pixel column at the world origin is one pixel wide, not two")
+{
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    const gfx::Atlas atlas = white_pixel(context);
+    const gfx::Animation animation = held_frame();
+
+    const int camera = -32;
+
+    // This is the case the rounding exists for. Truncation maps the whole open
+    // interval (-1, 1) — two pixels of travel — onto one column, so an entity
+    // easing left across the origin holds still for twice as long as it does
+    // anywhere else and then jumps. Every column must span exactly one unit.
+    const int left =
+        lit_column(context, atlas, animation, -0.5, 0.0, camera, 0);
+    const int right =
+        lit_column(context, atlas, animation, 0.5, 0.0, camera, 0);
+
+    CHECK(left == 31);
+    CHECK(right == 32);
+    CHECK(right - left == 1);
+
+    // And the step is uniform on either side of it, so nothing was traded for
+    // a special case at zero.
+    CHECK(lit_column(context, atlas, animation, -1.5, 0.0, camera, 0) == 30);
+    CHECK(lit_column(context, atlas, animation, 1.5, 0.0, camera, 0) == 33);
+}
+
+TEST_CASE("y rounds the same way as x")
+{
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    const gfx::Atlas atlas = white_pixel(context);
+    const gfx::Animation animation = held_frame();
+
+    const int camera = -32;
+
+    // The axes are independent code, so a fix applied to one of them only
+    // would pass every case above.
+    CHECK(lit_row(context, atlas, animation, 0.0, -0.5, 0, camera) == 31);
+    CHECK(lit_row(context, atlas, animation, 0.0, 0.5, 0, camera) == 32);
+}
+
+TEST_CASE("a whole-pixel position is unaffected by the rounding")
+{
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    const gfx::Atlas atlas = white_pixel(context);
+    const gfx::Animation animation = held_frame();
+
+    // Truncation and floor agree on exact integers, positive or negative, so a
+    // whole-pixel position lands in the same column under either rule.
+    CHECK(lit_column(context, atlas, animation, 10.0, 0.0, 0, 0) == 10);
+    CHECK(lit_column(context, atlas, animation, -8.0, 0.0, -32, 0) == 24);
+}
+
+//============================================================================
+// Draw ordering, in pixels
+//============================================================================
+
+namespace
+{
+
+// Two one-pixel frames of different colours in one sheet. Two sprites stacked
+// on the same pixel then answer "which of these drew last" by colour, which is
+// the only place draw()'s ordering is observable from outside it — draw()
+// itself reports a count.
+gfx::Atlas red_and_blue(gfx::renderer::Context& context)
+{
+    SDL_Surface* surface =
+        SDL_CreateRGBSurfaceWithFormat(0, 2, 1, 32, SDL_PIXELFORMAT_RGBA32);
+    REQUIRE(surface != nullptr);
+
+    const SDL_Rect left = {0, 0, 1, 1};
+    const SDL_Rect right = {1, 0, 1, 1};
+    SDL_FillRect(surface, &left, SDL_MapRGBA(surface->format, 255, 0, 0, 255));
+    SDL_FillRect(surface, &right, SDL_MapRGBA(surface->format, 0, 0, 255, 255));
+
+    gfx::renderer::Texture sheet(context, surface);
+    SDL_FreeSurface(surface);
+
+    // Both untrimmed, so the destination is the entity position and nothing
+    // else — a trim offset here would be a second reason a pixel could move.
+    gfx::AtlasFrame red;
+    red.id = "red";
+    red.source = gfx::renderer::Rect{0, 0, 1, 1};
+
+    gfx::AtlasFrame blue;
+    blue.id = "blue";
+    blue.source = gfx::renderer::Rect{1, 0, 1, 1};
+
+    gfx::Atlas::Frames frames;
+    frames.push_back(red);
+    frames.push_back(blue);
+
+    return gfx::Atlas(std::move(sheet), std::move(frames));
+}
+
+// A single held pose on one atlas frame.
+gfx::Animation pose(gfx::Atlas::Index frame)
+{
+    gfx::Animation animation;
+    animation.name = "pose";
+    animation.frames.push_back(frame);
+    animation.seconds_per_frame = 0.0;
+    return animation;
+}
+
+game::Entity dot(const gfx::Atlas& atlas, const gfx::Animation& animation,
+                 double x, double y, int layer)
+{
+    game::Entity entity = at(x, y, layer);
+    entity.sprite = gfx::AnimatedSprite(atlas, animation);
+    return entity;
+}
+
+// The colour at (column, row) with the alpha dropped, for comparison against
+// one of the two constants below.
+std::uint32_t colour_at(gfx::renderer::Context& context, int column, int row)
+{
+    const std::vector<std::uint32_t> pixels = read_framebuffer(context);
+    const std::size_t offset = static_cast<std::size_t>(row) *
+                                   static_cast<std::size_t>(context.width()) +
+                               static_cast<std::size_t>(column);
+
+    return pixels[offset] & 0x00ffffffu;
+}
+
+const std::uint32_t red_pixel = 0x00ff0000u;
+const std::uint32_t blue_pixel = 0x000000ffu;
+
+} // namespace
+
+TEST_CASE("the higher layer lands on top at the same position")
+{
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    const gfx::Atlas atlas = red_and_blue(context);
+    const gfx::Animation show_red = pose(0);
+    const gfx::Animation show_blue = pose(1);
+
+    game::Entities entities;
+
+    // Added front-first, so insertion order and draw order disagree and the
+    // surviving colour cannot be produced by skipping the sort.
+    entities.add(dot(atlas, show_blue, 10.0, 10.0, /*layer=*/1));
+    entities.add(dot(atlas, show_red, 10.0, 10.0, /*layer=*/0));
+
+    context.clear(gfx::renderer::Color{0, 0, 0, 255});
+    REQUIRE(entities.draw(context, 0, 0) == 2);
+
+    CHECK(colour_at(context, 10, 10) == blue_pixel);
+
+    // The same two layers with the colours exchanged, so what survives is
+    // pinned to the layer rather than to which frame of the sheet it came from.
+    game::Entities exchanged;
+    exchanged.add(dot(atlas, show_red, 10.0, 10.0, /*layer=*/1));
+    exchanged.add(dot(atlas, show_blue, 10.0, 10.0, /*layer=*/0));
+
+    context.clear(gfx::renderer::Color{0, 0, 0, 255});
+    REQUIRE(exchanged.draw(context, 0, 0) == 2);
+
+    CHECK(colour_at(context, 10, 10) == red_pixel);
+}
+
+TEST_CASE("within one layer the lower entity lands on top")
+{
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+    const gfx::Atlas atlas = red_and_blue(context);
+    const gfx::Animation show_red = pose(0);
+    const gfx::Animation show_blue = pose(1);
+
+    game::Entities entities;
+
+    // The y gap is sub-pixel on purpose: both sprites have to reach the same
+    // pixel for the pixel to arbitrate between them, and any whole-pixel gap
+    // would put them in different rows and settle nothing. 10.0 and 10.4 share
+    // a row under floor and under any other rounding rule as well, so this does
+    // not quietly depend on which one to_pixel uses.
+    entities.add(dot(atlas, show_blue, 10.0, 10.4, /*layer=*/0));
+    entities.add(dot(atlas, show_red, 10.0, 10.0, /*layer=*/0));
+
+    context.clear(gfx::renderer::Color{0, 0, 0, 255});
+    REQUIRE(entities.draw(context, 0, 0) == 2);
+
+    CHECK(colour_at(context, 10, 10) == blue_pixel);
+
+    // Colours exchanged between the two heights, for the same reason as above.
+    game::Entities exchanged;
+    exchanged.add(dot(atlas, show_red, 10.0, 10.4, /*layer=*/0));
+    exchanged.add(dot(atlas, show_blue, 10.0, 10.0, /*layer=*/0));
+
+    context.clear(gfx::renderer::Color{0, 0, 0, 255});
+    REQUIRE(exchanged.draw(context, 0, 0) == 2);
+
+    CHECK(colour_at(context, 10, 10) == red_pixel);
 }

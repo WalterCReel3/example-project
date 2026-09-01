@@ -1,10 +1,29 @@
 #include <game/entities.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace game
 {
+
+namespace
+{
+
+// Floor rather than a truncating conversion. Truncation rounds toward zero, so
+// it is non-monotonic across the origin: it maps the open interval (-1, 1) —
+// two units of travel — onto one pixel column, and an entity easing left across
+// zero holds still there for twice as long as it does anywhere else and then
+// jumps two columns at once.
+//
+// Both axes go through here rather than converting in place, so neither can be
+// changed without the other.
+int to_pixel(double world)
+{
+    return static_cast<int>(std::floor(world));
+}
+
+} // namespace
 
 Entities::Id Entities::add(Entity entity)
 {
@@ -135,8 +154,8 @@ int Entities::draw(gfx::renderer::Context& context, int camera_x,
     for (std::uint32_t index : _order) {
         const Entity& entity = slots[index].entity;
 
-        entity.sprite.draw(context, static_cast<int>(entity.x) - camera_x,
-                           static_cast<int>(entity.y) - camera_y, entity.scale);
+        entity.sprite.draw(context, to_pixel(entity.x) - camera_x,
+                           to_pixel(entity.y) - camera_y, entity.scale);
         ++drawn;
     }
 
