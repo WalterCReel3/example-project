@@ -176,14 +176,24 @@ gfx::TileLayer read_layer(const util::xml::Node& node, const std::string& path,
             encoding.empty() ? "xml" : encoding.c_str()));
     }
 
+    // A hint, and deliberately still computed in std::size_t: where that type
+    // is 32 bits a declared count of 2^32 or more wraps, and reserving the
+    // wrapped value costs a reallocation the check below is about to make moot.
+    // Widening it would instead have the vector throw length_error for a size
+    // no map has, in place of the TmxFormatError that names the real problem.
     layer.tiles.reserve(static_cast<std::size_t>(layer.width) * layer.height);
     parse_csv(data.text(), first_gid, path, layer.name, layer.tiles);
 
-    const std::size_t expected =
-        static_cast<std::size_t>(layer.width) * layer.height;
+    // The declared count is a product of two ints, so it needs a type that can
+    // hold one: in std::size_t a 65536x65536 layer is 2^32, which is 0 where
+    // that type is 32 bits, and empty <data> would match it exactly. Consumers
+    // index the grid by the declared width and height, so a layer accepted
+    // holding fewer tiles than it declares is read past the end.
+    const unsigned long long expected =
+        static_cast<unsigned long long>(layer.width) * layer.height;
     if (layer.tiles.size() != expected) {
         throw TmxFormatError(util::format(
-            "%s: layer \"%s\" is %dx%d but its data has %zu entries, not %zu",
+            "%s: layer \"%s\" is %dx%d but its data has %zu entries, not %llu",
             path.c_str(), layer.name.c_str(), layer.width, layer.height,
             layer.tiles.size(), expected));
     }
