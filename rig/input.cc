@@ -36,7 +36,12 @@ const char* const names[] = {"up", "down", "left", "right", "a",     "b",
 //
 // This is why the first device run took the D-pad and Escape but ignored A, B,
 // X and Y entirely: arrows and Escape happened to coincide, and nothing else
-// did. Where the two groups collide they agree — TAB is Select in both.
+// did.
+//
+// Past the arrows, the two groups overlap on two more keys, and they agree on
+// one of them. RETURN is Start in both. TAB is not: Onion gives it to L2, which
+// rig::Button does not carry, so on a Miyoo an L2 press arrives here as Select.
+// Anything that starts reading Select has to account for that.
 Button from_key(SDL_Keycode key, bool& found)
 {
     found = true;

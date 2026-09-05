@@ -1,14 +1,16 @@
 # A game layer, and a small game to define it
 
-**Status:** `in progress` — the game layer landed 2026-08-22 and was finished
-2026-08-30 with `game::Level` and `game::Action`; the game has not started. See
-[Where this stands](#where-this-stands-2026-08-30).
+**Status:** `in-progress` — the game layer landed 2026-08-22 and was finished
+2026-08-30 with `game::Level` and `game::Action`; the game has not started, and
+one landed piece has since been removed from the layer entirely. See
+[Where this stands](#where-this-stands-2026-09-01).
 **Written:** 2026-08-10
 **Blocked by:** nothing, to continue. The art ingest and everything downstream
 of it wait on the frame-name question in
 [Open questions](#one-open-question-found-2026-08-14-while-checking-the-first-task).
 Device verification runs in parallel and is
-[target-validation](../2026-07-25-target-validation/)'s
+[target-validation](../2026-07-25-target-validation/)'s job, not this
+document's.
 
 > This is the successor
 > [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/) named on
@@ -17,12 +19,37 @@ Device verification runs in parallel and is
 > physics, input mapping. Those are a game layer and belong in their own
 > snapshot."* This is that snapshot.
 
-## Where this stands (2026-08-30)
+## Where this stands (2026-09-01)
 
-The **layer** is complete. The **game** does not exist. Everything through
-`game::Camera` merged as `a9ca839` on PR #16; `game::Level` and `game::Action`
-are **in the working tree and not yet committed** — `tests/test_action.cc` is
-still untracked, so it has no revert path until someone stages it.
+The **layer** is complete, one piece smaller than it was. The **game** does not
+exist. Everything through `game::Camera` merged as `a9ca839` on PR #16;
+`game::Level` and `game::Action` merged as `c1a1c00` on PR #17, which also
+carried D28–D30.
+
+**`game::Action` shipped and has been deleted** — it is the one row below that
+went backwards. It defines orchard's verb vocabulary inside a module whose
+charter excludes exactly that, and underneath that it is a rename rather than an
+abstraction. Decision 12 recorded that diagnosis and proposed reworking it into
+`game::InputBindings<Verb>`; **decision 14 supersedes that remedy** — the row it
+occupies belongs to `rig`, the verbs belong to whichever executable declares
+them, and `game/` has no input line at all. Decision 12 is left in place with its
+reasoning rather than rewritten, because most of it was right.
+
+The deletion has landed in the working tree. `include/game/action.hpp`,
+`game/action.cc` and `tests/test_action.cc` are gone, along with their entries
+in `game/CMakeLists.txt` and `tests/CMakeLists.txt`. Two charter changes went
+with them, both argued under decision 14: **"input actions" is out of the
+belongs-here list**, and the paragraph headed "THE rig CLAUSE EXCLUDES A JOB,
+NOT A NAME" went with it, since it existed only to reconcile that entry with
+`wreel::rig` sitting on the does-NOT list. `wreel::rig` also came off
+`wreel_game`'s PUBLIC link line — the only reason recorded for it was
+`action.hpp` including `<rig/input.hpp>`, and the one remaining `rig::` mention
+anywhere under `game/` or `include/game/` is `rig::asset_path` inside a usage
+example in a comment. The module's dependency line is now
+`game -> gfx -> util -> posix`.
+
+Both desktop presets are green after it at **25/25**, one fewer than the 26/26
+recorded below, and `test_action` is the only test that left.
 
 | Piece | State |
 |---|---|
@@ -31,7 +58,7 @@ still untracked, so it has no revert path until someone stages it.
 | `game::Camera` | done — `test_camera`, 21 / 330 |
 | `tools/make_sfx.py` + `data/sfx.xml` + 5 WAVs | done — sounds heard and approved provisionally |
 | `game::Level` | done 2026-08-30 — `test_level`, 19 cases / 70 assertions. Decision 10's spawn check is paid |
-| `game::Action` | done 2026-08-30 — `test_action`, 15 cases / 78 assertions |
+| `game::Action` | **superseded 2026-09-01 — deleted from this layer, see decision 14.** Shipped as `test_action`, 15 cases / 78 assertions, all of which pin orchard's verbs rather than the mechanism. Decision 12 first proposed reworking it into `game::InputBindings`; decision 14 supersedes that and removes it instead. The verb table becomes orchard's when orchard exists |
 | `game::Sfx`, the cues | not started |
 | the art ingest, the level, `orchard` | **blocked** on the frame-name question below |
 
@@ -155,7 +182,7 @@ Surveyed 2026-08-10 by reading the headers, not from recollection of them.
 | `loaders::load_tmx` | done, CSV layers, external `.tsx`, object layers | **properties — see below** |
 | `gfx::MapObject` | carries `name`, `type`, `id`, `x`, `y`, `width`, `height` | nothing; `type` is enough to spawn from |
 | `sprites::Entities` | done, generational handles, `Entity` has position, velocity, sprite, scale, layer | **a collision box and per-entity behaviour** |
-| `rig::Pad` | done, named `Button`s, three input paths, `down()` and `pressed()` | an action layer above it |
+| `rig::Pad` | done, named `Button`s, three input paths, `down()` and `pressed()` | **nothing, per decision 14** — the binding row is rig's own, not a layer in `game/`. A demo declares its verbs and maps them itself. Per-device work and `released()` are deferred to [rig-device-bindings](../2026-09-01-rig-device-bindings/) |
 | `rig::FrameClock` / `FrameTiming` | done, clamped delta | a fixed-step mode for reproducible screenshots |
 | `tools/pack_atlas.py` | done, trims, verifies by rebuilding each frame, seeds an animation sidecar | nothing |
 | `tools/make_tilemap.py` | done, writes `.tsx` + `.tmx`, three tile layers and one object layer | a level rather than a stress fixture |
@@ -526,6 +553,343 @@ an include, which means hand-carving a state that never existed as a tested tree
 The header placement is the better call for the code, and it cost the bisect
 point. Everything landed as one commit, `a9ca839`.
 
+### 12. The input layer binds inputs; it does not define actions
+
+> **Superseded the same day by decision 14, in its remedy only.** Read this
+> section for its diagnosis, which stands and is cited by decision 14, and not
+> for what it proposes to build. `game::InputBindings<Verb>` was never written
+> and will not be: the row it occupies turned out to be `rig`'s, so
+> `game::Action` is deleted rather than reworked. The reservation of the name
+> `Action` survives, and is the part of this decision with the most in it.
+>
+> Kept in place unedited below rather than rewritten, per this project's habit
+> of superseding a decision rather than erasing it. A decision reworded to look
+> as though it always said the current thing takes its reasoning with it, and
+> the reasoning is most of what this one is worth.
+
+Recorded 2026-09-01, after `game::Action` shipped in PR #17 and was read again.
+Two things are wrong with what landed, and the second is the one worth a section.
+
+**The enum is orchard's vocabulary, inside a module whose charter excludes
+exactly that.** `game/CMakeLists.txt` puts "the rules of any ONE game, which live
+in that game's executable directory" on the does-NOT list, and adds: "A demo's
+own rules — what its pickups are worth, when it is over — belong to the demo.
+What lands here is what a second demo would otherwise copy." `Action::Pickup` is
+orchard's verb. The tell was already in the header, which justified the *absence*
+of Up/Down with "nothing in the design climbs or crouches under player control" —
+one game's design settling a shared module's contents, which is the dumping
+ground the charter's own preamble warns about.
+
+**The deeper error: the class is a rename, not an abstraction.** There are three
+levels here, not two:
+
+```
+transport       SDL scancode, joystick button index    rig's job, and done
+named switch    rig::Button::A, Button::Up             device-independent, but
+                                                       still "which switch"
+intent          Jump, Dash, Hadouken                   what the player meant
+```
+
+`ActionMap` maps intent-names onto switch-names through a static bijection with
+no state and no time, which never leaves the middle row. There is a clean test
+for whether something is really an action layer: **can it produce a signal that
+no single switch state can produce?** An instantaneous 1:1 lookup fails by
+construction — and so would multi-bind, because "A or Up" is still a set of
+switches OR'd together.
+
+**What actually produces actions is a recognizer over input history** — a
+quarter-circle, a double-tap dash, a charge. Those are genuinely intent-level and
+they genuinely recur across games, which is this project's own test for what
+belongs in a shared module.
+
+**Decided anyway: not now, and not here.** `game/CMakeLists.txt` says the module
+was created on an actual second consumer "rather than a guess that a second
+consumer would eventually appear". Orchard is walk/jump/pickup avoidance — no
+combo, no charge, no dash — and it does not exist yet. Recognizers are per-game
+until something proves otherwise. The model is right and the build is premature;
+those are not in tension.
+
+So:
+
+- The surviving class is `game::InputBindings<Verb>` in
+  `include/game/input_bindings.hpp`, a template over the game's own verb enum.
+  It is header-only, and `game/action.cc` disappears. The name is deliberately
+  *input*-binding rather than *button*-binding, because an axis or a pointer may
+  be bindable later and should not force a rename.
+- **The name `Action` is held in reserve** for the intent-level thing rather than
+  spent on an alias. Reserving it is most of the value of this decision.
+- The scope stays at one level: no action or event history, no per-frame tick, no
+  lifecycle. It stays a pure stateless lookup, and that is deliberate — a
+  recognizer will want a binding table as its *input config*, and a pure function
+  is far easier to absorb into one than a ticked object is.
+
+**One correction worth recording, because the obvious example misleads.**
+Tap-versus-hold — "a quick release is a strong jump, a slow one weak" — is
+usually the wrong thing to model as two actions. You cannot know at press time
+that a tap was a tap, so firing on release starts the jump after the player let
+go, which feels broken. The standard solution is not a recognizer at all: one
+`Jump` fires on the edge, and height is modulated by polling `down(Jump)` through
+the ascent. Motion inputs, not tap/hold, are the case that actually needs
+history.
+
+### 13. Multi-bind is deferred, and it is not free
+
+> **Relocated by decision 14, not superseded.** Every conclusion below is
+> unchanged; only its address is. The `released()` analysis is a finding about
+> `rig::Pad`'s interface, and decision 14 moves the whole binding row to `rig`,
+> so this belongs with that work — carry it into
+> [rig-device-bindings](../2026-09-01-rig-device-bindings/). The one clause that
+> does not travel is the last: `bind()`'s replace-semantics is now advice to
+> whoever writes orchard's own table, since there is no shared class to give a
+> signature to.
+
+One verb reads one button. Binding `Jump` to both A and Up is a real want —
+comfort and accessibility, dpad *or* face button — and it is not here.
+
+**The first argument for doing it now was wrong.** It looked nearly free, since
+decision 12 changes the table's element type and `bind()`'s signature anyway. It
+is not, and the reason is worth keeping because it is not obvious.
+
+`down()` for a multi-button verb is a trivial OR. `pressed()` is not. The
+`Source` concept offers `down(b)` and `pressed(b)`, and **`pressed` carries
+information only about buttons that are currently down.** A button released this
+frame reads `down=false, pressed=false`, indistinguishable from one that has been
+up for a minute. The verb's previous-frame state is therefore not reconstructible
+from the current frame, and stateless multi-bind edge detection is **impossible**
+under the concept as documented. That is not a gap in some predicate; it is a
+hole in the interface's information content.
+
+The counterexample is worth writing down, because the plausible-looking predicate
+`(any bound pressed) && !(any bound down-but-not-pressed)` survives casual
+inspection and is wrong. Bind `Jump` to A and Up. Hold A on frame *f-1*. On frame
+*f*, release A and press Up. The verb was down in both frames so no edge is owed
+— but that predicate reports one, and a spurious edge is precisely the one-shot
+cue retrigger that the Risks section's "pressed(), not down()" note exists to
+prevent.
+
+Two ways to buy it, neither free:
+
+- **State in the binding layer** — one previous-frame bit per verb plus a
+  mandatory per-frame tick. This reintroduces the lifecycle decision 12 scoped
+  out, for the smallest payoff available, and makes the class harder to absorb
+  into a recognizer later.
+- **Widen `Source` with `released()`**, after which
+  `was_down(b) = (down(b) && !pressed(b)) || released(b)` and the binding layer
+  stays stateless. This is the better shape and the recommended route when the
+  want arrives.
+
+**What `released()` would cost, checked rather than assumed.** `rig::Pad` keeps
+`_down[]` and `_pressed[]` and no previous-frame array; edges are recorded at the
+transition in `Pad::set()`, which is the single funnel for all three input paths.
+`_released` is the exact mirror of `_pressed` — `if (!is_down && _down[index])` —
+plus a `memset` in `begin_frame()` and an accessor. Purely additive, so nothing
+using `rig::Pad` today breaks. `down`/`pressed`/`released` is also the standard
+triple, so this completes an existing idiom rather than inventing generality.
+
+**Why it is still deferred:** nothing consumes the binding layer at all yet, and
+pulling a `rig/` API change into a `game/` scope cleanup is creep by this
+project's own standard. The mis-enumerated-pad justification does not survive
+either — a wrongly-enumerated pad is fixed by *rebinding*, not by binding two
+buttons.
+
+`bind()` should therefore take replace-semantics now, leaving room for an
+`add_binding()` beside it later, so the arrival of multi-bind does not rename
+something games already call.
+
+### 14. The binding row belongs to `rig`, and `game::Action` is deleted
+
+Recorded 2026-09-01 by the user's direct call, hours after decisions 12 and 13
+and before any of decision 12's code was written. It supersedes decision 12's
+**remedy** and leaves its diagnosis standing.
+
+**The substance of the call, as recorded.** Nothing that is specific to a *game*
+belongs in the shared library layer. The `rig` layer knows the inputs. A binding
+is a shorthand for different **devices** aliasing — maybe even 1:1 — onto the
+specific inputs a device actually has: an Anbernic H700 may map a LEFT
+differently from a Miyoo, and a Miyoo differently from a TrimUI. **The game
+offers the context of what the input actually is.**
+
+Decision 12's own three rows, with an owner written against each:
+
+```
+transport      SDL scancode, joystick button index, hat 0   rig — done
+device alias   this device's LEFT -> rig::Button::Left      rig — three paths,
+                                                            see below
+meaning        Jump, Pickup                                 the demo, in
+                                                            orchard/ — and the
+                                                            map from it, until
+                                                            a second consumer
+```
+
+`game/` gets nothing on any row. Two different reasons are doing that work and
+they are not equally strong: the verb **vocabulary** is excluded by layer, and
+the **mechanism** that would map it — which, parameterised over a game's own
+enum, would carry no vocabulary at all — is excluded by *timing*, because there
+is no second consumer to shape it against. "Why the mechanism is not kept behind
+a template" below is where that second reason is argued, and it is the one that
+would be reopened first.
+
+So `game::Action` is **deleted** from the shared
+layer rather than reworked into `game::InputBindings<Verb>`, and the
+verb-to-button table becomes orchard's when orchard exists. Nothing migrates with
+it: grepping `ActionMap`, `action_name` and `game::Action` across the tree finds
+`include/game/action.hpp`, `game/action.cc` and `tests/test_action.cc` and no
+other consumer.
+
+That is the whole route to "delete", and it is short: a table of
+`Left/Right/Jump/Pickup` is one game's vocabulary whatever row it sits on, and
+one game's vocabulary does not go in the shared layer.
+
+#### What rig actually does on the alias row
+
+- **`SDL_GameController`, when SDL recognises the device.** The alias is SDL's
+  own mapping database. Done, and not this project's code.
+- **The keyboard — which is where the Miyoo Mini's alias already lives, and it
+  is not a guess.** `docs/MIYOO-MINI.md` §6.3 and the comment on `from_key` in
+  `rig/input.cc` both record that the Miyoo's SDL2 video driver reads
+  `/dev/input` and translates Linux `KEY_*` codes straight to keysyms, so **no
+  joystick is ever enumerated at all**: the handheld logs "no pad attached,
+  keyboard only" and every face button arrives as an ordinary key press.
+  `from_key` therefore carries a second, device-specific group of cases taken
+  from Onion's `src/common/system/keymap_sw.h` — A = `SPACE`, B = `LCTRL`,
+  X = `LSHIFT`, Y = `LALT`. How far that is confirmed is worth taking from
+  [docs/MIYOO-MINI.md](../../docs/MIYOO-MINI.md) § 6.3 rather than restating:
+  the same binary, with these bindings compiled in, took input correctly on
+  **stock** firmware on 2026-07-30, and that is "one run — enough to stop
+  treating the bindings as Onion-specific, not enough to have verified every key
+  on stock." **rig is already doing per-device aliasing, for the one handheld
+  that has actually run this code.** The alias row is not unstarted; it is
+  started, in `rig`, for one device, inline in `from_key`.
+- **A raw `SDL_Joystick` otherwise**, buttons by index and the dpad from hat 0.
+  This one *is* a guess and is logged as one. Note what follows from the point
+  above: no device tested so far has taken this path, because the Miyoo takes the
+  keyboard path instead. The documented guess in the Motivation section above is
+  still a guess and is still unexercised.
+
+**A recorded decision already owns the remedy for that guess, and this one does
+not overturn it.** [results.md](../2026-07-25-target-validation/results.md),
+2026-07-27: "Once a device reports its GUID, the right fix is an
+`SDL_GameControllerAddMapping` string rather than more guessing." That stands.
+Per-device work in `rig` starts from adding mappings to SDL's own database, not
+from inventing a second alias table beside it — and the tension is live, because
+`from_key`'s Onion group already *is* a second alias table, for the path SDL's
+database cannot reach. Reconciling those two shapes is
+[rig-device-bindings](../2026-09-01-rig-device-bindings/)'s question, not this
+document's, and that work is **deferred rather than scheduled**.
+
+**"rig knows the inputs — keyboard, gamepad, stick" overstates rig as it stands.**
+There is no axis handling in `rig/input.cc` at all: it reports
+`SDL_JoystickNumAxes` in a log line and handles no `SDL_JOYAXISMOTION` or
+`SDL_CONTROLLERAXISMOTION` event. `rig::Pad` is twelve buttons and a quit flag.
+Decision 12 chose *input*-binding over *button*-binding so an axis could be bound
+later without a rename; that foresight moves to `rig` along with the row, and it
+is foresight about a capability rig does not have yet.
+
+#### What survives from decision 12, and what does not
+
+Survives, and is why that section is kept rather than deleted: that
+`Action::Pickup` is orchard's verb inside a module whose charter excludes exactly
+that; that the tell was already in the header, which justified the *absence* of
+Up/Down by appeal to one game's design; that a static bijection with no state and
+no time cannot produce a signal no single switch state can produce, and so is not
+an action layer; that what would be one is a recognizer over input history; and
+that **the name `Action` is held in reserve** for that rather than spent on an
+alias. Decision 12 diagnosed correctly and then kept the patient.
+
+Does not survive: the remedy. `game::InputBindings<Verb>` is not written,
+`include/game/input_bindings.hpp` does not exist and will not, and decision 12's
+closing bullet list of that class's properties is void. Decision 12's correction
+about tap-versus-hold — that you cannot know at press time that a tap was a tap,
+so one `Jump` fires on the edge and height is modulated by polling `down(Jump)`
+through the ascent — is about how a *game* handles input and is unaffected by
+where the table lives.
+
+#### The charter in `game/CMakeLists.txt` is wrong and comes out
+
+Its belongs-here list includes **"input actions"**. Under this decision that is
+not this module's business, and the line goes. So, probably, does the paragraph
+headed "THE rig CLAUSE EXCLUDES A JOB, NOT A NAME": it exists only to reconcile
+"input actions" being in the belongs-here list with `wreel::rig` being on the
+does-NOT list, and once the first is gone it argues against nothing. Named here
+because it is a charter change and a substantive one, not the mechanical
+consequence of deleting a file. The edit itself belongs to the deletion task.
+
+Worth checking at the same time and not assumed here: `target_link_libraries`
+gives `wreel::rig` as PUBLIC and says it is so "for that reason only" — because
+`include/game/action.hpp` includes `<rig/input.hpp>`. If that was genuinely the
+only reason, the dependency comes out of the link line with the header.
+
+#### This is the answer `entities.hpp` already gave, not a second one
+
+Decision 8 settled the same question for the behaviour tag, and settled it
+without a template: the module never interprets the tag, it is a plain `int` with
+`no_behaviour = -1`, and the demo declares its own `enum class Behaviour` and
+casts once at the spawn site. The vocabulary belongs to the demo. Deleting the
+verb enum makes `game/` consistent with that precedent rather than offering a
+second, template-shaped answer to the same question — a reader meeting both would
+otherwise have to work out which one to copy.
+
+`include/game/action.hpp` had already reached the same place for the device half
+of the problem, and the paragraph is worth carrying out of a file that is about
+to be deleted:
+
+> THE DEVICE IS MIS-ENUMERATED… the right fix is rig::Pad's table — fixing it
+> there fixes every demo at once and keeps the vocabulary honest. Fixing it here
+> would leave `Button::A` meaning the wrong thing for the next program.
+
+This decision completes that reasoning rather than overturning it: the header
+assigned the device row to `rig` and kept the verb row, and what changes here is
+only where the verb row lives.
+
+#### Why the mechanism is not kept behind a template
+
+The vocabulary has to go on the argument above. That leaves a separate question,
+because a `game::InputBindings<Verb>` parameterised over the game's own enum
+would carry no vocabulary at all — it is `Entity::behaviour`'s pattern with the
+opacity moved from a runtime `int` to a template parameter, and `Entity::behaviour`
+is right where it is.
+
+The rule that separates them is this module's own, quoted in decision 12 above.
+`game/CMakeLists.txt` records that `wreel_game` was created on "an actual second
+consumer… rather than a guess that a second consumer would eventually appear."
+
+- The entity store **has** consumers: decision 5's trigger fired as written, and
+  `sprites` and four `game/` tests use it today.
+- The verb map has **none**. Its only prospective consumer is `orchard`, which
+  does not exist. Nothing in the tree includes it but its own test.
+
+So the mechanism is not built here yet for the same reason the module itself was
+not built early: one consumer does not say where the seam goes. Decision 5 put it
+directly — "two known users do not tell you where the seam goes, and the version
+that guesses is the one that has to be undone."
+
+#### The cost this decision pays
+
+The charter sentence that supplies that rule continues: **"What lands here is
+what a second demo would otherwise copy."** A verb-to-button map in `orchard/` is
+exactly what a second demo would copy. This decision takes that duplication in
+exchange for not guessing at a shared shape before there is a second consumer to
+shape it against.
+
+The cost falls due when a second demo wants one. The move then is to promote it
+out of `orchard/` the way `sprites::Entities` was promoted — on the actual second
+consumer, which will by then be able to say what the interface needs to be. If
+what comes back looks like decision 12's `InputBindings<Verb>`, decision 12 was
+right about the shape and early about the timing.
+
+**Nothing moves today.** "The verb table becomes orchard's" is a promise, not a
+relocation: `orchard/` does not exist. What this decision does now is delete three
+files and a charter line; the replacement is written when the demo is.
+
+#### Verification
+
+Nothing was built, tested or run to *reach* this decision, nor decisions 12 and
+13 before it: it is a reading of the tree plus a call by the user. The deletion
+it mandates has since been built and tested — 25/25 on `desktop-software` and
+`desktop-debug` with zero warnings, and that is now the last measurement of any
+kind. **No line of `game/` has run on ARM or under GCC 8.3, and nothing has run
+on a device.**
+
 ## Proposed shape
 
 ```
@@ -534,7 +898,6 @@ game::Entities       sprites::Entities, moved and extended (decision 5)
 game::Level          the parsed layers + a copy of the collision layer + the spawn table
 game::collide        AABB vs. the collision layer; AABB vs. AABB
 game::Camera         follow with a deadzone, clamped to level bounds, integer out
-game::Action         Pickup/Jump/Left/Right over rig::Button
 game::Sfx            named audio::Sound handles, loaded once through asset_path()
 orchard/             the demo: rules, HUD, --screenshot, --seconds, --mute
 tools/make_sfx.py    data/sfx.xml -> the WAVs (decision 6)
@@ -564,6 +927,31 @@ code is right where this sketch was wrong.** Corrected 2026-08-30 against
   can be moved, rebuilt or dropped without invalidating the level. The copy is
   one `std::vector<int>` of width × height — 9 KB for the 64×36 fixture, against
   128 MB on the smallest target.
+
+**The action line above was wrong, and this document is where the error started.
+It has now been corrected twice, and the honest account is that the first
+correction did not go far enough.**
+
+The original line read `game::Action  Pickup/Jump/Left/Right over rig::Button`,
+which named one game's verbs as the shared module's surface.
+`include/game/action.hpp` then cited this section as its authority for exactly
+those four, and a spec sentence reads as settled once it is quoted back. That is
+how one game's vocabulary got into a shared module: not by anyone arguing for it,
+but by a sketch being quoted as a specification.
+
+The first correction, 2026-09-01 under decision 12, replaced it with
+`game::InputBindings  a game's own verb enum -> rig::Button`. That removed the
+verbs and kept the line — the shape stayed, and only its vocabulary was made
+generic. The second correction, the same day under decision 14, **removes the
+line entirely.** `game/` carries no input entry in this sketch, because it
+carries no input row at all: the binding belongs to `rig`, the verbs belong to
+whichever executable declares them, and there is nothing left in between for this
+module to hold.
+
+Naming the two rounds rather than presenting the second as the correction is the
+point. The first one fixed what the line *said* and left what it *was*, which is
+the failure mode a sketch invites — the shape survives being corrected because
+nobody is looking at it.
 
 ## Tasks
 
@@ -609,13 +997,41 @@ honoured — see decision 11.
       namespace first, with `test_entities` relinked and passing unchanged, and
       the AABB and behaviour tag added only after that is green. Two commits, so
       that a regression in the second one has a working first to bisect to
-- [x] `game::Action` over `rig::Pad` — **done 2026-08-30 — `test_action`, 15
-      cases / 78 assertions.** One indirection, justified by the raw pad mapping
-      being a documented guess: when a handheld reports the wrong button, the fix
-      should be one table, not a search for `Button::A`. The enum and its name
-      table are now tied together by a `static_assert` on the deduced array size,
-      so adding an action without extending the table fails the build rather than
-      returning a null pointer from `action_name`
+- [x] `game::Action` over `rig::Pad` — **done 2026-08-30, `test_action`, 15 cases
+      / 78 assertions; superseded 2026-09-01, see decisions 12 and 14.** One
+      indirection, justified by the raw pad mapping being a documented guess:
+      when a handheld reports the wrong button, the fix should be one table, not
+      a search for `Button::A`. **That justification does not survive either**,
+      and decision 14 says why: fixing a mis-enumerated pad in a `game/` table
+      leaves `Button::A` meaning the wrong thing for the next program, so the fix
+      was always rig's. The header said as much itself and the task line here
+      did not
+- [ ] ~~Rework it into `game::InputBindings<Verb>` per decisions 12 and 13~~ —
+      **void, superseded by decision 14 before any of it was written.** No
+      `game::InputBindings` exists and none will
+- [x] **Delete `game::Action` from the shared layer**, per decision 14 — **done
+      2026-09-01.** `include/game/action.hpp`, `game/action.cc` and
+      `tests/test_action.cc` removed, with their entries in
+      `game/CMakeLists.txt` and `tests/CMakeLists.txt` and the four-line comment
+      above the test registration. Both substantive edits in
+      `game/CMakeLists.txt` were made: **"input actions" is out of the charter's
+      belongs-here list**, and the "THE rig CLAUSE EXCLUDES A JOB, NOT A NAME"
+      paragraph went with it, having existed only to reconcile that entry
+      against `wreel::rig` on the does-NOT list. `wreel::rig` came off the
+      PUBLIC link line, checked rather than assumed: the only `rig::` left under
+      `game/` or `include/game/` is `rig::asset_path` in a usage example in a
+      comment, so nothing compiled references it. The dependency line reads
+      `game -> gfx -> util -> posix`. **25/25 on `desktop-software` and
+      `desktop-debug`**, zero warnings with `WREEL_WERROR` on; `test_action` is
+      the only test that left and no other registration changed. Nothing ran on
+      a device or under GCC 8.3. Nothing migrated — there were no consumers
+      outside the test. The verb table is written in `orchard/` when `orchard`
+      is
+- [ ] *Out of scope for this initiative, pointer only:* per-device input bindings
+      in `rig` — [rig-device-bindings](../2026-09-01-rig-device-bindings/).
+      Deferred, not scheduled. It inherits decision 13's `released()` analysis
+      and the open question of how a per-device table relates to
+      `SDL_GameControllerAddMapping`, which results.md already prefers
 - [ ] A level, by extending `tools/make_tilemap.py` or a sibling — Tiled is still
       not available here, and `data/PROVENANCE.md` should keep saying so plainly
 - [ ] `orchard` — the rules, the HUD, `--screenshot`, `--seconds`, `--mute`, and
@@ -744,6 +1160,26 @@ sanitizer builds in `/tmp` rather than anything in the tree, which is what raise
 the question. No preset exists for either and none is planned pending that
 discussion.
 
+### One question opened 2026-09-01
+
+6. **Whether the binding table survives underneath a recognizer, or is absorbed
+   into it.** Decision 12 kept `InputBindings` small partly on the argument that
+   a recognizer would consume it as configuration — fighting games express motion
+   inputs in terms of directions and attack buttons, which are bound names, so
+   the binding layer would sit below. That is an architectural hunch and not a
+   checked fact, which is why it is here rather than asserted in a header: the
+   alternative, a recognizer that reads raw `rig::Button` and leaves the binding
+   table redundant, is not obviously worse. Nothing needs this answered until a
+   recognizer is actually wanted, and that is not in this initiative.
+
+   **Still open under decision 14, and it has moved rather than closed.** There
+   is no `game::InputBindings` for a recognizer to sit on top of, so the question
+   is now whether a recognizer would consume *rig's* per-device binding or a
+   demo's own verb table — or both, one on each side of it. Decision 14 makes
+   that a question spanning `rig` and a demo with nothing in between, which is a
+   change of shape and not an answer. The reservation of the name `Action` is
+   what keeps it answerable later.
+
 ### One open question, found 2026-08-14 while checking the first task
 
 **Still open as of 2026-08-22, and it is now the only thing blocking progress.**
@@ -791,7 +1227,15 @@ measurement rather than a choice.
 - [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/) — the
   predecessor, and the source of the scope line this snapshot picks up
 - [target-validation/results.md](../2026-07-25-target-validation/results.md) — the
-  fill-rate measurements decision 4 is built on
+  fill-rate measurements decision 4 is built on, and the 2026-07-27 entry that
+  already assigns the mis-enumerated-pad fix to `SDL_GameControllerAddMapping`
+  rather than to more guessing (decision 14)
+- [rig-device-bindings](../2026-09-01-rig-device-bindings/) — where the binding
+  row goes under decision 14, and where decision 13's `released()` analysis is
+  carried. Deferred, not scheduled
+- `docs/MIYOO-MINI.md` §6.3 — the Miyoo's pad *is* a keyboard and enumerates no
+  joystick, which is why `rig::Pad`'s per-device alias for it lives in the
+  keyboard path and is verified rather than guessed (decision 14)
 - [packaging-distribution](../2026-07-25-packaging-distribution/) — where a fourth
   bundle entry lands
 - `data/PROVENANCE.md` — the CC0 grant this art arrives under, and the unknown
