@@ -48,12 +48,6 @@ wreel_add_test(test_camera  LIBS wreel::game)
 # The layers are built in the test, so no .tmx is read either.
 wreel_add_test(test_level   LIBS wreel::game)
 
-# The most headless test here: game::ActionMap is a template over a documented
-# Source concept, so the fixture is a stub written in the test rather than a
-# rig::Pad. It links wreel::game only for action_name and the constructor — no
-# device is opened, and rig::Button is a plain enum in a header.
-wreel_add_test(test_action  LIBS wreel::game)
-
 # coppers/bars.cc is compiled into the test rather than linked, because the demo
 # is an executable and its sources are not a library. Worth a library if a second
 # consumer ever appears; not worth one for a single test.

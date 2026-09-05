@@ -4,8 +4,8 @@
 // otherwise means guessing at capabilities. Run this on the device and let the
 // firmware answer.
 //
-// Exits non-zero if SDL cannot initialise video at all, so it doubles as a
-// smoke test under CTest.
+// Exits non-zero if SDL cannot initialise video at all. Every other finding is
+// reported and leaves the exit status at zero.
 
 #include <SDL.h>
 
@@ -163,6 +163,15 @@ void report_input()
         std::printf("  [%d] %-28s %s\n", i, name ? name : "(unnamed)",
                     is_gamepad ? "(gamepad mapping present)"
                                : "(raw joystick)");
+
+        // SDL_GameControllerAddMapping is keyed on the GUID, so a mapping for
+        // a mis-enumerated pad cannot be written without this field. Taken
+        // from the device index rather than an open handle, so it still
+        // reports when SDL_JoystickOpen below fails.
+        char guid[64] = {0};
+        SDL_JoystickGetGUIDString(SDL_JoystickGetDeviceGUID(i), guid,
+                                  sizeof(guid));
+        std::printf("       guid %s\n", guid);
 
         SDL_Joystick* stick = SDL_JoystickOpen(i);
         if (stick) {

@@ -1660,3 +1660,69 @@ question about `gfx` and has not been decided. Nothing here establishes that the
 draw path is broken: `gfx::TileMap` was not audited for this and is not being
 claimed as defective. Recorded so the next person to add a third consumer knows
 there are already two hand-written copies of the same rule.
+
+---
+
+## D31 — on a Miyoo Mini, pressing L2 reads as `Button::Select`
+
+**WRONG — latent, and reachable on `miyoomini` only.** `rig/input.cc`
+
+`from_key` carries two groups of keysym cases in one `switch`: a desktop layout,
+and the Miyoo Mini's, where the pad **is** the keyboard — that device's SDL2
+video driver translates Linux `KEY_*` codes straight to keysyms and no joystick
+is ever enumerated, so every button arrives as an ordinary key press. The second
+group is Onion's `src/common/system/keymap_sw.h`, and it assigns `TAB` to
+**L2**:
+
+```
+L1 = e          R1 = t          L2 = TAB        R2 = BACKSPACE
+SELECT = RCTRL  START = RETURN  MENU = ESCAPE
+```
+
+The desktop group independently assigns `TAB` to Select, and both land in the
+same case:
+
+```cpp
+case SDLK_TAB:
+case SDLK_RCTRL:
+    return Button::Select;
+```
+
+So on that hardware a press of the L2 shoulder produces `Button::Select`. The
+four arrow keysyms are in both groups, and past those the two overlap on `TAB`
+and `RETURN` — of which `TAB` is the one where they disagree.
+
+**`rig::Button` has no `L2` or `R2`,** so there is no correct destination for
+that press to be routed to. This is not a case of the wrong constant being
+picked; the vocabulary does not contain the right one. `BACKSPACE`, Onion's R2,
+is not in `from_key` at all and is silently dropped, which is the same gap
+without the collision on top.
+
+**Latent, and the reason is checkable rather than assumed.** `Button::Select`
+has no reader anywhere in the tree: grepping for it finds only the three
+`return` statements inside `rig/input.cc`'s own `from_key`, `from_controller`
+and `from_joystick_index`. No demo, no test and no game reads it. The first
+consumer to do so acquires this behaviour with no code change of its own, which
+is the shape that makes it worth recording now rather than when it fires.
+
+**Not confirmed on hardware, and it cannot be from here.** It is derived from
+Onion's published keymap and the `switch` above, both read on 2026-09-03. The
+Miyoo keysym group as a whole is confirmed by device runs on two firmwares
+([docs/MIYOO-MINI.md § 6.3](../../docs/MIYOO-MINI.md)), but no device run has
+exercised L2 specifically, because nothing on either firmware run read Select.
+
+**Not fixed, because the remedy is a design decision and not a correction.**
+Three routes, none of them free:
+
+- Drop `SDLK_TAB` from the desktop group. Cheapest, and it costs desktop users a
+  Select key unless another is chosen.
+- Add `L2`/`R2` to `rig::Button` and give `TAB` and `BACKSPACE` to them. The
+  honest fix, and it widens a `rig` API — which
+  [game-layer-and-demo](../2026-08-10-game-layer-and-demo/) decision 13 already
+  ruled is creep when pulled into an unrelated cleanup.
+- Accept it and document it. Defensible only while Select stays unread.
+
+Tracked as an open question in
+[rig-device-bindings](../2026-09-01-rig-device-bindings/), which owns `rig`'s
+input decisions. The comment on `from_key` states the collision as it stands so
+a reader is not told the two groups agree.
