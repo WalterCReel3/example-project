@@ -1112,8 +1112,9 @@ so the log carries no run date, and none is recorded elsewhere.
 
 ## 2026-10-16 — the current tree on desktop and under GCC 8.3
 
-The working tree as it stands, uncommitted layers included, with the 2026-10-09
-mirroring work (handoff group 7). Dev box, `WREEL_WERROR` on throughout. No
+The working tree as it stood, uncommitted layers included, with the 2026-10-09
+mirroring work (handoff group 7). That tree was committed the same day as
+`3af0cb9`..`9921511`, group 7 as `1b811fd`. Dev box, `WREEL_WERROR` on throughout. No
 device, and no preset other than these three.
 
 | Run | Result |

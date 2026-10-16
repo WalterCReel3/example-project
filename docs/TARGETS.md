@@ -60,7 +60,8 @@ driver, which exists only in the grafted SDL2
 
 Recorded in
 [planning/2026-09-01-rig-device-bindings](../planning/2026-09-01-rig-device-bindings/)
-(its **Target scope** header, which is uncommitted working-tree text). In its
+(its **Target scope** header, committed in `69d6aff`, "docs: record the Miyoo
+Mini input evidence and orchard's first device run"). In its
 words, as of 2026-10-16: "the build is narrowed to **desktop
 and `miyoomini`** … The `rk3326` and `h700` presets remain in the tree and
 cross-compile — what has narrowed is what is being built and validated, not

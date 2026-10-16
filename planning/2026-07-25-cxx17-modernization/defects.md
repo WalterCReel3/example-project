@@ -1866,7 +1866,8 @@ target, not this fault. No log of that run is in the tree.
 
 Line 774 is the `TEST_CASE` line of *a negative world x floors to its pixel
 rather than truncating*, in both the staged file (30 cases, matching the
-handoff's 30/30) and the working tree (31). It is the case the 2026-10-16 run
+handoff's 30/30; committed as `3af0cb9`) and the working tree (31; committed
+as `1b811fd`). It is the case the 2026-10-16 run
 crashes in.
 
 Nothing records what produced the 2026-10-06 core — which suite run, or whether
@@ -1926,8 +1927,9 @@ library or demo code failed. Both desktop presets (x86-64, GCC 12) compile the
 same lines clean the same day. Debian's armhf cross build (GCC 12) was not run,
 so whether this is specific to GCC 8.3 is not known.
 
-Both lines were added by the 2026-10-09 mirroring work, which is unstaged and has
-not been built under GCC 8.3 before. So `test_atlas` and `test_animation` don't
+Both lines were added by the 2026-10-09 mirroring work, committed 2026-10-16 as
+`1b811fd` (feat(gfx): mirrored sprites, and per-character facing in orchard),
+which had not been built under GCC 8.3 before. So `test_atlas` and `test_animation` don't
 build for the device target, the qemu suite can't run them, and the handoff's
 commit group 7 can't go into a GCC 8.3 bundle as it stands. No shipped code is
 affected. Nothing has established whether either cast is ever misaligned at

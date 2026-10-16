@@ -213,8 +213,9 @@ probe is the tool [docs/TARGETS.md](../../docs/TARGETS.md) and target-validation
 § 4 both name as the thing you SSH onto a device and run, and it is the one that
 works headless where `coppers` needs a display. `report_input` in `probe/main.cc`
 now prints a `guid` line, taken from the device index so it still reports when
-`SDL_JoystickOpen` fails. It is in the working tree and compiles clean on
-`desktop-software`; **it has not been run on a device.**
+`SDL_JoystickOpen` fails. It compiles clean on `desktop-software` and is
+committed (`62714da`, PR #18; checked 2026-10-16); **it has not been run on a
+device.**
 
 **Neither prints "you just pressed button 3".** Authoring a mapping string needs a
 press-to-identify pass, and `Pad::set()` logs nothing. This is the instrumentation

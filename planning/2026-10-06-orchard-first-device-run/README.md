@@ -3,9 +3,11 @@
 **Status:** `in-progress` — the bundle entry and the run logging are written
 and built into the Onion bundle under GCC 8.3, and device run 1 has been done
 and recorded ([results.md](../2026-07-25-target-validation/results.md)
-§ 2026-10-06). Runs 2 and 3 have no log. Nothing is committed, and the tree has
-moved on since the bundle was built (group 7 of the commit plan). Group 7 does
-not build under GCC 8.3 (2026-10-16, D34) and has to be fixed before it ships.
+§ 2026-10-06). Runs 2 and 3 have no log. The tree is committed on
+`feature/orchard-demo` as seven commits, `3af0cb9`..`9921511` (2026-10-16, not
+pushed), and has moved on since the bundle was built (group 7, `1b811fd`).
+Group 7 does not build under GCC 8.3 (2026-10-16, D34) and has to be fixed
+before it ships.
 **Written:** 2026-10-06; status, commit plan and tasks updated 2026-10-16
 
 This is a handoff. The session that wrote it could edit and build on the dev box
@@ -21,14 +23,28 @@ whose last open task is "add it to the Onion bundle as a fourth entry".
 
 ## Where the tree is
 
-Branch `feature/orchard-demo`, cut from `master` at `62714da`. **Nothing is
-committed on it.** The index holds the game as the September builders staged it;
-the working tree is ahead of the index.
+Branch `feature/orchard-demo`, cut from `master` at `62714da`. **Committed
+2026-10-16, not pushed**, as seven commits following the plan below, group 3
+folded into 6:
+
+| Group | Commit |
+|---|---|
+| 1, the game | `3af0cb9` feat(orchard): add the orchard platformer demo |
+| 2, D32 | `479e26f` fix(tools): compare only visible pixels in pack_atlas.py's verify pass |
+| 4, clouds | `c74e310` feat(data): bake cloud tiles into the tileset and regenerate orchard.tmx |
+| 5, input evidence | `69d6aff` docs: record the Miyoo Mini input evidence and orchard's first device run |
+| 6, with 3 | `dc534d4` feat(orchard): Onion bundle entry, run logging and per-phase frame timing |
+| 7, mirroring | `1b811fd` feat(gfx): mirrored sprites, and per-character facing in orchard |
+| 8, doc audit | `9921511` docs: audit the documentation against the tree, 2026-10-16 |
+
+The plan is kept below as it was written, before the commits. Before them, the
+index held the game as the September builders staged it and the working tree
+was ahead of the index.
 
 Every other branch, local and remote, was squash-merged through PRs #1–#18.
 Nothing outstanding lives on one.
 
-### What is uncommitted, in the order it should be committed
+### What was uncommitted, in the order it should be committed
 
 The staged/unstaged split is an accident of which builder ran `git add` and
 carries no meaning. The grouping below is by subject.
@@ -254,7 +270,9 @@ workload, which is what the first run measures.
 
 ## Tasks
 
-- [ ] Commit, in the grouping above
+- [x] Commit, in the grouping above — done 2026-10-16, not pushed: `3af0cb9`
+      (1), `479e26f` (2), `c74e310` (4), `69d6aff` (5), `dc534d4` (6, with
+      group 3 folded in), `1b811fd` (7), `9921511` (8)
 - [x] Build in the container under GCC 8.3 with `-DWREEL_TARGET_FIRMWARE=onion`,
       zero warnings, and build `bundle-onion`
 - [x] List the tarball: `App/Orchard/{orchard,launch.sh,config.json}`,
@@ -281,8 +299,8 @@ workload, which is what the first run measures.
 - [x] Device run 1 below — the user's. Root `stdout.log`; recorded in
       [results.md](../2026-07-25-target-validation/results.md) § 2026-10-06
 - [ ] Device runs 2 and 3 below — the user's. No log in the tree for either
-- [ ] Rebuild the bundle under GCC 8.3 once D34 is fixed and group 7 is
-      committed: the bundle on the card predates it, so mirroring has not
+- [ ] Rebuild the bundle under GCC 8.3 once D34 is fixed (group 7 is
+      committed, `1b811fd`): the bundle on the card predates it, so mirroring has not
       been seen on the `Miyoo Mini` driver
 
 ### The build, as far as it is known
@@ -398,16 +416,17 @@ still works. The `--verbose` log then names the keysym that did arrive.
 > and is authoritative on what is and is not verified — treat its claims as
 > claims and check the ones you build on.
 >
-> You are on `feature/orchard-demo` with everything uncommitted. This session
+> You are on `feature/orchard-demo`, committed through `9921511` and not
+> pushed (step 2 below is done). This session
 > needs `git commit`, Docker (`sg docker -c '…'` if the socket is refused) and
 > write access to `build/` and `pkg/`; if any of those is refused, stop and say
 > which.
 >
 > 1. Build `desktop-software` and run its tests first. Expect 26/26 outside a
 >    sandbox; anything else is a finding.
-> 2. Commit in the eight groups the handoff lists. No `git add .`, no attribution
->    trailers. Show me the log before pushing; do not push or open a PR without
->    my say.
+> 2. ~~Commit in the eight groups the handoff lists.~~ Done 2026-10-16; not
+>    pushed (`3af0cb9`..`9921511`, group 3 folded into 6). Do not push or open
+>    a PR without my say.
 > 3. Build the Onion bundle in the `wreel-miyoomini` container under GCC 8.3
 >    with `-DWREEL_TARGET_FIRMWARE=onion`. Zero warnings. The handoff's command
 >    was run once, on 2026-10-06, before group 7 existed; fix it if it is wrong

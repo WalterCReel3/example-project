@@ -7,9 +7,9 @@ end as of 2026-09-14 — see
 [decision 18](#18-contact-costs-the-last-pickup-the-goal-ends-the-run) — and has
 had its cues and music since 2026-09-15. It has run once on a Miyoo Mini, from
 the GCC 8.3 Onion bundle, and was played to the goal
-([results.md](../2026-07-25-target-validation/results.md), 2026-10-06). None of
-it is committed: `orchard/` and everything after #18 is uncommitted on
-`feature/orchard-demo`. See
+([results.md](../2026-07-25-target-validation/results.md), 2026-10-06).
+`orchard/` and everything after #18 is committed on `feature/orchard-demo` as
+`3af0cb9`..`9921511` (2026-10-16), not pushed. See
 [Where this stands](#where-this-stands-2026-10-16).
 **Written:** 2026-08-10
 **Blocked by:** nothing. The frame-name question that held the art ingest and
@@ -32,14 +32,16 @@ The **layer** is complete, one piece smaller than it was, and all of it is
 committed: everything through `game::Camera` merged as `a9ca839` on PR #16;
 `game::Level` and `game::Action` merged as `c1a1c00` on PR #17, which also
 carried D28–D30; the deletion of `game::Action` merged as `62714da` on PR #18,
-2026-09-04. Nothing is committed after that.
+2026-09-04. Nothing after that is on `master`.
 
-The **game** exists and is not committed. `orchard` has the level, the player,
+The **game** exists and is committed on `feature/orchard-demo` (cut from
+`62714da` on 2026-10-06), not pushed. `orchard` has the level, the player,
 the cast, the rules, the HUD, the cues and the music; the table below has each
-slice. It sits on `feature/orchard-demo` (cut from `62714da` on 2026-10-06) as a
-staged layer plus a further unstaged one, and
-[orchard-first-device-run](../2026-10-06-orchard-first-device-run/) is the
-handoff that says how to commit it, in eight groups.
+slice. It was committed 2026-10-16 in the groups
+[orchard-first-device-run](../2026-10-06-orchard-first-device-run/) laid out:
+`3af0cb9` "feat(orchard): add the orchard platformer demo" is the game itself,
+and `479e26f`, `c74e310`, `69d6aff`, `dc534d4`, `1b811fd` and `9921511` follow
+it (that handoff's § Where the tree is has the subjects).
 
 **It has run on a device once.** The Onion bundle built under GCC 8.3 in the
 `wreel-miyoomini` container was launched as shipped (`--software --verbose`) on
@@ -66,7 +68,7 @@ mirroring tests below,
 24 suites that do build pass; the failing four are September's.
 
 **After the handoff, unrecorded until now: mirrored sprites and facing
-(2026-10-09, unstaged).** The `mini` render driver no-ops
+(2026-10-09; committed 2026-10-16 as `1b811fd`).** The `mini` render driver no-ops
 `SDL_RenderCopyEx` ([MIYOO-MINI.md](../../docs/MIYOO-MINI.md)), so a
 left-facing sprite cannot be had from the renderer. `gfx::Atlas` gained a
 constructor from an `SDL_Surface` that uploads a second, row-reversed copy of
@@ -79,7 +81,7 @@ frog and eagle face left, pickups and the goal have none) and loads foxy and
 the critters mirrorable. +14 test cases: `test_atlas` +8, `test_animation` +1,
 `test_entities` +1, `test_orchard` +4. It was written after the handoff,
 whose commit plan has since been extended to eight groups; this is group 7
-([orchard-first-device-run § What is uncommitted](../2026-10-06-orchard-first-device-run/README.md#what-is-uncommitted-in-the-order-it-should-be-committed)).
+([orchard-first-device-run § What was uncommitted](../2026-10-06-orchard-first-device-run/README.md#what-was-uncommitted-in-the-order-it-should-be-committed)).
 Not run on a device. The 2026-10-16 desktop runs above compiled and passed its
 tests. Under GCC 8.3 its library code compiles but `test_atlas` and
 `test_animation` do not (D34), so their new cases have not run there;
@@ -125,8 +127,8 @@ than the 26/26 recorded below, and `test_action` is the only test that left.
 | `game::Action` | **superseded 2026-09-01 — deleted from this layer, see decision 14.** Shipped as `test_action`, 15 cases / 78 assertions, all of which pin orchard's verbs rather than the mechanism. Decision 12 first proposed reworking it into `game::InputBindings`; decision 14 supersedes that and removes it instead. The verb table is orchard's, in `orchard/verbs.{hpp,cc}` |
 | `game::Sfx`, the cues | **`game::Sfx` superseded 2026-09-15 — never built, see [decision 17](#17-gamesfx-is-not-built-the-cue-table-is-orchards).** The cue table is `orchard::Cues` in `orchard/cues.{hpp,cc}`: five WAVs, the module, and `--mute` as constructing no device at all. Wired to the rules and to the player's jump and landing edges |
 | `tools/make_orchard_level.py` + `data/orchard.tmx` | done 2026-09-08 — 96×40, two visible layers and an invisible `collision` layer, 23 spawns. **The first `.tmx` in this tree that builds a `game::Level`**, proven in `test_tmx` rather than asserted |
-| the art ingest, `orchard` | the ingest landed as `data/critters.{png,xml}` and `critters.anim.xml`. `orchard` is four slices in: the level and the player, the cast, the rules with the HUD and the goal, and — 2026-09-15 — the cues and the music. `tests/test_orchard.cc` was 26 cases / 180 assertions at 2026-09-15 and crosses the shipped map twice, once on geometry alone in 758 frames and once under the rules in 1204. **Both numbers are unchanged by the sound**, which is the check that says no cue was wired into the simulation. It is 30 cases by grep in the working tree (26 staged): the four "Facing" cases from 2026-10-09; assertion count not re-taken |
-| mirrored sprites and facing | written 2026-10-09, unstaged — `gfx::Mirror`, the mirrorable `gfx::Atlas`, `Entity::mirror`, orchard's per-actor facing; see above. Group 7 of the handoff's commit plan. 26/26 on both desktop presets 2026-10-16; **does not build under GCC 8.3** (D34, open) |
+| the art ingest, `orchard` | the ingest landed as `data/critters.{png,xml}` and `critters.anim.xml`. `orchard` is four slices in: the level and the player, the cast, the rules with the HUD and the goal, and — 2026-09-15 — the cues and the music. `tests/test_orchard.cc` was 26 cases / 180 assertions at 2026-09-15 and crosses the shipped map twice, once on geometry alone in 758 frames and once under the rules in 1204. **Both numbers are unchanged by the sound**, which is the check that says no cue was wired into the simulation. It is 30 cases by grep at `1b811fd` (26 at `3af0cb9`, the game's commit): the four "Facing" cases from 2026-10-09; assertion count not re-taken |
+| mirrored sprites and facing | written 2026-10-09, committed 2026-10-16 as `1b811fd` — `gfx::Mirror`, the mirrorable `gfx::Atlas`, `Entity::mirror`, orchard's per-actor facing; see above. Group 7 of the handoff's commit plan. 26/26 on both desktop presets 2026-10-16; **does not build under GCC 8.3** (D34, open) |
 | the Onion bundle entry | `App/Orchard` built under GCC 8.3 into `pkg/wreel-0.2.0-onion.tar.gz` 2026-10-06; **run once on a Miyoo Mini and played to the goal** — [results.md § 2026-10-06](../2026-07-25-target-validation/results.md). Software renderer only; runs 2 and 3 not returned |
 | `orchard`'s rules | done 2026-09-14 — collection, contact, the goal and a score line. See [decision 18](#18-contact-costs-the-last-pickup-the-goal-ends-the-run) |
 | `orchard`'s cues and music | done 2026-09-15 — five WAVs on five events, `emerald-droplets.xm` playing, `--mute` opening no device, and voices on the fill-rate line. See [decision 17](#17-gamesfx-is-not-built-the-cue-table-is-orchards). Not listened to when written. 2026-10-16: confirmed audible by the user on the device (sound effects and module playback in orchard and coppers); not logged. Firmware not stated; the matching orchard log is the Onion run. The mixer's cost is still unisolated |
@@ -1671,7 +1673,7 @@ them; decision 9 reversed that, because `Aabb` lives in `collide.hpp` and
 `entities.hpp` includes it. And the promotion's "two commits" clause was not
 honoured — see decision 11.
 
-- [x] Ingest the art — **done, uncommitted**: the eight directories under
+- [x] Ingest the art — **done, committed 2026-10-16 in `3af0cb9`**: the eight directories under
       `data/sunny-land/critters/`, `data/critters.{png,xml}` and
       `critters.anim.xml` (file dates 2026-09-05), with their
       `data/PROVENANCE.md` rows. Unblocked by decision 15, which settles the
@@ -1765,8 +1767,8 @@ honoured — see decision 11.
       closed**: `test_tmx` now loads the file and builds a `game::Level` from it,
       five cases / 123 assertions, and `tests/CMakeLists.txt` gained
       `wreel::game` on that line to allow it
-- [x] `orchard` — **done, uncommitted: the rules and HUD 2026-09-14, the cues
-      and music 2026-09-15** (rows below and in the table at the top). Built
+- [x] `orchard` — **done: the rules and HUD 2026-09-14, the cues and music
+      2026-09-15; committed 2026-10-16 in `3af0cb9`** (rows below and in the table at the top). Built
       under GCC 8.3 and played to the goal on a Miyoo Mini from the Onion
       bundle; see the Onion bundle task below. The rules, the HUD,
       `--screenshot`, `--seconds`, `--mute`, and

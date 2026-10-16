@@ -138,10 +138,10 @@ What has been run, and where:
 
 - **Dev box:** `desktop-software` (full compile, ccache disabled) and
   `desktop-debug` both build with zero warnings under `WREEL_WERROR` and pass
-  26/26 suites, 2026-10-16, on the current working tree.
-- **GCC 8.3 (`miyoomini` device toolchain), 2026-10-16:** the current working
-  tree does **not** build under `-Werror`: two `-Wcast-align` errors in the
-  uncommitted mirroring tests (D34 in
+  26/26 suites, 2026-10-16, on the tree since committed through `9921511`.
+- **GCC 8.3 (`miyoomini` device toolchain), 2026-10-16:** the same tree
+  does **not** build under `-Werror`: two `-Wcast-align` errors in the
+  mirroring tests, committed in `1b811fd` (D34 in
   [defects.md](planning/2026-07-25-cxx17-modernization/defects.md), open).
   Incremental build; library and demo code compiled.
 - **Miyoo Mini hardware**, from the GCC 8.3 bundle: `coppers` and `wreel-diag`

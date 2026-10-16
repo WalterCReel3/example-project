@@ -173,9 +173,9 @@ tools/.venv/bin/python tools/make_orchard_level.py --out data --bake-tiles
 `--bake-tiles` is the exception, and the one path that needs Pillow. It draws
 fourteen cloud tiles from `CLOUD_SHAPES` into ids 541–554 of `data/tileset.png`,
 slots the pack leaves fully transparent, so the sheet's dimensions and
-`test_tmx`'s tilecount are unchanged. The baked sheet is meant to be committed
-(as of 2026-10-16 it is in the working tree only; the sheet at `HEAD` has no
-clouds), so this only has to run when `CLOUD_SHAPES` changes or after
+`test_tmx`'s tilecount are unchanged. The baked sheet is committed (`c74e310`,
+"feat(data): bake cloud tiles into the tileset and regenerate orchard.tmx"),
+so this only has to run when `CLOUD_SHAPES` changes or after
 `make_tilemap.py` has copied the pack's sheet back over it. Provenance of the
 drawn tiles is in [data/PROVENANCE.md](../data/PROVENANCE.md).
 
