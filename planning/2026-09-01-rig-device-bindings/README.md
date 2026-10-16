@@ -3,11 +3,24 @@
 **Status:** `blocked` — deferred, for the two reasons in decision 4. The decision
 is recorded here; the mapping work needs device logs this machine cannot produce
 **Written:** 2026-09-01
-**Blocked by:** real hardware, for the mapping route. The alias table for a
-device is keyed on what that device reports, and no Anbernic or TrimUI pad has
-ever been enumerated by this project. Per the standing arrangement, device runs
-are the user's. Handling axis input is on the task list, needs no hardware, and
-can be started without any of this
+**Target scope:** the build is narrowed to **desktop and `miyoomini`**, and that
+decides which half of this document is live. Decision 1 — an SDL mapping string
+keyed on a joystick GUID — serves `rk3326` and `h700`, so it serves no target
+currently being built. The two that are built reach the binding row by other
+means: on the Miyoo the pad *is* the keyboard and the route is the keysym table
+in `from_key`; on desktop it is the keyboard, or a controller SDL already has a
+mapping for in its own database. Neither presents a GUID this project would key
+a table on. The `rk3326` and `h700` presets remain in the tree and
+cross-compile — what has narrowed is what is being built and validated, not what
+exists
+**Blocked by:** `rk3326` and `h700` hardware, for the mapping route — the two
+targets the current scope does not build. The alias table for a device is keyed
+on what that device reports, and no Anbernic or TrimUI pad has ever been
+enumerated by this project. Waiting rather than abandoned: this resumes when
+those targets re-enter the build scope, and nothing here is withdrawn in the
+meantime. Per the standing arrangement, device runs are the user's. Handling axis
+input is on the task list, needs no hardware, and can be started without any of
+this
 **Serves:** [game-layer-and-demo](../2026-08-10-game-layer-and-demo/) decision 14,
 which pushes this row out of `game/` and onto `rig`;
 [target-validation](../2026-07-25-target-validation/) § 4, which owns collecting
@@ -78,8 +91,9 @@ path won.
 
 ### The device-alias row is not unstarted
 
-**A device alias already exists in `rig`, for one device, and it is verified
-rather than guessed.** On the Miyoo Mini the pad *is* the keyboard: the vendor
+**A device alias already exists in `rig`, for one device, and it is read from the
+vendor's own keymap rather than guessed.** On the Miyoo Mini the pad *is* the
+keyboard: the vendor
 SDL2 video driver reads `/dev/input` and translates Linux `KEY_*` codes straight
 to keysyms, so no joystick is ever enumerated — the demo logs "no pad attached,
 keyboard only" on a handheld covered in buttons. The second keysym group in
@@ -87,25 +101,47 @@ keyboard only" on a handheld covered in buttons. The second keysym group in
 [`src/common/system/keymap_sw.h`](https://github.com/OnionUI/Onion/blob/main/src/common/system/keymap_sw.h)
 (A=`SPACE`, B=`LCTRL`, X=`LSHIFT`, Y=`LALT`, L1=`e`, R1=`t`, L2=`TAB`,
 R2=`BACKSPACE`, Select=`RCTRL`, Start=`RETURN`), and the comment above it records
-the device run that proved it:
+the device run that motivated it:
 the first run took the D-pad and Escape and ignored every face button, because
-arrows and Escape happened to coincide and nothing else did. Full anatomy in
+arrows and Escape happened to coincide and nothing else did.
+
+**How much of that group has been exercised since is two bindings of seven,
+both on OnionOS.** `LSHIFT` reached `Button::X` on 2026-08-02 (`coppers`, whose
+layer height changes on X and nothing else). `SPACE` reached `Button::A` in
+`orchard`'s first device run: the root `stdout.log` has 36
+`input: key Space (sym 0x20, scancode 44) -> a` lines and `Jump pressed x36`
+([results.md](../2026-07-25-target-validation/results.md) § 2026-10-06).
+`LCTRL` and `LALT` have not been recorded working on either firmware. `e`, `t`
+and `RCTRL` still have no consumer in the tree, but `rig::Pad` now logs every
+keydown at debug level with the `rig::Button` it mapped to, and the Onion bundle
+runs `orchard` with `--verbose`, so a press is visible in the log without one.
+No run on stock firmware records which controls were pressed at all.
+Per-binding state, with what each rests on, in
 [docs/MIYOO-MINI.md § 6.3](../../docs/MIYOO-MINI.md).
 
 So the correct framing is not "device aliasing is missing". It is: **device
 aliasing is done for one device in one key space, and absent in the other.**
 
-### Two key spaces, which is the structural fact this document turns on
+### Two key spaces, and only one of them is in the current target scope
+
+**The keysym space is the one that ships today.** Of the four rows below, the
+only one that is a target currently being built is the row with no joystick in
+it. The mapping-string route of decision 1 applies to the two Mali rows and to
+nothing else here, so the live thread is the keysym table — what it covers, what
+it does not, and what an error in it costs — and the mapping work is the part
+held until its targets are built again.
 
 | Target | What SDL enumerates | Alias key space | State |
 |---|---|---|---|
-| `miyoomini` — Mini, Mini Plus, Mini Flip | **no joystick at all**; the pad arrives as ordinary key events | SDL keysym | **done for the D-pad, the face buttons, L1/R1 and Start/Select**, from Onion's `keymap_sw.h`, confirmed by one device run on two firmwares. L2 and R2 have no `rig::Button` to reach — [D31](../2026-07-25-cxx17-modernization/defects.md) |
-| `rk3326` — RG351/RG353 | evdev joystick, expected without an SDL mapping | joystick GUID → button index / hat | **guessed**, never enumerated |
-| `h700` — RG35XX Plus/H/SP, RG40XX | evdev joystick, expected without an SDL mapping | joystick GUID → button index / hat | **guessed**, never enumerated |
+| `miyoomini` — Mini, Mini Plus, Mini Flip | **no joystick at all**; the pad arrives as ordinary key events | SDL keysym | **in scope, and written for the D-pad, the face buttons, L1/R1 and Start/Select**, from Onion's `keymap_sw.h`. Two of those bindings have been exercised on hardware, both on OnionOS — `LSHIFT` → X on 2026-08-02 and `SPACE` → A in `orchard`'s first device run — and the rest is the header's word. L2 and R2 have no `rig::Button` to reach — [D31](../2026-07-25-cxx17-modernization/defects.md) |
+| `rk3326` — RG351/RG353 | evdev joystick, expected without an SDL mapping | joystick GUID → button index / hat | **out of the current build scope**, and **guessed**, never enumerated |
+| `h700` — RG35XX Plus/H/SP, RG40XX | evdev joystick, expected without an SDL mapping | joystick GUID → button index / hat | **out of the current build scope**, and **guessed**, never enumerated |
 | TrimUI | — | presumably button indices | **not a configured target** — no preset, no toolchain, no entry in [docs/TARGETS.md](../../docs/TARGETS.md) |
 
-**The Miyoo row is established; the two Mali rows are an expectation.** The Miyoo
-half rests on `rig/input.cc`'s own documentation and a device run. The claim that
+**The Miyoo row is sourced and partly exercised; the two Mali rows are an
+expectation.** The Miyoo half rests on Onion's published header, on
+`rig/input.cc`'s own documentation, and on device runs that between them confirm
+two of its bindings. The claim that
 an `h700` or `rk3326` device *does* enumerate an evdev joystick — and so has a
 GUID to key on at all — has never been checked on hardware by this project;
 neither Mali target has been run on a device in any capacity
@@ -214,11 +250,26 @@ holds up on re-reading, and it is stronger than a `rig`-side per-device table:
 
 The API is verified, not recalled — see decision 3.
 
+**Which targets it serves, which is narrower than when it was adopted.** A
+mapping string is keyed on a joystick GUID, so it can only reach a device that
+enumerates a joystick: `rk3326` and `h700`, both outside the current build
+scope. It does nothing for the Miyoo, which has no joystick to have a GUID,
+and nothing for desktop, where SDL's own database already supplies the mapping
+for a controller it recognises. The decision is not withdrawn — it remains the
+right remedy for the devices it is for, and it is the reason path 2 gets deleted
+rather than papered over — but no target currently being built exercises it.
+
 ### 2. The keysym space stays where it is, and is not folded into the mapping route
 
 Because a GUID cannot name the Miyoo (see What exists today), the keysym table in
 `from_key` cannot be expressed as a mapping string and must not be moved behind
 one. It stays as a compiled-in per-device table in `rig`.
+
+Under the current target scope this is not the exception to decision 1 but the
+mechanism carrying every device being built: it is the whole of the Miyoo's
+binding route, and desktop reaches `rig::Button` through the same `from_key`
+switch. Decision 1 is the one waiting on hardware; this one is already load
+bearing.
 
 That leaves `rig` with two aliasing mechanisms rather than one, which is worth
 being explicit about rather than discovering later: the shape of the hardware
@@ -293,6 +344,12 @@ already ruled that "pulling a `rig/` API change into a `game/` scope cleanup is
 creep by this project's own standard". The cleanup got larger; the standard did
 not change.
 
+The target scope in the header sharpens the first reason rather than adding a
+third: the devices whose enumeration is missing are also the devices not
+currently being built for, so there is no target in scope whose behaviour the
+mapping work would change. Same hardware, reached from the build scope instead
+of from this machine's limits.
+
 ### 5. `rig::Pad` needs `released()` before any consumer can bind one verb to two buttons
 
 This was first argued in
@@ -360,8 +417,17 @@ rather than the head of a chain. What waits on a device is the **mapping-string
 chain** the diagram draws: the GUIDs, the strings keyed on them, and the route
 that ships them. The last two items on the list below sit outside that chain and
 are **deferred rather than blocked** — `released()` waits on a consumer that
-wants multi-bind, and handling axis input needs no hardware at all. Axis input
-is implementable today and is arguably ahead of the mapping work in value.
+wants multi-bind, and handling axis input needs no hardware at all.
+
+Axis input is implementable today, and under the current target scope its value
+is narrower than it first looked. That judgement was formed with an H700 in
+view. The Miyoo cannot benefit at all: its pad is the keyboard, and a keyboard
+has no axis to report. That leaves desktop, where an analogue stick needs it and
+where a pad reporting its dpad on axes rather than on hat 0 would need it too —
+so the Risks case below is not exclusively a handheld one. It is still a real
+gap in the charter and still needs no hardware. What it no longer is, with the
+device it was argued from out of scope, is obviously ahead of the mapping work
+in value.
 
 - [x] **Print the GUID from `wreel-probe`.** Done 2026-09-01, in the working
       tree. `report_input` in `probe/main.cc` now emits a `guid` line via
@@ -405,7 +471,9 @@ is implementable today and is arguably ahead of the mapping work in value.
 - [ ] **Handle axis input.** No `SDL_JOYAXISMOTION` or `SDL_CONTROLLERAXISMOTION`
       case exists. Needed for analogue sticks, and needed for the dpad-on-an-axis
       case in Risks, which no per-device button table can fix. Independent of the
-      mapping work and arguably ahead of it in value.
+      mapping work. Under the current target scope what it buys on a target being
+      built is a desktop analogue stick: the dpad-on-an-axis case belongs to
+      `rk3326` and `h700`, so it is not the near-term argument it reads as.
 - [ ] **Add `released()` to `rig::Pad`** when a consumer wants multi-bind.
       Decision 5 above; deferred with it.
 
@@ -417,20 +485,26 @@ A device that reports its dpad as two axes — common enough on cheap pads — r
 `SDL_JOYAXISMOTION`, which `rig` does not handle, so the events never arrive and
 there is nothing for any index table to remap. This is the concrete failure the
 "an H700 may map LEFT differently than a Miyoo" example was reaching for, and it
-is the reason the axis task above is not merely a stick feature. A mapping string
+is why the axis task above is not merely a stick feature. Under the current
+target scope it applies to `rk3326` and `h700`, which are not being built, and to
+any pad on a dev box that reports its dpad this way; the Miyoo is excluded
+outright, since a keyboard has no axis to report a dpad on. A mapping string
 *does* cover it (`dpup:a1` and similar are legal), which is a further point for
 decision 1 over a `rig`-side index table.
 
 **Hat 0 only.** A device with its dpad on hat 1 is silently dead in the same way,
 for a smaller reason. Unverified whether any target does this.
 
-**The Miyoo keysym table rests on one device run.** It is sourced from Onion's
-`keymap_sw.h`, but the mechanism is the kernel input driver rather than Onion, and
-[docs/MIYOO-MINI.md § 6.3](../../docs/MIYOO-MINI.md) records the same binary
-taking input correctly on stock firmware with the same bindings compiled in. That
-is two firmwares and one table, which is good evidence and not proof. If a third
-firmware differs there is no fallback path — the keyboard *is* the pad, so a wrong
-keysym table means an uncontrollable device rather than a degraded one.
+**The Miyoo keysym table is mostly unexercised, and it is the whole input path.**
+It is sourced from Onion's `keymap_sw.h`, and the mechanism is the kernel input
+driver rather than Onion — the same binary with the same bindings compiled in ran
+on stock firmware as well. But of the seven bindings it adds, two have been seen
+to work on a device (X and A, both on OnionOS) and five have not, and no run on
+either firmware records a press of B or Y; [docs/MIYOO-MINI.md § 6.3](../../docs/MIYOO-MINI.md) has the
+per-binding state. If a row is wrong there is no fallback path — the keyboard
+*is* the pad, so a wrong keysym table means an uncontrollable device rather than
+a degraded one. Cheap to close, and it needs a person with the device rather than
+any code: press each control once on each firmware and keep the log.
 
 **A device-specific mapping we author can go stale.** SDL's own database gains
 entries upstream, and a pinned SDL that later recognises a device would find our
@@ -470,6 +544,16 @@ Each with the check that would answer it, so it does not have to be re-derived.
   in a way that matters. See
   [miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/) and
   [platform/miyoomini/sdl2/PROVENANCE.md](../../platform/miyoomini/sdl2/PROVENANCE.md).
+- **Which of the Miyoo bindings actually work?** Five of the seven added from
+  `keymap_sw.h` have never been seen to do anything on a device — X and A have,
+  on OnionOS only — and this is the only target being built where a wrong
+  binding is unrecoverable. *Check:* press each control once on each firmware in
+  the bundled `orchard`, which runs with `--verbose`, and keep the log.
+  `rig::Pad` logs every keydown at debug level as
+  `input: key <name> (sym …, scancode …) -> <button>` or `-> unmapped`, so every
+  row answers for itself, including L1, R1 and Select, which still have no
+  consumer in the tree. Start versus the Menu key is the one an exit line alone
+  does not attribute; the per-key line does.
 - **Is the Miyoo keysym table identical on the Mini Plus and the Mini Flip?** All
   three are the same SSD202D with different panels
   ([docs/TARGETS.md](../../docs/TARGETS.md)), so the same kernel input driver is
@@ -488,6 +572,14 @@ Each with the check that would answer it, so it does not have to be re-derived.
   only while `Button::Select` has no reader — grep for it before assuming the
   cost is still zero. Onion's R2, `BACKSPACE`, is unbound in `from_key` and is
   the same gap without the collision.
+  **The target scope changes what this costs, not what it is.** The Miyoo is one
+  of the two targets currently built and the one with recorded device runs, so
+  the collision sits on a shipping route rather than a prospective one. It is
+  still latent: the only `rig::Button` values any consumer reads are `Start`,
+  `Left`, `Right`, `A`, `B`, `X` and `Y`, in `coppers::Demo::handle_events`, in
+  `sprites::Demo::update` and `sprites::Demo::run`, and in `orchard`'s verb table
+  (`orchard/verbs.cc`: Left, Right, A, Start), and none of them is `Select`. It goes live the first time a menu or a demo binds Select. D31 keeps
+  the defect and its candidate remedies; nothing is picked here.
 - ~~**Does upstream's `controllermap` utility build from the pinned tree?**~~
   **Checked 2026-09-01: the source is there and the build is off.**
   `_deps/sdl2-src/test/controllermap.c` exists, alongside `controllermap.bmp` and
@@ -522,8 +614,21 @@ The analysis here is read-derived, on 2026-09-01, from: `include/rig/input.hpp`,
 [game-layer-and-demo](../2026-08-10-game-layer-and-demo/) decisions 12 and 13.
 
 **No pad has ever been enumerated on a handheld by this project.** The Miyoo Mini
-keysym path is confirmed by device runs; the raw joystick path has never seen a
-device and its button order remains the guess it says it is.
+keysym path has run on devices and two of its device-specific bindings are
+confirmed there (`LSHIFT` → X 2026-08-02, `SPACE` → A in `orchard`'s first
+device run, both OnionOS); the raw joystick path has never seen a device and its button
+order remains the guess it says it is.
+
+The per-binding reading above is from `rig/input.cc`'s `from_key`,
+`coppers::Demo::handle_events` and `Demo::set_layer_height`, and the returned
+device logs for the runs
+[results.md](../2026-07-25-target-validation/results.md) records on 2026-08-02.
+`Button::X` is the only `rig::Button` whose effect is distinguishable in a log
+without a `util::log_info` of its own: it changes the layer size, and
+`set_layer_height` is reachable at runtime from nothing else. The `SPACE` → A
+row rests on the root `stdout.log`, `orchard`'s first device run (results.md
+§ 2026-10-06), read on 2026-10-16: its per-key debug lines resolve `Space` to
+`a` 36 times, `Right` 25, `Left` 13 and `Up` 2, and nothing logged `unmapped`.
 
 The one code change referenced above — the `guid` line in `probe/main.cc` —
 compiles clean on `desktop-software` with `WREEL_WERROR` on, and that is the

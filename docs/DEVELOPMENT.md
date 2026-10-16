@@ -173,27 +173,37 @@ into a single `include/<module>/` tree.
 
 ```
 include/            public headers, one directory per module
-  audio/  gfx/  loaders/  math/  posix/  util/
+  audio/  game/  gfx/  loaders/  posix/  rig/  util/
 posix/              libposix   — errno → typed C++ exceptions
-util/               libutil    — file I/O, logging, string/tokenizing
+util/               libutil    — file I/O, logging, string/tokenizing, XML
   posix/  mswin/      compile-time platform backends (pimpl, not virtual)
+rig/                librig     — asset paths, pref path, frame timing, input
 audio/              libaudio   — sound effects and music (SDL2_mixer)
-gfx/                libgfx     — SDL2 + rendering
-  software/           the GPU-less backend
-loaders/            libloaders — OBJ, image, texture atlas
-skratch/            demo application
+gfx/                libgfx     — SDL2 + rendering; atlas, animation, tilemap
+  renderer/           gfx::renderer (SDL_Renderer), every target
+  gles2/              gfx::gles2, GPU targets only
+loaders/            libloaders — OBJ, image, Sparrow atlas, TMX, .anim.xml
+game/               libgame    — entity store, collision, camera, level
+coppers/            demo: copper bars and a fill-rate measurement
+sprites/            demo: atlas, animation and tilemap
+orchard/            the game: game:: put together, plus player, rules, cues
+skratch/            demo: gfx::gles2
 probe/              wreel-probe — device capability diagnostic
 diag/               wreel-diag  — device BEHAVIOUR diagnostic (draws, reads back)
 tests/              doctest suite, run from the repo root against data/
 data/               fixtures and assets
+platform/miyoomini/sdl2/   the SSD202D drivers grafted onto SDL2
 cmake/              ProjectOptions, Dependencies, Testing, Packaging
   toolchains/         one file per cross target
 docker/             build environments for device SDKs
 scripts/            developer tooling
+tools/              offline asset generators (Python; not a build step)
 docs/               this
 ```
 
-Dependencies run one way only: `skratch` → `loaders` → `util` → `posix`.
+Dependencies run one way only, as the modules' `target_link_libraries` lines
+give them: `loaders` and `game` → `gfx`; `gfx`, `rig` and `audio` → `util` →
+`posix`; executables on top.
 
 Tests run with the **repository root** as their working directory, so fixture
 paths like `data/test.json` resolve. That is intentional and worth preserving.
@@ -238,6 +248,10 @@ building the same dependencies for several targets.
 |---|---|---|
 | `WREEL_ENABLE_GLES2` | follows `WREEL_TARGET_HAS_GPU` | build `gfx::gles2`. Rejected on a target with no GPU. Empty means auto; set `ON`/`OFF` to override |
 | `WREEL_USE_SYSTEM_SDL2` | `OFF` | link the sysroot's SDL2 instead of building the pinned copy |
+| `WREEL_MINI_SDL2` | `OFF`; `ON` from the `miyoomini` toolchain file | build SDL2 with the SSD202D drivers grafted in. Meaningless on other targets |
+| `WREEL_SDL2_LINKAGE` | `STATIC` | `STATIC` or `SHARED`. Forced `SHARED` whenever `WREEL_MINI_SDL2` is on, because the grafted drivers are LGPL-2.1 and must stay relinkable |
+| `WREEL_TARGET_FIRMWARE` | empty | handheld bundle layout: `onion`, or empty/`none` for a plain install tree. `onion` adds the `bundle-onion` target |
+| `WREEL_ONION_DROP_GLES` | `ON` | strip the bundled SDL2's unused `libGLESv2.so` `DT_NEEDED` entry |
 | `WREEL_BUILD_TESTS` | `ON` | build the doctest suite |
 | `WREEL_BUILD_DEMOS` | `ON` | build the demo applications. Gated per demo: `skratch` is skipped where `gfx::gles2` is unavailable, but a `gfx::renderer` demo builds on every target |
 | `WREEL_BUILD_PROBE` | `ON` | build `wreel-probe` and `wreel-diag` |
@@ -267,8 +281,11 @@ Configuring prints a summary of all of these, so you can confirm what you got:
 -- === wreel 0.2.0 ===
 --   target id .......... desktop
 --   system ............. Linux / x86_64
+--   build type ......... Debug
 --   compiler ........... GNU 12.2.0
---   gfx backend ........ software
+--   C++ standard ....... 17
+--   gfx renderer ....... gfx::renderer (always)
+--   gfx gles2 .......... OFF
 --   target has GPU ..... OFF
 ...
 ```
@@ -400,7 +417,7 @@ These run real Linux distributions — ArkOS, ROCKNIX, muOS, Batocera — with M
 or vendor Mali drivers and a distro SDL2. Two approaches:
 
 1. **Device sysroot** (recommended for shipping): copy `/usr` off a device image
-   and point CMake at it with `-DCMAKE_SYSROOT=`. Set
+   and point CMake at it with `-DWREEL_SYSROOT=`, as above. Set
    `-DWREEL_USE_SYSTEM_SDL2=ON` to link the firmware's SDL2.
 2. **Debian cross-GCC** for compile-checking, per above.
 
@@ -418,7 +435,7 @@ binding.
 
 ```sh
 # Format a file in place
-clang-format -i gfx/context.cc
+clang-format -i gfx/atlas.cc
 
 # Check the whole tree without modifying it
 find . -name '*.cc' -o -name '*.hpp' | grep -v '^./build' \
@@ -445,38 +462,42 @@ Two inherited quirks these files intentionally settle:
 | [TARGETS.md](TARGETS.md) constraints | researched and verified upstream |
 | Dependency choices | settled — SDL2, nlohmann/json, pugixml, glm, doctest |
 | Modern CMake build | **verified** on system CMake 3.25 |
-| `CMakePresets.json` | **verified** — 7 presets enumerate and configure |
+| `CMakePresets.json` | **verified** — 7 presets enumerate; six have been configured. `steam` never has: there is no `build/steam` in this tree as of 2026-10-16, and the preset needs the sniper container |
 | `gfx::renderer` (SDL_Renderer) | **verified** — builds on x86_64, aarch64 and armv7. `test_renderer` pins driver selection: `PreferAccelerated` degrades to software, `Accelerated` refuses to |
 | Accelerated 2D on Mali | **build verified only** — `rk3326`/`h700` now compile SDL with the `opengles2` render driver (D18). Whether the vendor blobs expose it is a hardware question |
 | `audio` module | **verified** — opens on pulseaudio and dummy; 3 codec tiers build |
 | `wreel-probe` | **verified** — runs on x86_64 and as an aarch64 binary under qemu; reports audio |
 | `wreel-diag` | **verified on the Miyoo Mini 2026-08-01** — the companion to the probe, and the difference is the point: the probe asks SDL what it offers, this draws known content and reads `/dev/fb0` back, because this device's backend advertises capabilities it does not implement and returns success from calls that do nothing. Eleven checks; the same binary on `desktop-software` runs against SDL's own software renderer and is the control to diff against. It found D27 by taking a SIGSEGV, then measured it deliberately without touching freed memory |
-| `rig::Pad` | **verified on the dev box, keyboard path only** — `SDL_GameController` when SDL recognises the device, raw `SDL_Joystick` otherwise, keyboard always. No pad has been enumerated on a handheld yet, which is the point: it logs name, GUID, axis/button/hat counts and whether a mapping existed, so a device answers the question instead of being guessed at. **The raw fallback's button order is unverified and says so in the log** |
+| `rig::Pad` | **verified on the dev box, keyboard path only; the keyboard path has also run on the Miyoo Mini**, whose pad is a keyboard (Miyoo Mini input, below) — `SDL_GameController` when SDL recognises the device, raw `SDL_Joystick` otherwise, keyboard always. No pad has been enumerated on a handheld yet, which is the point: it logs name, GUID, axis/button/hat counts and whether a mapping existed, so a device answers the question instead of being guessed at. **The raw fallback's button order is unverified and says so in the log** |
 | `coppers::Playlist` | **verified** — `test_playlist`, 6 cases stepping the three real `.mod` files both ways, and skipping a missing file, a non-module and an all-dead playlist without throwing. Asserts `playing()` at each step, not just the track name: the first version checked only the name and passed straight through D20, which left the mixer silent |
 | `audio::Music` lifetime | **verified** — two tracks alive at once, releasing the superseded one leaves the current one playing (D20). Both regression tests were confirmed to fail against the old destructor before the fix was kept |
 | `gfx::renderer::Texture` | **verified** — owning, movable, colour-modulated. `Context::draw()` takes source and destination rects, so an atlas cell is expressible for the first time; `coppers`' scroller is the first consumer and `draw_surface` is now built on it. This is what [software-2d-sprites-tiling](../planning/2026-07-25-software-2d-sprites-tiling/) was blocked on |
 | `gfx::renderer::Layer` | **verified** — CPU-plotted streaming texture with a scope-guarded lock. `coppers` draws its bar field through it on x86-64 and armv7; the two produce byte-identical screenshots. This is the locked-pixels view two snapshots were holding open as a design question |
-| `coppers` demo | **verified on the dev box** — builds on all five presets including `miyoomini`, renders copper bars through `gfx::renderer` on both the software and `opengl` drivers, and its `--screenshot`/`--seconds` make a fill-rate run a command. Never run on a device |
+| `coppers` demo | **verified on the dev box** — builds on all five presets including `miyoomini`, renders copper bars through `gfx::renderer` on both the software and `opengl` drivers, and its `--screenshot`/`--seconds` make a fill-rate run a command. Has run on the Miyoo Mini: 2026-07-28 with nothing reaching the panel, and rendering from 2026-08-01 (results.md; SDL2 on `miyoomini` below). Root `coppers-stdout.log` shows the mixer opening on `driver Miyoo Mini` and `music: playing complications.mod`; 2026-10-16: confirmed audible by the user on the device (sound effects and module playback in orchard and coppers); not logged |
 | Fill rate | **measured on the dev box only** — [target-validation/results.md](../planning/2026-07-25-target-validation/results.md). A lower internal resolution is a net *loss* on the software driver and a 2.8× win on an accelerated one; the answer inverts, so there is no single default |
-| `miyoomini` **device** toolchain | **verified 2026-07-27** — GCC 8.3.0 from `union-miyoomini-toolchain`, via `docker/miyoomini.Dockerfile`. Zero errors and zero warnings under `-Werror` after one fix (D21: `POSIX_ERROR_DECL`'s trailing semicolon, 53 errors, silent on GCC 12), 15/15 suites under qemu, `GLIBC_2.28` floor against the Debian cross build's 2.36. Every C++17 library gap this was expected to hit — `from_chars`, `inline constexpr` callables, `if constexpr`, nlohmann/json, doctest's fast asserts — compiled without complaint |
+| `miyoomini` **device** toolchain | **verified 2026-07-27** — GCC 8.3.0 from `union-miyoomini-toolchain`, via `docker/miyoomini.Dockerfile`. Zero errors and zero warnings under `-Werror` after one fix (D21: `POSIX_ERROR_DECL`'s trailing semicolon, 53 errors, silent on GCC 12), 15/15 suites under qemu, `GLIBC_2.28` floor against the Debian cross build's 2.36. Every C++17 library gap this was expected to hit — `from_chars`, `inline constexpr` callables, `if constexpr`, nlohmann/json, doctest's fast asserts — compiled without complaint. **The current tree does not build under it (2026-10-16)**: two `-Wcast-align` errors in test code added by the 2026-10-09 mirroring work, D34 in [defects.md](../planning/2026-07-25-cxx17-modernization/defects.md). Incremental build, so no clean-first pass |
 | `coppers` pixel fixture | **verified across three builds** — x86-64 GCC 12, armv7 GCC 12, and armv7 **GCC 8.3 at `-Os`** produce byte-identical screenshots at 1,228,922 bytes. **Requires `--no-hud`**: the HUD draws measured microseconds, so with it on one binary does not reproduce itself. The recipe recorded in results.md omitted that and has been corrected |
 | `gfx::renderer::Layer` read-back | **verified** — `set_readback(true)` plots into a buffer the Layer owns and uploads on unlock, making the frame readable where the renderer cannot be (a locked texture is write-only by contract, and the Miyoo Mini's SDL2 returns `SDL_Unsupported` from `SDL_RenderReadPixels`). `coppers --screenshot` tries the renderer, then falls back to `Layer::save_bmp()`. Off by default so timed runs do not pay the copy. 3 cases in `test_renderer`; the renderer path still produces the byte-identical cross-arch fixture |
-| Miyoo Mini input | **fixed, unverified on device** — on that device the pad *is* the keyboard: its SDL2 translates Linux `KEY_*` straight to keysyms and enumerates no joystick. `rig::Pad` now accepts Onion's `keymap_sw.h` bindings (A=`SPACE`, B=`LCTRL`, X=`LSHIFT`, Y=`LALT`, L1=`e`, R1=`t`, Select=`RCTRL`) alongside the letter keys. The first device run took the D-pad and Escape only because arrows and Escape happened to coincide |
-| OnionOS bundle | **verified on the device 2026-08-01** — launched from MainUI's Apps menu, ran, and wrote its log back to the SD card, which closes the open question of whether MainUI would launch it at all. **Two entries now**, `App/Coppers/` and `App/WreelDiag/`, because MainUI builds that menu from one `config.json` per directory — a variable in `local.env` would have meant editing a file on the card to reach the diagnostics with the device in hand. Staged size fell **8.8 MiB → 4.7 MB** once `lib/` held only the SDL2 we build. The layout came from real OnionUI packages; `launch.sh` is `sh -n` and shellcheck clean, and the bundle runs on **stock firmware as well as Onion** |
+| Miyoo Mini input | **fixed; two of the seven added bindings confirmed on device** — on that device the pad *is* the keyboard: its SDL2 translates Linux `KEY_*` straight to keysyms and enumerates no joystick. `rig::Pad` now accepts Onion's `keymap_sw.h` bindings (A=`SPACE`, B=`LCTRL`, X=`LSHIFT`, Y=`LALT`, L1=`e`, R1=`t`, Select=`RCTRL`) alongside the letter keys. The first device run (2026-07-28, before these were added) took the D-pad and Escape only because arrows and Escape happened to coincide. Since, both on OnionOS: `LSHIFT` reached `Button::X` on 2026-08-02, and `SPACE` reached `Button::A` in `orchard`'s run (root `stdout.log`, 36 `-> a` key lines). The other five are unconfirmed; no run on stock firmware records which controls were pressed. `rig::Pad` logs every keydown at debug level and the bundle starts `orchard` with `--verbose`, so one session pressing each control closes the rest. Per-binding state in [MIYOO-MINI.md § 6.3](MIYOO-MINI.md) |
+| OnionOS bundle | **verified on the device 2026-08-01** — launched from MainUI's Apps menu, ran, and wrote its log back to the SD card, which closes the open question of whether MainUI would launch it at all. **Two entries then** (four now; see Onion bundle below), `App/Coppers/` and `App/WreelDiag/`, because MainUI builds that menu from one `config.json` per directory — a variable in `local.env` would have meant editing a file on the card to reach the diagnostics with the device in hand. Staged size fell **8.8 MiB → 4.7 MB** once `lib/` held only the SDL2 we build. The layout came from real OnionUI packages; `launch.sh` is `sh -n` and shellcheck clean, and the bundle runs on **stock firmware as well as Onion** |
 | SDL2 on `miyoomini` | **built from source and verified on the device 2026-08-01** — pinned upstream 2.32.10 with steward-fu's SSD202D video, render and audio drivers grafted in (`WREEL_MINI_SDL2`, ON by default there). 42 additive lines patch upstream to register them; six backend signatures needed porting from 2.0.20, one of which — the frontend owning the `SDL_Renderer` allocation from 2.24 — would otherwise have been a double free. Exports **839 functions against the prebuilt's 798, a strict superset**, and all 176 SDL-family symbols our binaries import resolve. `coppers` ran **859 frames at 59.7 fps with audio**, indistinguishable from the prebuilt. `libSDL2` is 1.48 MB where the prebuilt was 5.74, and needs no EGL, no GLESv2 and no json-c. Provenance and every modification in [platform/miyoomini/sdl2/PROVENANCE.md](../platform/miyoomini/sdl2/PROVENANCE.md) |
-| `gfx::Atlas` | **verified on the dev box** — named frames over one `Texture`, trim-aware, integer-scaled. `test_atlas`, 10 cases / 64 assertions, half of them reading rendered pixels back through `save_screenshot` to assert *which* cell landed *where* — the assertion `test_renderer.cc` had a note asking for. The trim sign was mutation-checked: flipping it fails exactly one case |
+| `gfx::Atlas` | **verified on the dev box** — named frames over one `Texture`, trim-aware, integer-scaled. `test_atlas`, 20 cases, the drawing ones reading rendered pixels back through `save_screenshot` to assert *which* cell landed *where* — the assertion `test_renderer.cc` had a note asking for. The trim sign was mutation-checked: flipping it fails exactly one case. **Mirrored drawing (2026-10-09, uncommitted):** `gfx::Mirror { None, Horizontal }`, and an `Atlas` built from an `SDL_Surface` uploads a second, row-reversed copy of the sheet, because the Miyoo Mini's render driver ignores `SDL_RenderCopyEx` ([MIYOO-MINI.md](MIYOO-MINI.md)). It reflects about the untrimmed frame; the cost is the sheet held twice, only for atlases built that way. 8 of the 20 cases, one of them a pixel-for-pixel check of a real `critters.xml` frame; `gfx::AnimatedSprite::draw` and `game::Entity` carry the `Mirror` through. Not in the bundle that ran on the device, which predates it. Under GCC 8.3 (2026-10-16) the library code compiles but `test_atlas` does not (D34), so the mirrored-atlas cases have run on the dev box only |
 | `loaders::load_sparrow` | **verified on the dev box** — the 2016 loader, rewritten against `util::xml` and returning plain data, so `test_sparrow` runs headless like `test_obj`. 18 cases / 189 assertions against `data/jetpackdude.xml` (untrimmed) and `data/foxy.xml` (all 36 frames trimmed), plus scratch files for the malformed cases |
-| `gfx::AnimatedSprite` | **verified on the dev box** — `Animation` is shared definition, `AnimatedSprite` per-entity playback state. `test_animation`, 27 cases / 230 assertions, nearly all headless because playback is arithmetic over supplied deltas. Pins the parts that are easy to get wrong: a delta spanning several frames landing where stepping would, `Loop::Once` completing only after the last frame has had its own time, and `PingPong` showing each end once. Writing them found one real defect — `frame()` required an atlas it does not need |
+| `gfx::AnimatedSprite` | **verified on the dev box** — `Animation` is shared definition, `AnimatedSprite` per-entity playback state. `test_animation`, 31 cases, nearly all headless because playback is arithmetic over supplied deltas. Pins the parts that are easy to get wrong: a delta spanning several frames landing where stepping would, `Loop::Once` completing only after the last frame has had its own time, and `PingPong` showing each end once. Writing them found one real defect — `frame()` required an atlas it does not need |
 | Animation sidecar | **verified on the dev box** — Sparrow carries no timing, so `fps` and loop mode live in `<name>.anim.xml`, read through `util::xml`. Seeded by `tools/pack_atlas.py`, which merges rather than overwrites so hand-tuning survives a regenerate. XML rather than JSON because there is still no `util::json` facade and the atlas beside it is XML, as TMX will be |
 | `sprites` demo | **verified on the dev box** — the 2D game-path demo, as `coppers` is the raster one. Builds on all five presets; 12 animations playing independently off one sheet plus a 4× hero, `--screenshot` for a headless check. Confirmed the hero's box stays fixed at rows 64..151 while it walks. Never run on a device |
 | `tools/pack_atlas.py` | **verified on the dev box** — packs frame PNGs into a Sparrow atlas with trimming. Regeneration is byte-identical (checked by sha256 across runs), and the verify pass — on by default, `--no-verify` to skip — rebuilds every frame from the atlas and compares it to its source, which is what actually checks the trim sign convention rather than restating it. Offline and supplemental: the build has no Python dependency |
-| `gfx::TileMap` / `loaders::load_tmx` | **verified on the dev box** — Tiled TMX with CSV layers, an external `.tsx`, and object layers; `gfx::TileSet` computes its source rects arithmetically so it stores nothing per tile. Global ids become 0-based indexes in the loader and Tiled's flip bits are masked, so nothing downstream holds two conventions. `test_tmx`, 19 cases / 2409 assertions, the culling half asserting on the tile count `draw()` returns because "drew the map" and "drew the screen" look identical otherwise |
-| Tilemap fill rate | **measured on the dev box, and it inverted the expectation** — [target-validation/results.md](../planning/2026-07-25-target-validation/results.md). Painting 640×480 with 1295 tile blits costs 1.162 ms; doing the *same screen* with 315 larger blits is **2.6× slower**. Cost per pixel is flat at 3.5 ns across resolutions, so a tile cache or dirty-rectangle scheme has nothing to win — the lever is overdraw, and scaled blits are the thing to avoid. Not measured on a device; `sprites --tilemap` is the instrument and runs there unchanged |
+| `gfx::TileMap` / `loaders::load_tmx` | **verified on the dev box** — Tiled TMX with CSV layers, an external `.tsx`, and object layers; `gfx::TileSet` computes its source rects arithmetically so it stores nothing per tile. Global ids become 0-based indexes in the loader and Tiled's flip bits are masked, so nothing downstream holds two conventions. `test_tmx`, 25 cases, the culling half asserting on the tile count `draw()` returns because "drew the map" and "drew the screen" look identical otherwise |
+| Tilemap fill rate | **measured on the dev box, and it inverted the expectation** — [target-validation/results.md](../planning/2026-07-25-target-validation/results.md). Painting 640×480 with 1295 tile blits costs 1.162 ms; doing the *same screen* with 315 larger blits is **2.6× slower**. Cost per pixel is flat at 3.5 ns across resolutions, so a tile cache or dirty-rectangle scheme has nothing to win — the lever is overdraw, and scaled blits are the thing to avoid. The `sprites --tilemap` sweep has not been run on a device. One device figure exists, from `orchard`'s run on the software driver: 316 tiles/frame on average at 7.21 µs/tile, 2.274 ms/frame (root `stdout.log`) |
 | `util::floor_div` / `floor_mod` / `ceil_div` | **verified** — `test_integer`, 6 cases / 5650 assertions, checked against `std::floor`/`std::ceil` over a neighbourhood of zero rather than against chosen literals. Exists because C division truncates toward zero, so a tilemap scrolled one pixel past its left edge silently drops a column; it replaces a `static_cast<int>(std::floor(static_cast<double>(...)))` that was both wrong-looking and needlessly floating-point on a Cortex-A7 |
 | `util::algorithm` / `gfx::renderer` rect predicates | **verified** — `test_algorithm`, 13 cases / 58 assertions. Extraction of shapes the tree wrote inline more than once: `index_of` replaced three copies of find-by-name (`Atlas`, `AnimationSet`, `TileMap`), `contains`/`bounds_of` replaced two rect-inside-bounds checks, `all_positive` replaced a dozen `w <= 0 \|\| h <= 0` guards across five files, and `in_grid` named the four-comparison grid test. Writing the tests found a real defect: `intersects` claimed zero-area rectangles never overlap and did not implement it |
-| `sprites::Entities` | **verified** — flat store, update tick, draw order by (layer, y). Handles carry a generation because slots are reused and a stale index addresses whoever took the slot; `test_entities`, 11 cases / 44 assertions, and writing them found `clear()` releasing the slots so a pre-clear handle matched a fresh one. Lives in the demo, not a `game/` module, until a second consumer exists |
-| Onion bundle | **built, not yet run on the device** — three entries now (`Coppers`, `Sprites`, `WreelDiag`) and renamed `pkg/wreel-0.2.0-onion.tar.gz`, since it stopped being one demo's bundle. Staged binaries are **stripped**: a Release build here still carries debug info from the toolchain's static libstdc++, which took `sprites` to 8.79 MB for 1.67 MB of code. Stripped it is 1.71 MB, coppers 1.63 and wreel-diag 0.16, and the whole tarball is **3.72 MB with three apps** where the old two-app one was 3.17 |
-| doctest suite | **22 executables. 18/18 on both desktop presets**, re-run 2026-08-09. The six added since (`test_atlas`, `test_sparrow`, `test_animation`, `test_tmx`, `test_integer`, `test_algorithm`) have **not** been run under qemu on `rk3326`, `h700` or `miyoomini` — they compile-check on the first two and the new sources pass `-fsyntax-only -Wall -Wextra` under the real GCC 8.3, but that is not the same as running them. The earlier 15/15-on-five-presets result stands for the 15 |
+| `game::Entities` | **verified on the dev box; ran on the device inside `orchard`** — flat store, update tick, draw order by (layer, y), now in `wreel::game` with `sprites` and `orchard` as its two consumers. Handles carry a generation because slots are reused and a stale index addresses whoever took the slot; writing the tests found `clear()` releasing the slots so a pre-clear handle matched a fresh one. `test_entities`, 31 cases. **Segfaults under qemu-arm on the GCC 8.3 `miyoomini` build** and passes there with `SDL_RENDER_DRIVER=software`. Reproduced 2026-10-16 on the current tree: the crash is in the case at `test_entities.cc:774`, after 24 cases pass, and the software driver gives 31/31. Cause not pinned; D33 in [defects.md](../planning/2026-07-25-cxx17-modernization/defects.md) |
+| `game::collide` | **verified on the dev box** — free functions over plain data: a half-open box against a solid tile layer, a box against a box, and `slide()` resolving a move axis by axis. `test_collide`, 30 cases, all headless. Ran on the device inside `orchard` |
+| `game::Camera` | **verified on the dev box** — a following camera with a deadzone and a clamp to the level's bounds, arithmetic over supplied positions, both axes treated identically. `test_camera`, 21 cases, headless. Ran on the device inside `orchard` |
+| `game::Level` | **verified on the dev box** — what is solid and what to place, built from a loaded TMX: the collision layer and the spawn objects. `test_level`, 19 cases, headless. Ran on the device inside `orchard` |
+| `orchard` | **ran on the Miyoo Mini** (OnionOS, from the bundle's `App/Orchard`, `--software --verbose`): GCC 8.3.0, SDL 2.32.10, **4383 frames at 59.7 fps**, played to the goal and ended by the rules. Per frame: step 0.045 ms, clear 1.378, tilemap 2.274, entities 0.119, HUD 0.299, present 12.582; longest frame 37.9 ms, none clamped. The run was capped at 60, so present is not a cost. The binary is the 2026-10-06 build; the device clock is unset, so the run date is not recorded. Root `stdout.log`, written up in [results.md](../planning/2026-07-25-target-validation/results.md) § 2026-10-06. On the dev box, `test_orchard` has 30 cases and crosses the real `data/orchard.tmx` headless, compiling `player`, `actors` and `rules` into the test. `player` has no `gfx` or `rig` in it; `actors` and `rules` reach `gfx` through `game/entities.hpp`, and the test links `gfx` and `rig`. **Uncommitted**: none of `orchard/` is in a commit. The log shows the cues and `emerald-droplets.xm` executing (`voices 8 configured, peak 2 concurrent, 0 dropped`); 2026-10-16: confirmed audible by the user on the device (sound effects and module playback in orchard and coppers); not logged, firmware not stated. Not run: the `Miyoo Mini` render driver, mute versus unmuted cost (the mixer's cost is still unisolated), and the 2026-10-09 mirroring changes on a device. Under qemu on the GCC 8.3 build, 2026-10-16, `test_orchard` passed with its facing cases. The tree as a whole does not build there (D34) |
+| Onion bundle | **built under GCC 8.3 on 2026-10-06; `Orchard` has run from this build on the device** (`Coppers` and `WreelDiag` ran from the earlier bundles; `Sprites` has never run there) — four entries (`Coppers`, `Orchard`, `Sprites`, `WreelDiag`) in `pkg/wreel-0.2.0-onion.tar.gz`, since it stopped being one demo's bundle. Staged binaries are **stripped**: a Release build here still carries debug info from the toolchain's static libstdc++, which took `sprites` to 8.79 MB for 1.67 MB of code. Stripped, `orchard` is 2.29 MB, `sprites` 1.71, `coppers` 1.63 and `wreel-diag` 0.16, and the tarball is **5.59 MB with four apps**; the three-app one was 3.72 and the two-app one 3.17 |
+| doctest suite | **26 executables. 26/26 on `desktop-software` and on `desktop-debug`, 2026-10-16**, both with `WREEL_WERROR` on and zero warnings, against the current working tree including the unstaged layer. `desktop-software` was a full compile with ccache disabled. `desktop-debug` recompiled 35 TUs (ccache misses). Under qemu, on the GCC 8.3 `miyoomini` build, 2026-10-16: **20 of 24 runnable suites pass**. `test_atlas` and `test_animation` don't build there (D34). The failing four are the same as September's 22 of 26 (that figure is relayed from the orchard handoff; no log of it is in the tree). `test_audio` and `test_playlist` fail because that SDL2 has no dummy audio driver, `test_renderer` fails 3 of 8 cases (`:78`/`:79` and `:117` assert `software`, `:102` expects `Accelerated` to throw) because the grafted `Miyoo Mini` driver is picked and reports itself accelerated, and `test_entities` is D33. Run detail in [results.md](../planning/2026-07-25-target-validation/results.md) § 2026-10-16. What the three premise failures should assert on that target is open. `rk3326` and `h700` have not run the suites added since the 15-suite pass |
 | `util::ascii` predicates | **verified** — `test_ascii`, 12 cases / 1017 assertions; replaces the `<ctype.h>` predicates in `string.hpp` |
 | `util::logging` | **verified** — `test_logging`, 11 cases / 38 assertions. printf-style, no iostreams; armv7 `wreel-probe` dropped 865 KB (28%) |
 | `util::xml` | **verified** — `test_xml`, 19 cases / 116 assertions against the real Sparrow atlas in `data/`. pugixml `v1.16`, XPath compiled out, and confirmed private to `util/xml.cc`: no consumer of `wreel::util` gets pugixml's include path |
@@ -484,13 +505,12 @@ Two inherited quirks these files intentionally settle:
 | `rig::FrameTiming` | **verified** — `test_timing`, 10 cases. Clamped delta, monotonicity, fps seeding and smoothing, all over supplied timestamps so nothing sleeps. `rig::FrameClock` is deliberately untested: it adds a `steady_clock` read and an `SDL_Delay` |
 | `rig::asset_path` | **verified for the shipped layout** — `test_assets` covers the `WREEL_DATA_DIR` override, caching and separator handling; the "beside the executable" rule was confirmed against a real `cmake --install` tree run from `/tmp`, which resolved `bin/data/` and rendered. That invocation failed before |
 | `rk3326` / `h700` toolchains | **verified** — cross-build plus `ctest` under qemu |
-| `miyoomini` toolchain | **verified in compile-check mode** — armv7 build + `ctest` under qemu-arm. Device toolchain (GCC 8.3) still untried |
+| `miyoomini` toolchain, compile-check mode | **verified** — Debian's armv7 cross-GCC, build + `ctest` under qemu-arm. The device toolchain (GCC 8.3) is the separate row above |
 | `gfx::gles2` | **verified on the dev box** — `skratch` renders a 20×20 grid through it, confirmed with `--screenshot`. ES 2.0 profile from Mesa. No GL library linked; entry points come from `SDL_GL_GetProcAddress`. Never run on a device |
 | 2016 fixed-function backend | **deleted** 2026-07-26 with GLEW and GLU, once `skratch` was ported |
 | `steam` preset | not run — needs the sniper container |
-| `docker/miyoomini.Dockerfile` | not built — needs Docker plus the upstream base image |
-| `gfx::gles2` | not started — stage 3 of [the renderer snapshot](../planning/2026-07-26-gfx-renderer-and-gles2/) |
-| C++17 cleanup of 2016 sources | **done.** From 167 warnings to **zero on all five configured presets**, with `WREEL_WERROR=ON` since 2026-07-26. The last 30 went with the 2016 fixed-function sources rather than being polished in place, which is what [the renderer snapshot](../planning/2026-07-26-gfx-renderer-and-gles2/) was for |
+| `docker/miyoomini.Dockerfile` | **built** — it is the `wreel-miyoomini` image behind every GCC 8.3 result above, from 2026-07-27 to the 2026-10-06 bundle |
+| C++17 cleanup of 2016 sources | **done.** From 167 warnings to **zero on all five configured presets**, with `WREEL_WERROR=ON` since 2026-07-26. As of 2026-10-16 the current tree is still zero-warning on both desktop presets, but fails under GCC 8.3 on two test-file casts (D34). The last 30 went with the 2016 fixed-function sources rather than being polished in place, which is what [the renderer snapshot](../planning/2026-07-26-gfx-renderer-and-gles2/) was for |
 
 ### What has actually been run
 
@@ -512,6 +532,16 @@ On Debian 12 / GCC 12.2 / CMake 3.25 / clang-format 14, after a full
 | `shellcheck scripts/bootstrap-debian.sh` | clean |
 | `clang-format --dump-config` | parses; authored files conform |
 | Configure guards ×4 | all reject correctly with actionable messages |
+
+Later runs, each recorded in its Status row above:
+
+| Check | Result |
+|---|---|
+| `miyoomini` under GCC 8.3, `-DWREEL_TARGET_FIRMWARE=onion`, `bundle-onion` | 2026-10-06, in `build/miyoomini-83`: the four-app tarball, whose `orchard` then ran on the device |
+| `miyoomini` GCC 8.3 suite under qemu-arm | September: 22/26 (relayed; no log in the tree). 2026-10-16: **20 of 24 runnable**, same four failures; `test_atlas` and `test_animation` excluded because they don't build. See the doctest suite row and D33 |
+| `miyoomini` under GCC 8.3, current tree, default target | 2026-10-16, incremental, in `build/miyoomini-83`: **fails under `-Werror`**, two `-Wcast-align` errors in test code (D34) |
+| `desktop-software` full compile → `ctest` | 2026-10-16: `CCACHE_DISABLE=1`, `--clean-first`, 658/658 steps, zero warnings, **26/26** |
+| `desktop-debug` build → `ctest` | 2026-10-16: 35 TUs recompiled (ccache misses), zero warnings, **26/26** |
 
 Two things this pass found and fixed, both of which had been asserted as working
 without being tested:
@@ -560,7 +590,6 @@ Read this before the first run — it goes fullscreen and takes over the display
 which is the intended presentation, not an accident.
 
 ```sh
-cd /path/to/example-project          # MUST be the repo root
 ./build/desktop-debug/bin/skratch
 ```
 
@@ -578,8 +607,10 @@ can see the panel.
 
 **Three things that will bite otherwise:**
 
-- **Working directory must be the repo root.** It opens `data/Speedy.fon` and
-  `data/ico.obj` by relative path. Running it from `build/` fails immediately.
+- **Its assets resolve through `rig::asset_path()`**: `$WREEL_DATA_DIR`, then
+  `data/` beside the executable, then `data/` under the working directory. From
+  a build tree that last one is what finds `Speedy.fon` and `ico.obj`, so run it
+  from the repo root or set `WREEL_DATA_DIR`.
 - **It is fullscreen at the panel's native mode**, via
   `SDL_WINDOW_FULLSCREEN_DESKTOP`, with the cursor hidden.
 - **The log is not in the working directory.** It goes to
@@ -624,18 +655,20 @@ reproduced that faithfully before the starting position was changed.
 
 ### Still not run
 
-- **The device toolchain build.** Needs Docker group membership plus the upstream
-  base image and a 279 MB toolchain download. This is the only way to find out
-  whether **GCC 8.3 compiles this codebase**, which is the single largest
-  remaining unknown.
 - **`steam`** — needs the sniper container.
-- **Any video or audio output on real hardware.** Both the armv7 and aarch64
-  compile-check builds lack KMSDRM, so the display path is entirely untested.
-
-Pre-flight checks that *were* done, so the above should not surprise anyone:
-the toolchain tarball resolves (HTTP 200, 279 MB), `archive.debian.org` is
-reachable for the EOL buster base, and the CMake/Ninja versions pinned in
-`docker/miyoomini.Dockerfile` both download.
+- **`desktop-release`** — no run recorded.
+- **Any Mali handheld** (`rk3326`, `h700`) — cross-build and qemu only, on
+  Debian's cross-GCC, so nothing shippable has been built for them. The
+  accelerated `opengles2` render driver and `gfx::gles2` have never run on a
+  device.
+- **The Miyoo Mini Flip** (752×560).
+- **On the Miyoo Mini:** `sprites`, `wreel-probe`, the `sprites --tilemap` sweep,
+  `orchard` on the `Miyoo Mini` render driver, and five of the seven added pad
+  bindings.
+- **A clean GCC 8.3 build of the current tree.** The 2026-10-16 build was
+  incremental and stopped on D34, so `test_atlas` and `test_animation` have not
+  run under GCC 8.3 and qemu since the 2026-10-09 mirroring work, and that work
+  has not run on a device.
 
 ## See also
 
