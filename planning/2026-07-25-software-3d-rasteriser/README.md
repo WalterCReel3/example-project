@@ -32,7 +32,11 @@ OS, no GPU and therefore no depth buffer or texture unit to borrow.
   along shared edges.
 - **Depth.** A z-buffer at 320×240 is 150 KB at 16 bits — affordable, but it is
   another full-screen buffer to clear every frame, and clears are already a
-  meaningful fraction of the budget at this scale.
+  meaningful fraction of the budget at this scale. *(Corrected 2026-10-16: no
+  device's panel is 320×240 — the Miyoo Minis are 640×480 and 752×560, see
+  [coppers](../2026-07-26-coppers-cracktro/) open questions. 320×240 holds only as
+  an internal resolution scaled up; at native resolution the 16-bit z-buffer is
+  600 KB or 823 KB.)*
 - **Clipping.** Near-plane clipping in homogeneous space, plus guard-band or
   scissor handling. Skipping this is the usual source of spectacular geometry
   glitches.
@@ -60,6 +64,14 @@ achieves on real hardware under sustained load — see
 [target-validation](../2026-07-25-target-validation/), which has still never run
 this code on a device. A frame budget measured on the Miyoo Mini is the only thing
 that makes this scopeable, and without it any estimate here is speculation.
+
+> **Updated 2026-10-16: the 2D path now has device numbers.** `coppers` ran at
+> 59.7 fps on a Miyoo Mini Plus on 2026-08-01 (plot 2.920, blit 4.425,
+> present 9.348 ms), and `orchard` at 59.7 fps on 2026-10-06 with 4.1 ms a frame
+> of game work before `present`
+> ([results.md](../2026-07-25-target-validation/results.md), entries of those
+> dates). What `present` itself costs on that device is not yet separated from
+> waiting on the panel, so the remaining budget is still an estimate.
 
 ## References
 

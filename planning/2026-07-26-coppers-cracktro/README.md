@@ -434,8 +434,9 @@ Three things it turned up that were not in this plan:
       [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/) and
       [midi-live-visuals](../2026-07-25-midi-live-visuals/)
 - [x] `coppers/bars.cc` — palettes, six bars on staggered centres, per-scanline
-      resolve. Kept free of any rendering call, so `test_bars` covers it with 9
-      cases and no window
+      resolve. Kept free of any rendering call, so `test_bars` covers it with 8
+      cases and no window (written as 9; `tests/test_bars.cc` has had 8 since
+      the commit that added both, a917a53)
 - [x] `--windowed`, `--layer-height`, `--screenshot`, `--frames`, `--fps`,
       `--no-hud`, and `--seconds`
 - [x] `Context::save_screenshot()` via `SDL_RenderReadPixels` — named to match
@@ -572,16 +573,29 @@ becomes output.
 
 **Stage 4 — the measurement, which is the point**
 
-- [ ] Fill rate at both internal resolutions on a Mini Plus, per stage
+- [~] Fill rate at both internal resolutions on a Mini Plus, per stage.
+      **Partly done:** per-stage numbers at the native 640×480 layer on the
+      `Miyoo Mini` driver, 2026-08-01 (plot 2.920 / blit 4.425 / present
+      9.348 ms, 59.7 fps), and one software-driver summary on 2026-08-02 —
+      both in [results.md](../2026-07-25-target-validation/results.md). No
+      controlled comparison of the two internal resolutions on the device
 - [ ] `SDL_ARMNEON`/`SDL_ARMSIMD` measured **separately**, so it does not
       contaminate the fill-rate number
-- [ ] `wreel-probe` output and the demo's numbers into
-      `../2026-07-25-target-validation/results.md`, with real command output
+- [~] `wreel-probe` output and the demo's numbers into
+      `../2026-07-25-target-validation/results.md`, with real command output.
+      The demo's device output is there (2026-07-28, 2026-07-30, 2026-08-01,
+      2026-08-02);
+      `wreel-probe` device output is not
 
 ## Risks
 
 **Nothing here has run on hardware, and this is the thing that will.** Every
 number below is arithmetic, not evidence, and the demo exists to replace it.
+**Updated 2026-10-16:** it has run. `coppers` launched on a Miyoo Mini Plus on
+2026-07-28 (OnionOS, nothing drawn) and first drew on 2026-07-30 (stock
+firmware, 863 frames at 59.7 fps with a 640×480 layer;
+[results.md](../2026-07-25-target-validation/results.md)); the bandwidth
+arithmetic below did not turn out to be the constraint.
 
 **The frame budget is the whole question, and the Flip sets it.** At 32 bpp the bar
 field alone writes 1.2 MB per frame on the Mini Plus (640×480) and **1.7 MB on the
@@ -605,6 +619,11 @@ not resemble the desktop's. This is also where
 question lands — whether upstream SDL2 is viable at all or
 `WREEL_USE_SYSTEM_SDL2=ON` is mandatory. If it is mandatory, the timing numbers
 are against a different SDL than the one measured here and must say so.
+**Superseded 2026-08-01:** the device now runs the project's own pinned SDL2
+2.32.10 with the SSD202D drivers compiled in (`WREEL_MINI_SDL2`,
+[miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/)). The device numbers are
+still against a different render backend from the dev box's (`Miyoo Mini`, or
+`software` over the `Mini` video driver), and results.md says which.
 
 **The assets are unlicensed, and that is a shipping blocker rather than a
 development one.** Developing against
@@ -647,9 +666,10 @@ demo advertises.
   Those documents should be corrected to say "an internal render resolution" if
   that is what was meant, because as written they read as panel claims and the cost
   questions built on them are out by 4× and 5.5× respectively.
-- **Does `save_bmp()` belong on `Context` or in the demo?** Leaning `Context`:
+- ~~**Does `save_bmp()` belong on `Context` or in the demo?**~~ Leaning `Context`:
   target-validation wants a screenshot from *anything* using this renderer, not
-  just from here.
+  just from here. **Answered: `Context`**, as `Context::save_screenshot()` (stage
+  1 above).
 - **Computed ramps, or a real indexed layer?** Ramps computed per frame need no
   new machinery. A genuine `INDEX8` layer with a palette LUT is a quarter of the
   bytes to fill and gives authentic palette rotation for free, but costs a LUT

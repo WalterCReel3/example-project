@@ -279,12 +279,12 @@ Traced against the engine's actual call sites, not hypothetically:
 
 | Our call | Where | Honoured on this target |
 |---|---|---|
-| `SDL_SetRenderDrawColor` + `SDL_RenderClear` | `Context::clear()` [context.cc:261](../../gfx/renderer/context.cc#L261) | **No.** `SDL_RenderClear` only queues; `RunCommandQueue` drops it. There is no other path |
-| `SDL_SetTextureBlendMode(BLENDMODE_BLEND)` | `Texture::set_blend()` [texture.cc:112](../../gfx/renderer/texture.cc#L112) | **No.** `GFX_Copy` hardcodes `eSrcDfbBldOp = BLD_ONE`, `eDstDfbBldOp = 0` |
-| `SDL_SetTextureColorMod` | `Texture::set_color_mod()` [texture.cc:90](../../gfx/renderer/texture.cc#L90) | **No.** Never read by the driver |
-| `SDL_SetTextureAlphaMod` | `Texture::set_alpha_mod()` [texture.cc:97](../../gfx/renderer/texture.cc#L97) | **No.** Never read |
+| `SDL_SetRenderDrawColor` + `SDL_RenderClear` | `Context::clear()` [context.cc:264](../../gfx/renderer/context.cc#L264) | **No.** `SDL_RenderClear` only queues; `RunCommandQueue` drops it. There is no other path |
+| `SDL_SetTextureBlendMode(BLENDMODE_BLEND)` | `Texture::set_blend()` [texture.cc:114](../../gfx/renderer/texture.cc#L114) | ~~**No.** `GFX_Copy` hardcodes `eSrcDfbBldOp = BLD_ONE`, `eDstDfbBldOp = 0`~~ **yes, since item 10 landed 2026-08-08** — §3 |
+| `SDL_SetTextureColorMod` | `Texture::set_color_mod()` [texture.cc:92](../../gfx/renderer/texture.cc#L92) | ~~**No.** Never read by the driver~~ **yes, since item 11 landed 2026-08-08** |
+| `SDL_SetTextureAlphaMod` | `Texture::set_alpha_mod()` [texture.cc:99](../../gfx/renderer/texture.cc#L99) | ~~**No.** Never read~~ **yes, since item 11 landed 2026-08-08** |
 | `SDL_SetTextureScaleMode` | `Texture`, `Layer` | **No.** `Mini_SetTextureScaleMode` is a no-op |
-| `SDL_CreateTextureFromSurface` | `Texture(surface)` [texture.cc:24](../../gfx/renderer/texture.cc#L24) | ~~**Use-after-free**~~ **yes, since item 1 landed 2026-08-02** — §1.1 |
+| `SDL_CreateTextureFromSurface` | `Texture(surface)` [texture.cc:26](../../gfx/renderer/texture.cc#L26) | ~~**Use-after-free**~~ **yes, since item 1 landed 2026-08-02** — §1.1 |
 | `SDL_LockTexture` / `SDL_UnlockTexture` | `Layer::lock()` | yes, and safe |
 | `SDL_UpdateTexture` | `LayerLock::~LayerLock` | yes, and safe — `Layer` owns `_pixels` for its lifetime |
 | `SDL_RenderCopy`, full-screen | `Context::draw()` | yes |
@@ -927,7 +927,9 @@ because what each item turned into is the useful part.
       withdrawn: it moved the coupling instead of removing it
 - [x] Add `src/{video,render,audio}/mini` to the pinned SDL 2.32.10 build. 42
       inserted lines across 8 upstream files, nothing removed or changed, applied
-      by `graft.cmake` from FetchContent's `PATCH_COMMAND`
+      by `graft.cmake` from FetchContent's `PATCH_COMMAND`. (46 since 17271d6,
+      2026-08-08: four lines setting `HAVE_MINI` so SDL's configure summary
+      reports the drivers as on; still additive only)
 - [x] ~~Fix the three changed signatures~~ **Six, not three, and the sixth was
       found by the compiler rather than by the survey.** `QueueCopyEx` gained
       `scale_x, scale_y`; `AudioBootStrap.init` went `int` to `SDL_bool`;
@@ -970,7 +972,8 @@ device runs.
 > the diff against the 2026-08-01 baseline moved exactly the two verdicts they
 > aimed at. Full record in
 > [target-validation/results.md](../2026-07-25-target-validation/results.md).
-> The rest of stage 1 is unstarted.
+> The rest of stage 1 is unstarted. **Updated 2026-10-16:** items 2, 3, 10 and 11
+> landed 2026-08-08 (below). Items 4, 5, 6, 13 and 19 are still open.
 
 - [x] **Item 1 — copy the pixels in `Mini_UpdateTexture`.** Done 2026-08-02.
       `SDL_UpdateTexture copies` WRONG → OK on the device. **D27 withdrawn** and

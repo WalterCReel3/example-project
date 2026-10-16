@@ -36,6 +36,16 @@ speculative work. Two things had to be known first, both from
 2. What the firmware expects — which is best learned by looking at how existing
    ports on that firmware are laid out.
 
+> **Both answered on device, 2026-07-28 and 2026-08-01.** The Onion bundle
+> launched from the Apps menu on 2026-07-28 and its binary ran (nothing drew,
+> D22/D23); on 2026-08-01 `coppers` ran at 59.7 fps against the project's own
+> SDL2 2.32.10 with the SSD202D drivers grafted in
+> ([results.md § 2026-07-28](../2026-07-25-target-validation/results.md#2026-07-28--step-4-it-runs-on-a-miyoo-mini-plus),
+> [§ 2026-08-01](../2026-07-25-target-validation/results.md#2026-08-01--our-own-sdl2-on-the-device-and-the-conformance-baseline)).
+> The firmware layout was taken from real OnionUI packages, per
+> [onion-bundle](../2026-07-27-onion-bundle/). The paragraph below is as written
+> on 2026-07-27.
+
 **Neither is answered yet, but the first one is now askable.** As of 2026-07-27
 there is something worth putting on an SD card: `coppers`
 ([2026-07-26-coppers-cracktro](../2026-07-26-coppers-cracktro/)) builds on
@@ -70,6 +80,12 @@ same trip.
   firmware's patched `mmiyoo` copy is mandatory rather than contingent. The decision
   did belong here, and is taken in
   [2026-07-27-onion-bundle](../2026-07-27-onion-bundle/) § decision 3.
+  **Superseded 2026-08-01:** `WREEL_USE_SYSTEM_SDL2` is no longer required. The
+  project builds its own pinned SDL2 2.32.10 with the SSD202D drivers grafted in
+  from `platform/miyoomini/sdl2/` (`WREEL_MINI_SDL2`, defaulted ON in
+  `cmake/toolchains/miyoomini.cmake`); see
+  [miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/). Unmodified upstream SDL2
+  still cannot reach the panel.
 - `coppers --screenshot` needs no display and no keyboard, so the first check is
   runnable over SSH before anything is known about the panel.
 
@@ -107,6 +123,10 @@ Common requirements across all of them:
   at all — so the core SDL2 there is the firmware's patched `mmiyoo` copy, loaded as
   a shared object from the bundle's `lib/`. Evidence and consequences in
   [2026-07-27-onion-bundle](../2026-07-27-onion-bundle/).
+  **Superseded in part 2026-08-01:** the shared object in `lib/` is now the
+  project's own SDL2 2.32.10 build with the SSD202D drivers compiled in, not the
+  firmware's `mmiyoo` copy ([miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/)).
+  That `miyoomini` ships exactly one shared object still holds.
 
   It remains true everywhere else, and the two parts of it that were *reasoned*
   rather than accidental both still hold: `gfx::gles2` resolves its entry points
@@ -146,6 +166,10 @@ that has to care about them.
       depends on that specific grid**, so it is cheaper now than later.
 - [ ] **Every shipped asset needs a known licence**, not just the glyph sheet.
       `data/PROVENANCE.md` is the checklist; most rows currently say "unknown".
+      *(2026-10-16: no longer most — PROVENANCE has 14 Known rows and 6 Unknown.
+      Still unknown and shipping: `glyphs-16x16.png` and the three `.mod` files
+      in the `coppers` bundle, and `Speedy.fon` in both the `coppers` and
+      `orchard` bundles.)*
 - [ ] **`skratch/input.cc` still hard-codes Xbox 360 axis indices.** `rig::Pad`
       exists and `coppers` uses it, so the port is mechanical — but it is a change
       to a working demo and wants its own commit. Only blocking if `skratch` is
@@ -158,12 +182,16 @@ that has to care about them.
       deliberately, so the realtime-services module was created for this and for
       frame timing; see docs/TARGETS.md § Modules
 - [x] Move `runlog.txt` to `SDL_GetPrefPath()` — done 2026-07-26 with the skratch port
-- [~] Confirm one firmware's layout against a real device, and implement it.
+- [x] Confirm one firmware's layout against a real device, and implement it.
       **Implemented 2026-07-27 for OnionOS** — `App/Coppers/` with `config.json` and
       `launch.sh`, taken from real packages in OnionUI/Onion rather than from a
       guide, and verified on the dev box: a bundle-shaped tree launched from `/`
       logs `assets: … (beside the executable)` and writes its log inside the bundle.
-      **Not confirmed against a device**, which is the half that remains
+      **Not confirmed against a device**, which is the half that remains.
+      **Confirmed on device:** MainUI listed and launched `App/Coppers` on
+      2026-07-28, and it ran and drew on 2026-08-01
+      ([results.md](../2026-07-25-target-validation/results.md),
+      [onion-bundle](../2026-07-27-onion-bundle/) Status)
 - [ ] Flesh out `wreel_add_handheld_bundle()` for the remaining firmwares. Onion is
       done; muOS, ArkOS and ROCKNIX are still guesses and stay unwritten
 - [x] Add a `WREEL_TARGET_FIRMWARE` option if layouts diverge enough to need it —

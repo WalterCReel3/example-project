@@ -1,6 +1,9 @@
 # C++17 modernization of the 2016 sources
 
-**Status:** `done`
+**Status:** `done` — D5 and D6 remain open, tracked in [defects.md](defects.md)
+(checked 2026-10-16: `include/util/string.hpp:24` still has `using namespace std;`,
+and `__`-prefixed guards remain in `util/io.hpp`, `util/deleter.hpp`,
+`util/string.hpp` and others)
 **Written:** 2026-07-25
 **Landed:** 2026-07-26
 **Blocks:** [graphics-backends](../2026-07-25-graphics-backends/)
@@ -327,8 +330,10 @@ Tests come first, and they existed before any of this landed: `tests/test_string
 opened with 18 cases and 48 assertions pinning current tokenizer behaviour,
 including the surprising parts (escapes keep their backslash; a blank line is
 yielded as a one-character `"\n"` stride rather than terminating iteration — the
-claim that it terminated was D4, and it was wrong). Now 21 cases and 75
-assertions. Run it before and after — behaviour should be identical except where
+claim that it terminated was D4, and it was wrong). Now 22 cases: 21 when this
+snapshot landed (75 assertions then), plus "long_of_string rejects what is not an
+integer", added 2026-07-26 with the D17 fix (#4). Assertions not re-counted since.
+Run it before and after — behaviour should be identical except where
 [defects.md](defects.md) says otherwise.
 
 ```sh
@@ -378,16 +383,22 @@ everything after it is independent.
       mode-change request. Fullscreen stays the default: this is a game and
       demoscene codebase, and display takeover is the intended presentation. A
       windowed context is now reachable for debugging, which was the point
-- [ ] Decide on `line_iterator`'s blank-line behaviour (D4) — behaviour change,
-      still open
+- [x] ~~Decide on `line_iterator`'s blank-line behaviour (D4) — behaviour change,
+      still open~~ — moot: D4 was withdrawn, see the tick above and
+      [defects.md § D4](defects.md)
 - [ ] Replace `__RESERVED__` include guards with `#pragma once` (D6)
-- [ ] The remaining 33 warnings — **deferred to
+- [x] The remaining 33 warnings — **deferred to
       [graphics-backends](../2026-07-25-graphics-backends/) by decision**, since
-      every one is in a file that snapshot deletes or rewrites. See the table above
-- [ ] Flip `WREEL_WERROR` default to `ON` in `cmake/ProjectOptions.cmake`, once
+      every one is in a file that snapshot deletes or rewrites. See the table above.
+      Done: `desktop-debug` is at 0 per the *Progress* table, cleared by
+      [gfx-renderer-and-gles2](../2026-07-26-gfx-renderer-and-gles2/)
+- [x] Flip `WREEL_WERROR` default to `ON` in `cmake/ProjectOptions.cmake`, once
       the tree is clean rather than via a per-target allowlist. `desktop-software`
-      already qualifies; `desktop-debug` clears when `gl_legacy` goes
-- [ ] Update the `WREEL_WERROR` row and the status table in `docs/DEVELOPMENT.md`
+      already qualifies; `desktop-debug` clears when `gl_legacy` goes. Done:
+      `option(WREEL_WERROR "Treat warnings as errors" ON)`,
+      `cmake/ProjectOptions.cmake:84`
+- [x] Update the `WREEL_WERROR` row and the status table in `docs/DEVELOPMENT.md`
+      — the option row and the C++17 cleanup status row both say `ON`
 
 ## Risks
 
@@ -409,8 +420,9 @@ estimate written from reading code is not a measurement.
 
 ## Open questions
 
-- **`line_iterator`'s blank-line behaviour (D4)** — the one genuine behaviour
-  change left in this snapshot. Still open.
+- ~~**`line_iterator`'s blank-line behaviour (D4)** — the one genuine behaviour
+  change left in this snapshot. Still open.~~ **Answered — D4 was withdrawn as
+  not a defect**; see the withdrawn risk above and [defects.md § D4](defects.md).
 - Should `include/util/ascii.hpp` gain a `#if __cpp_lib_ascii` path that
   `using`-declares the `std::` versions once a toolchain in the matrix ships
   `<ascii>`? Cheap to add later, and no compiler in the matrix is close — GCC 8.3

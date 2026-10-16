@@ -9,11 +9,12 @@ build; this file covers source we did not write.
 Reasoning and alternatives in
 [planning/2026-07-31-miyoo-sdl2-fork](../../../planning/2026-07-31-miyoo-sdl2-fork/).
 
-## These drivers are also published on their own
+## These drivers are also kept on their own
 
 `sdl2-mini` — the same driver sources, patch and graft, with a standalone build
 that produces `libSDL2-2.0.so.0` for anyone shipping SDL2 on this device.
-Started 2026-08-10; see
+Started 2026-08-10. **Not yet published:** as of 2026-10-16 it is a separate local
+repository (`~/Source/sdl2-mini`, one commit `7586301`, no remote). See
 [planning/2026-08-08-miyoo-sdl2-public-repo](../../../planning/2026-08-08-miyoo-sdl2-public-repo/)
 for the scope decision.
 
@@ -29,7 +30,7 @@ same sitting, or it lands in neither.** The check is a diff:
 diff -r platform/miyoomini/sdl2/src /path/to/sdl2-mini/src
 ```
 
-The public repository's own `PROVENANCE.md` is the declaration of modification
+`sdl2-mini`'s own `PROVENANCE.md` is the declaration of modification
 that travels with a published binary. This file stays the declaration for what
 this project ships. They describe the same changes and are worth diffing too
 when either is edited.

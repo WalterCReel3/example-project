@@ -1,6 +1,6 @@
 # Publishing the Miyoo Mini SDL2 drivers as their own repository
 
-**Status:** `in progress` — scope decided 2026-08-10, stage 1 started
+**Status:** `in-progress` — scope decided 2026-08-10, stage 1 started
 **Written:** 2026-08-08
 **Blocked by:** nothing
 **Serves:** [packaging-distribution](../2026-07-25-packaging-distribution/), the
@@ -57,7 +57,10 @@ argument — that these are real fixes to code other people ship today.
 
 ## 1. What is actually separable
 
-**Cleanly:** the 1,480 driver lines, `graft.cmake`, the registration patch, and
+**Cleanly:** the 1,480 driver lines (the vendor port's eleven files, as counted in
+[fork § 3](../2026-07-31-miyoo-sdl2-fork/); the in-tree
+`platform/miyoomini/sdl2/src/` is nine files and 1,355 lines, `SDL_gles_mini.c`
+having been dropped), `graft.cmake`, the registration patch, and
 `PROVENANCE.md`. That set is already the shape
 [§ 5.2](../2026-07-31-miyoo-sdl2-fork/) chose — *vendor the drivers, not SDL2* —
 and the LGPL boundary sits exactly around it. Upstream SDL2 is zlib; it is
@@ -137,6 +140,11 @@ receiving end of getting it wrong.
 `THIRD-PARTY.md` in this repository records a prebuilt `libSDL2-2.0.so.0` of
 **unidentifiable version**, next to a `libjson-c.so.5` we could not identify
 either. That entry is what publishing badly looks like from the other side.
+**Corrected 2026-10-16:** only the json-c half is true. THIRD-PARTY.md pins the
+prebuilt `libSDL2-2.0.so.0` by blob `7dba96fb` at commit `68ce3172`, and
+[gles-free-runtime](../2026-07-29-gles-free-runtime/) stage 3 identifies it as
+SDL 2.0.20. `libjson-c.so.5`'s version is still unknown, which is enough for the
+point.
 Shipping binaries means: a reproducible build from the published source, the
 toolchain recorded, checksums, and a statement of what was tested — or it means
 becoming someone else's unknown blob.
@@ -254,7 +262,9 @@ retiring it is a separate and much smaller decision.
 **Stage 1 — the repository, scope A**
 
 - [x] Driver sources, patch, `graft.cmake`, `PROVENANCE.md`, licence — done
-      2026-08-10 at `~/Source/sdl2-mini`, uncommitted
+      2026-08-10 at `~/Source/sdl2-mini`. Committed the same day as its only
+      commit, `7586301` (2026-08-10 22:29 -0400); clean tree, no remote, so
+      nothing is published yet (checked 2026-10-16)
 - [x] A standalone build that fetches pinned SDL2 and produces
       `libSDL2-2.0.so.0` — CMake, not the autoconf route § 4 of the fork snapshot
       priced and rejected. **Built and inspected**: 1,480,704 bytes of armv7,

@@ -74,10 +74,22 @@ So the choice is per effect rather than per project:
   `renderer::Context` has no locked-pixels view yet; that is the open design
   question in
   [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/).
+  *(Answered 2026-07-27: `gfx::renderer::Layer` is a CPU-plotted streaming
+  texture with a `lock()` guard, `include/gfx/renderer/layer.hpp`; `coppers`
+  plots through it.)*
 
 What has *not* changed: neither renderer has been exercised under sustained
 per-frame load by anything except `skratch`, and nothing has run on a device. An
 effect running at a real frame rate would be the first evidence either way.
+
+> **Superseded for `gfx::renderer`, 2026-10-16.** It has since run under
+> sustained per-frame load on a Miyoo Mini: `coppers`, a CPU-plotted effect,
+> at 59.7 fps on 2026-08-01, and the `orchard` game at 59.7 fps on 2026-10-06
+> ([results.md § 2026-08-01](../2026-07-25-target-validation/results.md#2026-08-01--our-own-sdl2-on-the-device-and-the-conformance-baseline),
+> [§ 2026-10-06](../2026-07-25-target-validation/results.md#2026-10-06--orchard-first-run-on-the-device)).
+> `gfx::gles2` is still exercised only by `skratch`, on the dev box; nothing has
+> run it on a Mali device, and the Mali targets are outside the current
+> validation scope ([docs/TARGETS.md](../../docs/TARGETS.md#validation-scope-desktop-and-miyoomini)).
 
 ## Tasks
 
@@ -103,7 +115,10 @@ effect running at a real frame rate would be the first evidence either way.
   different input path and a much larger scope. Probably a separate snapshot.
 - Does this want its own render loop, or should `skratch`'s be generalised? Given
   `skratch` is welded to fixed-function GL and slated for rework, a fresh loop is
-  likely cleaner than adapting it.
+  likely cleaner than adapting it. *(Premise outdated 2026-07-26: `skratch` now
+  renders through `gfx::gles2` and holds a `rig::FrameClock`, see
+  [gfx-renderer-and-gles2](../2026-07-26-gfx-renderer-and-gles2/). The question
+  of its own loop versus generalising `skratch`'s is still open.)*
 
 ## References
 

@@ -25,9 +25,10 @@ iteration and expressive rendering. Keeping both honest is the point.
 
 | Preset | Devices | `gfx::renderer` driver | `gfx::gles2` |
 |---|---|---|---|
-| `desktop` | your dev box | `opengl` | yes |
+| `desktop-debug`, `desktop-release` | your dev box | `opengl` | yes |
+| `desktop-software` | your dev box, as a Miyoo Mini stand-in | `software` (forced) | no |
 | `steam` | Steam, Steam Deck | `opengl` | yes |
-| `miyoomini` | Miyoo Mini, Mini Plus | `software` — **no GPU at all** | never |
+| `miyoomini` | Miyoo Mini, Mini Plus, Mini Flip | `Miyoo Mini` or `software` — **no GPU at all** | never |
 | `rk3326` | RG351, RG353 | `opengles2` | yes |
 | `h700` | RG35XX Plus/H/SP, RG40XX | `opengles2` | yes |
 
@@ -43,25 +44,35 @@ The short version of those constraints:
 1. **C++17 is the ceiling** — the Miyoo Mini toolchain is GCC 8.3.
 2. **Never ship Debian's cross-GCC output** — glibc 2.36 binaries won't load on
    a handheld. Device SDK containers exist for this.
-3. **Miyoo Mini has no GPU at all** — the software renderer is the baseline, not
-   a fallback.
+3. **Miyoo Mini has no GPU at all** — `gfx::renderer` without a GPU is the
+   baseline, not a fallback.
 
 ## Layout
 
 Flat top-level module directories, each producing one static library, with all
 public headers hoisted into a single `include/<module>/` tree. Dependencies run
-one way: `skratch` → `loaders` → `util` → `posix`.
+one way: `loaders` and `game` → `gfx`; `gfx`, `rig` and `audio` → `util` →
+`posix`; executables on top. Module charters in
+[docs/TARGETS.md § Modules](docs/TARGETS.md#modules).
 
 | Directory | Output | Role |
 |---|---|---|
 | [posix/](posix/) | `libposix` | errno → typed C++ exceptions |
-| [util/](util/) | `libutil` | file I/O, logging, string/tokenizing |
-| [gfx/](gfx/) | `libgfx` | SDL2 windowing and rendering |
+| [util/](util/) | `libutil` | file I/O, logging, string/tokenizing, XML; links no SDL |
+| [rig/](rig/) | `librig` | asset paths, frame timing, input mapping |
 | [audio/](audio/) | `libaudio` | sound effects and music — SDL2_mixer |
-| [loaders/](loaders/) | `libloaders` | OBJ models, images, texture atlases |
-| [skratch/](skratch/) | executable | demo app — free camera over a model grid, and the worked example of modern GL structuring |
-| `probe/` | executable | `wreel-probe` — device capability diagnostic |
+| [gfx/](gfx/) | `libgfx` | `gfx::renderer` (SDL_Renderer), `gfx::gles2`, atlases, animation, tilemaps |
+| [loaders/](loaders/) | `libloaders` | OBJ, images, Sparrow atlases, animation sidecars, Tiled TMX |
+| [game/](game/) | `libgame` | entity store, collision, camera, level spawn tables |
+| [orchard/](orchard/) | executable | the small game the `game` layer is shaped around |
+| [sprites/](sprites/) | executable | 2D game-path demo — atlas, animation, tilemap |
+| [coppers/](coppers/) | executable | copper-bar cracktro over `gfx::renderer`; also a fill-rate instrument |
+| [skratch/](skratch/) | executable | free camera over a model grid through `gfx::gles2`; needs a GPU |
+| [probe/](probe/) | executable | `wreel-probe` — what the device's SDL says it offers |
+| [diag/](diag/) | executable | `wreel-diag` — what the device's SDL actually draws, read back |
 | [tests/](tests/) | CTest suite | doctest, run from repo root against `data/` |
+| [tools/](tools/) | Python scripts | offline asset generators; not part of the build |
+| [platform/miyoomini/sdl2/](platform/miyoomini/sdl2/) | — | SSD202D SDL2 drivers grafted onto the pinned SDL2 |
 
 Two patterns from the original that are worth keeping, and are being kept:
 
@@ -94,10 +105,10 @@ Full detail in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Status
 
-Revival in progress. The 2016 code is now fully modernized: both renderers work,
-the fixed-function backend is gone, and the tree builds warning-free under
-`-Werror` on all five configured presets. What is missing is hardware — none of
-this has run on a device — and the 2D sprite path the handheld game needs.
+Revival in progress. The 2016 code is modernized, the 2D game path (atlases,
+animation, tilemaps, a `game` layer) exists, and a small game, `orchard`, runs
+on a Miyoo Mini. Validation is currently narrowed to desktop and `miyoomini`
+([why](docs/TARGETS.md#validation-scope-desktop-and-miyoomini)).
 
 - [x] Debian dev environment, scripted and documented
 - [x] Target matrix, toolchain, and constraint research
@@ -106,26 +117,55 @@ this has run on a device — and the 2D sprite path the handheld game needs.
 - [x] Modern CMake build with pinned `FetchContent` dependencies
 - [x] Cross-compile toolchain files and `CMakePresets.json` (7 presets)
 - [x] `probe/` → `wreel-probe`, replacing `project1/`
-- [x] `gfx::renderer` — the SDL_Renderer path, on every target. Software driver on
-      the Miyoo Mini, `opengles2` on the Mali handhelds
-- [x] doctest suite — 10 executables, 114 cases, 1482 assertions, passing on all five presets
+- [x] `gfx::renderer` — the SDL_Renderer path, on every target. `software` or
+      `Miyoo Mini` driver on the Miyoo Mini, `opengles2` on the Mali handhelds
+- [x] doctest suite — 26 suites
 - [x] Audio as a base requirement — SDL2_mixer, tiered codecs, tracker-first ([why](docs/TARGETS.md#audio))
-- [ ] Verify the cross and Steam presets on real toolchains and hardware
 - [x] C++17 cleanup of the 2016 sources — **167 warnings to zero**, `WREEL_WERROR=ON`
 - [x] `util::xml` — pugixml behind a facade, so Sparrow atlases and TMX are read as
       authored
 - [x] `gfx::gles2` for shaders and 3D; the 2016 fixed-function backend retired, with
       `skratch` ported onto it as the modern-GL reference
-- [ ] Packaging: handheld bundles and a Steam depot layout
+- [x] Miyoo Mini: GCC 8.3 device toolchain, SDL2 built from source with the
+      SSD202D drivers, and runs on hardware
+- [x] 2D game path — `gfx::Atlas`, `gfx::AnimatedSprite`, `gfx::TileMap`, and
+      the `game` layer, exercised by `orchard`
+- [ ] Verify the Mali handhelds and Steam on real toolchains and hardware
+- [ ] Packaging: the OnionOS bundle exists and runs; other firmwares and a Steam
+      depot layout do not
 
-Five of the seven presets are built and tested — both desktop ones natively, and
-`rk3326`, `h700` and `miyoomini` cross-built with their tests run under qemu. **No
-part of this has run on real hardware**, and neither the Miyoo Mini device
-toolchain nor the Steam runtime container has been tried. See
-[docs/DEVELOPMENT.md § Status](docs/DEVELOPMENT.md#status) for exactly what is
-verified and what isn't.
+What has been run, and where:
+
+- **Dev box:** `desktop-software` (full compile, ccache disabled) and
+  `desktop-debug` both build with zero warnings under `WREEL_WERROR` and pass
+  26/26 suites, 2026-10-16, on the current working tree.
+- **GCC 8.3 (`miyoomini` device toolchain), 2026-10-16:** the current working
+  tree does **not** build under `-Werror`: two `-Wcast-align` errors in the
+  uncommitted mirroring tests (D34 in
+  [defects.md](planning/2026-07-25-cxx17-modernization/defects.md), open).
+  Incremental build; library and demo code compiled.
+- **Miyoo Mini hardware**, from the GCC 8.3 bundle: `coppers` and `wreel-diag`
+  (2026-07-28 to 2026-08-08; `coppers` on stock firmware as well as OnionOS),
+  and `orchard`, played to the goal at 59.7 fps on the `software` driver under
+  OnionOS ([results.md](planning/2026-07-25-target-validation/results.md),
+  2026-10-06 entry).
+- **Under qemu only:** the `rk3326` and `h700` cross builds and their tests,
+  last on 2026-07-27 when the suite was 15. The GCC 8.3 `miyoomini` build
+  under qemu, 2026-10-16: 20 of the 24 suites that build pass; `test_audio`,
+  `test_playlist` and `test_renderer` fail on that target's premises, and
+  `test_entities` segfaults (D33, open).
+- **Never run:** anything on the Mali handhelds (`rk3326`, `h700`), the `steam`
+  preset, the Mini Flip, and `sprites` and `wreel-probe` on any device.
+
+[docs/DEVELOPMENT.md § Status](docs/DEVELOPMENT.md#status) has the per-component
+detail.
 
 ## Documentation
 
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — host setup, toolchains, building
 - [docs/TARGETS.md](docs/TARGETS.md) — device matrix, backends, dependency pins
+- [docs/MIYOO-MINI.md](docs/MIYOO-MINI.md) — the SSD202D, its firmware, and its SDL2
+- [planning/README.md](planning/README.md) — index of dated planning snapshots
+- [tools/README.md](tools/README.md) — offline asset tooling
+- [THIRD-PARTY.md](THIRD-PARTY.md) — shipped libraries this project did not build
+- [data/PROVENANCE.md](data/PROVENANCE.md) — where the assets came from

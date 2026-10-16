@@ -4,9 +4,11 @@ Python that turns purchased or authored art into the files `data/` ships. These
 run **offline, by hand**, and their output is committed — the build has no Python
 dependency and the cross-compile targets never see this directory.
 
-That split is deliberate. Six of the seven presets cross-compile, two of them
-inside device SDK containers, and adding a host-side asset step to the build
-would have to work in all of them. Generating offline and committing the result
+That split is deliberate. Four of the seven presets build for something other
+than the dev box — `steam` inside the Steam Runtime container, `miyoomini`
+inside its device SDK container, `rk3326` and `h700` with Debian's cross-GCC —
+and adding a host-side asset step to the build would have to work in all of
+them. Generating offline and committing the result
 means the thing under review is the script plus its inputs, and the thing built
 is a plain file.
 
@@ -29,6 +31,8 @@ Packs per-animation frame PNGs into one sheet plus a Sparrow atlas, the format
 ```sh
 tools/.venv/bin/python tools/pack_atlas.py data/sunny-land/foxy \
     --name foxy --out data
+tools/.venv/bin/python tools/pack_atlas.py data/sunny-land/critters \
+    --name critters --out data
 ```
 
 Two properties worth knowing, because things downstream rely on them:
@@ -137,6 +141,11 @@ identical bytes. Unlike the atlas packer there is nothing here to hand-tune yet:
 the map is a fixed layout function. Edit it in Tiled and the tool will overwrite
 you — either stop running it, or move the change into `build_layers()`.
 
+**Rerunning it erases orchard's clouds.** It copies the pack's sheet over
+`data/tileset.png`, and orchard's sheet also carries the cloud tiles that
+`make_orchard_level.py --bake-tiles` draws into ids 541–554. After any run of
+this tool, rerun that one with `--bake-tiles`.
+
 Two properties are load-bearing for the fill-rate measurement, so do not
 "improve" them casually: the map is **larger than any target panel**, so a
 renderer has to cull rather than draw everything, and its backdrop layer covers
@@ -152,9 +161,23 @@ builds a `game::Level`.
 python3 tools/make_orchard_level.py --out data
 ```
 
-Stdlib only — no Pillow, and no `data/Sunny-land-files/` — because it adds no
-art: it references the `sunnyland.tsx` and `tileset.png` that `make_tilemap.py`
-already put in `data/`. Run that one first in a checkout that has neither.
+By default it is stdlib only — no Pillow, and no `data/Sunny-land-files/` —
+because the map adds no art: it references the `sunnyland.tsx` and `tileset.png`
+that `make_tilemap.py` already put in `data/`. Run that one first in a checkout
+that has neither, and then run this one with `--bake-tiles`.
+
+```sh
+tools/.venv/bin/python tools/make_orchard_level.py --out data --bake-tiles
+```
+
+`--bake-tiles` is the exception, and the one path that needs Pillow. It draws
+fourteen cloud tiles from `CLOUD_SHAPES` into ids 541–554 of `data/tileset.png`,
+slots the pack leaves fully transparent, so the sheet's dimensions and
+`test_tmx`'s tilecount are unchanged. The baked sheet is meant to be committed
+(as of 2026-10-16 it is in the working tree only; the sheet at `HEAD` has no
+clouds), so this only has to run when `CLOUD_SHAPES` changes or after
+`make_tilemap.py` has copied the pack's sheet back over it. Provenance of the
+drawn tiles is in [data/PROVENANCE.md](../data/PROVENANCE.md).
 
 A sibling of `make_tilemap.py` rather than a flag on it, because the two maps
 have **opposite** jobs. The paragraph above says the fixture's backdrop covering
