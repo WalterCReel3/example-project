@@ -228,11 +228,11 @@ renderer::Rect AnimatedSprite::frame_art() const
                           current->source.h};
 }
 
-void AnimatedSprite::draw(renderer::Context& context, int x, int y,
-                          int scale) const
+void AnimatedSprite::draw(renderer::Context& context, int x, int y, int scale,
+                          Mirror mirror) const
 {
     if (current_frame() != nullptr) {
-        _atlas->draw(context, frame(), x, y, scale);
+        _atlas->draw(context, frame(), x, y, scale, mirror);
     }
 }
 

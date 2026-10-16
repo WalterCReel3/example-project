@@ -35,6 +35,7 @@
 
 #include <SDL.h>
 
+#include <cstdint>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -462,6 +463,112 @@ TEST_CASE("a frame index past the end of the atlas reports zero, not garbage")
     REQUIRE(sprite.frame() == 9);
     CHECK(sprite.frame_width() == 0);
     CHECK(sprite.frame_height() == 0);
+}
+
+//============================================================================
+// Mirrored drawing
+//============================================================================
+
+namespace
+{
+
+// The render target as ARGB8888 with alpha forced opaque, row-major. A 24-bit
+// BMP does not carry alpha, which is the allowance tests/test_atlas.cc makes.
+std::vector<std::uint32_t> read_back(const gfx::renderer::Context& context)
+{
+    const std::string path = "/tmp/wreel-test-animation.bmp";
+    REQUIRE(context.save_screenshot(path));
+
+    SDL_Surface* loaded = SDL_LoadBMP(path.c_str());
+    std::remove(path.c_str());
+    REQUIRE(loaded != nullptr);
+    SDL_Surface* argb =
+        SDL_ConvertSurfaceFormat(loaded, SDL_PIXELFORMAT_ARGB8888, 0);
+    SDL_FreeSurface(loaded);
+    REQUIRE(argb != nullptr);
+
+    std::vector<std::uint32_t> pixels;
+    for (int y = 0; y < argb->h; ++y) {
+        const std::uint32_t* row = reinterpret_cast<const std::uint32_t*>(
+            static_cast<const Uint8*>(argb->pixels) + y * argb->pitch);
+        for (int x = 0; x < argb->w; ++x) {
+            pixels.push_back(row[x] | 0xff000000u);
+        }
+    }
+    SDL_FreeSurface(argb);
+    return pixels;
+}
+
+} // namespace
+
+TEST_CASE("a sprite draws its current frame mirrored when asked, and not "
+          "otherwise")
+{
+    VideoFixture video;
+    const int width = 16;
+    gfx::renderer::Context context("test", width, 4, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
+
+    const std::uint32_t black = 0xff000000u;
+    const std::uint32_t red = 0xffff0000u;
+    const std::uint32_t green = 0xff00ff00u;
+    const std::uint32_t blue = 0xff0000ffu;
+    const std::uint32_t white = 0xffffffffu;
+
+    SDL_Surface* sheet =
+        SDL_CreateRGBSurfaceWithFormat(0, 4, 1, 32, SDL_PIXELFORMAT_ARGB8888);
+    REQUIRE(sheet != nullptr);
+    std::uint32_t* texels = static_cast<std::uint32_t*>(sheet->pixels);
+    texels[0] = red;
+    texels[1] = green;
+    texels[2] = blue;
+    texels[3] = white;
+
+    // Two frames of one 6-wide logical box, trimmed differently: red-green
+    // with a left margin of 1, then blue-white with a left margin of 3.
+    gfx::Atlas::Frames frames;
+    frames.push_back(gfx::AtlasFrame{"a.000", {0, 0, 2, 1}, 1, 0, 6, 1});
+    frames.push_back(gfx::AtlasFrame{"a.001", {2, 0, 2, 1}, 3, 0, 6, 1});
+    const gfx::Atlas atlas(context, sheet, std::move(frames));
+    SDL_FreeSurface(sheet);
+
+    gfx::Animation animation;
+    animation.seconds_per_frame = frame_time;
+    animation.frames = {0, 1};
+
+    gfx::AnimatedSprite sprite(atlas, animation);
+
+    context.clear({0, 0, 0, 255});
+    sprite.draw(context, 2, 0);
+    sprite.draw(context, 2, 1, /*scale=*/1, gfx::Mirror::Horizontal);
+    sprite.advance(frame_time);
+    REQUIRE(sprite.frame() == 1);
+    sprite.draw(context, 2, 2, /*scale=*/1, gfx::Mirror::Horizontal);
+
+    const std::vector<std::uint32_t> shot = read_back(context);
+    const auto at = [&shot, width](int x, int y) {
+        return shot[static_cast<std::size_t>(y * width + x)];
+    };
+
+    // Unmirrored by default: the box starts at 2, the art one pixel in.
+    CHECK(at(3, 0) == red);
+    CHECK(at(4, 0) == green);
+    CHECK(at(5, 0) == black);
+
+    // Frame 0 mirrored: right margin of 3 becomes the left one.
+    CHECK(at(4, 1) == black);
+    CHECK(at(5, 1) == green);
+    CHECK(at(6, 1) == red);
+    CHECK(at(7, 1) == black);
+
+    // Frame 1 mirrored: its own margins, not frame 0's.
+    CHECK(at(2, 2) == black);
+    CHECK(at(3, 2) == white);
+    CHECK(at(4, 2) == blue);
+    CHECK(at(5, 2) == black);
+
+    // The frame as packed, whichever way it was drawn.
+    CHECK(sprite.frame_art().x == 3);
 }
 
 //============================================================================

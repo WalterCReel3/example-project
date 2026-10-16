@@ -1208,3 +1208,72 @@ TEST_CASE("the level is still crossable once contact costs something")
     CHECK(run.collected > 0);
     CHECK(run.points > 0);
 }
+
+//============================================================================
+// Facing
+//============================================================================
+
+TEST_CASE("the player's art looks right and the three animals' looks left")
+{
+    // The two sheets as drawn: `foxy` with its snout to the right, and the
+    // opossum, frog and eagle of `critters` with their heads to the left.
+    CHECK(orchard::native_facing(orchard::Behaviour::Player) == 1);
+    CHECK(orchard::native_facing(orchard::Behaviour::Opossum) == -1);
+    CHECK(orchard::native_facing(orchard::Behaviour::Frog) == -1);
+    CHECK(orchard::native_facing(orchard::Behaviour::Eagle) == -1);
+}
+
+TEST_CASE("an actor is drawn reversed exactly when it heads against its art")
+{
+    using orchard::Behaviour;
+    using orchard::drawn_reversed;
+
+    CHECK_FALSE(drawn_reversed(Behaviour::Player, 1));
+    CHECK(drawn_reversed(Behaviour::Player, -1));
+
+    // The opposite rule, which is the reason this is data per behaviour: one
+    // rule for all four walks three of them backwards.
+    for (const Behaviour animal :
+         {Behaviour::Opossum, Behaviour::Frog, Behaviour::Eagle}) {
+        CAPTURE(orchard::behaviour_name(animal));
+        CHECK_FALSE(drawn_reversed(animal, -1));
+        CHECK(drawn_reversed(animal, 1));
+    }
+}
+
+TEST_CASE("art with no facing is never drawn reversed")
+{
+    using orchard::Behaviour;
+
+    for (const Behaviour still : {Behaviour::Cherry, Behaviour::Gem,
+                                  Behaviour::Goal, Behaviour::Count}) {
+        CAPTURE(orchard::behaviour_name(still));
+        CHECK(orchard::native_facing(still) == 0);
+        CHECK_FALSE(orchard::drawn_reversed(still, -1));
+        CHECK_FALSE(orchard::drawn_reversed(still, 1));
+    }
+
+    // No direction is not a direction to turn towards.
+    CHECK_FALSE(orchard::drawn_reversed(Behaviour::Player, 0));
+    CHECK_FALSE(orchard::drawn_reversed(Behaviour::Opossum, 0));
+}
+
+TEST_CASE("a newly spawned animal and a newly made player both start "
+          "unreversed")
+{
+    // The entity's mirror flag defaults to unmirrored and is first written by
+    // the step, so the starting headings have to be ones that need no
+    // reversal or the first drawn frame of a run that draws before stepping
+    // would face the wrong way.
+    const orchard::Prowl prowl;
+    for (const orchard::Behaviour animal :
+         {orchard::Behaviour::Opossum, orchard::Behaviour::Frog,
+          orchard::Behaviour::Eagle}) {
+        const orchard::Animal spawned = orchard::animal_at(animal, 0.0, prowl);
+        CHECK_FALSE(orchard::drawn_reversed(animal, spawned.direction));
+    }
+
+    const orchard::Player player;
+    CHECK_FALSE(
+        orchard::drawn_reversed(orchard::Behaviour::Player, player.facing()));
+}

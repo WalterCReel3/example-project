@@ -106,20 +106,48 @@ gfx::renderer::Driver driver_for(const Options& options)
 // rather than relative to the document — the flat data/ layout makes those the
 // same place, and rig::asset_path is what survives a launcher changing
 // directory.
-gfx::renderer::Texture upload_sheet(gfx::renderer::Context& context,
-                                    const std::string& image_path)
+typedef std::unique_ptr<SDL_Surface, void (*)(SDL_Surface*)> Sheet;
+
+Sheet load_sheet(const std::string& image_path)
 {
-    // Freed however the upload goes, including by the throw below: Texture
-    // uploads the pixels and does not adopt the surface.
-    const std::unique_ptr<SDL_Surface, void (*)(SDL_Surface*)> image(
-        loaders::load_image(rig::asset_path(image_path)), SDL_FreeSurface);
+    Sheet image(loaders::load_image(rig::asset_path(image_path)),
+                SDL_FreeSurface);
 
     if (!image) {
         throw std::runtime_error(
             util::format("could not load sheet %s", image_path.c_str()));
     }
 
+    return image;
+}
+
+gfx::renderer::Texture upload_sheet(gfx::renderer::Context& context,
+                                    const std::string& image_path)
+{
+    // Freed however the upload goes, including by a throw out of it: Texture
+    // uploads the pixels and does not adopt the surface.
+    const Sheet image = load_sheet(image_path);
+
     return gfx::renderer::Texture(context, image.get());
+}
+
+// A sheet whose sprites turn round, uploaded both ways round: Atlas keeps a
+// reversed copy only when it is built from the surface. The tileset goes
+// through upload_sheet() instead, because nothing mirrors a tile.
+gfx::Atlas mirrorable_atlas(gfx::renderer::Context& context,
+                            const loaders::SparrowAtlas& parsed)
+{
+    const Sheet image = load_sheet(parsed.image_path);
+
+    return gfx::Atlas(context, image.get(), parsed.frames);
+}
+
+// The one place a heading becomes a draw flag. Which headings need reversing
+// is native_facing()'s to say, per behaviour.
+gfx::Mirror mirror_for(Behaviour behaviour, int direction)
+{
+    return drawn_reversed(behaviour, direction) ? gfx::Mirror::Horizontal
+                                                : gfx::Mirror::None;
 }
 
 // Whichever anchor convention this behaviour is placed by. One call rather than
@@ -235,7 +263,7 @@ void Demo::load_actors()
 {
     const loaders::SparrowAtlas foxy =
         loaders::load_sparrow(rig::asset_path("foxy.xml"));
-    _foxy = gfx::Atlas(upload_sheet(_context, foxy.image_path), foxy.frames);
+    _foxy = mirrorable_atlas(_context, foxy);
 
     if (!_foxy.contains_frames()) {
         // Not fatal: it still draws, just wrongly. Saying so is the difference
@@ -265,8 +293,7 @@ void Demo::load_actors()
 
     const loaders::SparrowAtlas critters =
         loaders::load_sparrow(rig::asset_path("critters.xml"));
-    _critters = gfx::Atlas(upload_sheet(_context, critters.image_path),
-                           critters.frames);
+    _critters = mirrorable_atlas(_context, critters);
     _critter_animations = loaders::load_animation_set(
         _critters, rig::asset_path("critters.anim.xml"));
 
@@ -535,6 +562,10 @@ void Demo::step_animals(double delta)
         play_for_animal(animal, *actor);
         align_box(*actor, animal.behaviour);
         actor->place_box(resolved.x, resolved.y);
+
+        // The direction as step_animal() left it, so an animal that has just
+        // turned is drawn turned on the frame before it first moves that way.
+        actor->mirror = mirror_for(animal.behaviour, animal.direction);
     }
 }
 
@@ -719,6 +750,7 @@ void Demo::step(const Intent& intent, double delta)
     // it is standing on.
     avatar->align_box_to_sprite();
     avatar->place_box(resolved.x, resolved.y);
+    avatar->mirror = mirror_for(Behaviour::Player, _player.facing());
 
     step_animals(delta);
 

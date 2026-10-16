@@ -9,16 +9,20 @@ namespace
 // The spawn table's vocabulary, in one place. Kept as a table rather than a
 // chain of comparisons so that adding a type is one line and cannot be added
 // to the lookup without also being added to the name.
+//
+// `facing` is native_facing()'s answer: which way the art this behaviour draws
+// with looks in its sheet.
 struct Named {
     const char* type;
     Behaviour behaviour;
+    int facing;
 };
 
 const Named names[] = {
-    {"player", Behaviour::Player}, {"opossum", Behaviour::Opossum},
-    {"frog", Behaviour::Frog},     {"eagle", Behaviour::Eagle},
-    {"cherry", Behaviour::Cherry}, {"gem", Behaviour::Gem},
-    {"goal", Behaviour::Goal},
+    {"player", Behaviour::Player, 1}, {"opossum", Behaviour::Opossum, -1},
+    {"frog", Behaviour::Frog, -1},    {"eagle", Behaviour::Eagle, -1},
+    {"cherry", Behaviour::Cherry, 0}, {"gem", Behaviour::Gem, 0},
+    {"goal", Behaviour::Goal, 0},
 };
 
 // A probe two pixels deep just under the feet. Deep enough to find a floor the
@@ -191,6 +195,23 @@ const char* behaviour_name(Behaviour behaviour)
         }
     }
     return "unknown";
+}
+
+int native_facing(Behaviour behaviour)
+{
+    for (const Named& named : names) {
+        if (behaviour == named.behaviour) {
+            return named.facing;
+        }
+    }
+    return 0;
+}
+
+bool drawn_reversed(Behaviour behaviour, int direction)
+{
+    // Opposite signs, which a product says without a case for each. Zero on
+    // either side — no facing, or no direction — is never reversed.
+    return native_facing(behaviour) * direction < 0;
 }
 
 Animal animal_at(Behaviour behaviour, double home_x, const Prowl& prowl)

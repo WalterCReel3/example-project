@@ -55,6 +55,23 @@ bool behaviour_for(const std::string& type, Behaviour& behaviour);
 // For logs. Never null, including for Count.
 const char* behaviour_name(Behaviour behaviour);
 
+// Which way a behaviour's art looks as it is drawn in its sheet: -1 for left,
+// 1 for right, 0 for art that has no facing at all.
+//
+// A datum per behaviour because the two sheets disagree. `foxy` is drawn
+// looking right; the opossum, the frog and the eagle in `critters` are all
+// drawn looking left. A single "reversed when heading left" rule is therefore
+// right for the player and backwards for every animal.
+int native_facing(Behaviour behaviour);
+
+// Whether a behaviour heading `direction` (-1 or 1, as Player::facing() and
+// Animal::direction hold it) has to be drawn reversed to look that way. False
+// for art with no facing, whatever the direction, and for a direction of 0.
+//
+// A bool and not a gfx::Mirror for the reason at the top of this file: the
+// caller that owns the sprite turns the answer into one.
+bool drawn_reversed(Behaviour behaviour, int direction);
+
 // The animals' tuning, in one struct so a test drives the shipped numbers
 // rather than a copy of them — same reason Motion is one.
 //

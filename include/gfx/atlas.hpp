@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -30,8 +31,15 @@
 // See planning/2026-07-25-software-2d-sprites-tiling/.
 //
 //============================================================================
+struct SDL_Surface;
+
 namespace gfx
 {
+
+// Whether a draw reverses the art left to right. A type rather than a bool so
+// that a call site reads as what it asks for, after an integer scale that a
+// bare `true` would sit beside unexplained.
+enum class Mirror { None, Horizontal };
 
 // A named region of the sheet. An aggregate: there is no invariant to maintain
 // here, and validating a frame against a texture it does not know about is not
@@ -82,6 +90,20 @@ public:
     // caller runs if it wants that answered.
     Atlas(renderer::Texture sheet, Frames frames);
 
+    // Uploads `sheet` twice — as it is, and reversed left to right — which is
+    // what makes Mirror::Horizontal drawable. Does not take ownership of the
+    // surface, the same as Texture. Throws std::runtime_error if either upload
+    // fails or the surface packs more than one pixel into a byte.
+    //
+    // A second texture rather than a flipped blit because a flipped blit is
+    // SDL_RenderCopyEx, and the Miyoo Mini's `mini` render driver accepts that
+    // call, draws nothing and reports success. A reversed sheet is drawn with
+    // the same SDL_RenderCopy as everything else, so it works wherever an
+    // unmirrored sprite does. The price is the sheet's pixels held twice, which
+    // is why this is a separate constructor and not what the one above does: an
+    // atlas nobody mirrors should not pay it.
+    Atlas(renderer::Context& context, SDL_Surface* sheet, Frames frames);
+
     // Rule of zero. Texture is move-only, so this is movable and not copyable
     // without declaring anything, and there is no resource here that a
     // destructor would have to help with.
@@ -93,6 +115,10 @@ public:
     const Frames& frames() const { return _frames; }
 
     const renderer::Texture& texture() const { return _sheet; }
+
+    // Whether this atlas holds the reversed sheet Mirror::Horizontal draws
+    // from. Worth asking once after construction, like contains_frames().
+    bool mirrorable() const { return _mirrored.has_value(); }
 
     // Resolve a name to an index, or npos. Linear: this is a load-time call —
     // drawing takes the index — so a map would cost memory and a build step to
@@ -116,8 +142,20 @@ public:
     //
     // Integer, not a float: pixel art at 2.5x has unevenly sized pixels, and a
     // handheld panel is an integer multiple of the art or it is not scaled.
+    //
+    // Mirror::Horizontal reverses the frame about the vertical centre line of
+    // its UNTRIMMED box, not of the trimmed region: (x, y) is still the box's
+    // top-left and the box does not move, while the art's left and right
+    // margins inside it swap. Reversing about the trimmed region instead looks
+    // nearly right and is off by the difference between the two margins, which
+    // varies from frame to frame, so a mirrored walk cycle would shake.
+    //
+    // Throws std::logic_error for Mirror::Horizontal on an atlas that is not
+    // mirrorable(). That is a mistake in how the atlas was built, not a
+    // condition of the data, and drawing it unmirrored instead would be a
+    // sprite quietly facing the wrong way.
     void draw(renderer::Context& context, Index index, int x, int y,
-              int scale = 1) const;
+              int scale = 1, Mirror mirror = Mirror::None) const;
 
     // Whether every frame's source rectangle lies inside the texture. Worth
     // asking once after construction: a frame that runs off the sheet is not an
@@ -127,6 +165,9 @@ public:
 
 private:
     renderer::Texture _sheet;
+    // `_sheet` with every row reversed, so the pixel at column c is at column
+    // width - 1 - c here. Empty unless the atlas was built from a surface.
+    std::optional<renderer::Texture> _mirrored;
     Frames _frames;
 };
 

@@ -988,3 +988,101 @@ TEST_CASE("within one layer the lower entity lands on top")
 
     CHECK(colour_at(context, 10, 10) == red_pixel);
 }
+
+//============================================================================
+// Mirroring
+//============================================================================
+
+TEST_CASE("mirroring an entity reverses its art inside the logical frame and "
+          "leaves the box where it was")
+{
+    VideoFixture video;
+    gfx::renderer::Context context("test", 32, 8, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
+
+    const std::uint32_t green_pixel = 0x0000ff00u;
+
+    SDL_Surface* surface =
+        SDL_CreateRGBSurfaceWithFormat(0, 3, 1, 32, SDL_PIXELFORMAT_ARGB8888);
+    REQUIRE(surface != nullptr);
+    std::uint32_t* texels = static_cast<std::uint32_t*>(surface->pixels);
+    texels[0] = 0xff000000u | red_pixel;
+    texels[1] = 0xff000000u | green_pixel;
+    texels[2] = 0xff000000u | blue_pixel;
+
+    // Three pixels of art one in from the left of a 9-wide logical frame:
+    // margins of 1 and 5, so the frame's centre line and the art's are not
+    // the same line and a reversal about the wrong one is three pixels out.
+    const int frame_width = 9;
+    gfx::Atlas::Frames frames;
+    frames.push_back(
+        gfx::AtlasFrame{"pose", {0, 0, 3, 1}, 1, 0, frame_width, 1});
+    const gfx::Atlas atlas(context, surface, std::move(frames));
+    SDL_FreeSurface(surface);
+
+    gfx::Animation animation;
+    animation.frames = {0};
+
+    const int left = 10;
+    const int row = 4;
+
+    game::Entities entities;
+    game::Entity actor = at(left, row);
+    actor.sprite = gfx::AnimatedSprite(atlas, animation);
+    actor.box = game::Aabb{0.0, 0.0, 5.0, 1.0};
+    actor.align_box_to_sprite();
+    REQUIRE(actor.mirror == gfx::Mirror::None);
+    const game::Entities::Id id = entities.add(std::move(actor));
+
+    context.clear(gfx::renderer::Color{0, 0, 0, 255});
+    REQUIRE(entities.draw(context, 0, 0) == 1);
+    const std::vector<std::uint32_t> plain = read_framebuffer(context);
+    const game::Aabb plain_box = entities.find(id)->world_box();
+
+    entities.find(id)->mirror = gfx::Mirror::Horizontal;
+    entities.find(id)->align_box_to_sprite();
+
+    context.clear(gfx::renderer::Color{0, 0, 0, 255});
+    REQUIRE(entities.draw(context, 0, 0) == 1);
+    const std::vector<std::uint32_t> mirrored = read_framebuffer(context);
+    const game::Aabb mirrored_box = entities.find(id)->world_box();
+
+    const auto colour = [&context, row](const std::vector<std::uint32_t>& shot,
+                                        int column) {
+        return shot[static_cast<std::size_t>(row) *
+                        static_cast<std::size_t>(context.width()) +
+                    static_cast<std::size_t>(column)] &
+               0x00ffffffu;
+    };
+
+    // The box did not move, and realigning it against a mirrored sprite did
+    // not move it either.
+    CHECK(mirrored_box.x == doctest::Approx(plain_box.x));
+    CHECK(mirrored_box.y == doctest::Approx(plain_box.y));
+    CHECK(mirrored_box.width == doctest::Approx(plain_box.width));
+    CHECK(mirrored_box.height == doctest::Approx(plain_box.height));
+
+    // Unmirrored, as packed.
+    CHECK(colour(plain, left + 1) == red_pixel);
+    CHECK(colour(plain, left + 2) == green_pixel);
+    CHECK(colour(plain, left + 3) == blue_pixel);
+
+    // Mirrored: every column of the logical frame is the opposite column of
+    // the unmirrored one, and nothing was drawn outside the frame.
+    for (int column = 0; column < frame_width; ++column) {
+        CAPTURE(column);
+        CHECK(colour(mirrored, left + frame_width - 1 - column) ==
+              colour(plain, left + column));
+    }
+    CHECK(colour(mirrored, left + 5) == blue_pixel);
+    CHECK(colour(mirrored, left + 7) == red_pixel);
+    CHECK(colour(mirrored, left - 1) == 0u);
+    CHECK(colour(mirrored, left + frame_width) == 0u);
+
+    // The art's left edge unmirrored (column 1) and its right edge mirrored
+    // (column 8, exclusive) are the same distance from the box's centre line,
+    // which is what "the box stays aligned with the art" means for a box
+    // centred on the frame.
+    const double centre = plain_box.x + plain_box.width / 2.0;
+    CHECK((left + 1) - centre == doctest::Approx(centre - (left + 8)));
+}

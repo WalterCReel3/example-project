@@ -193,7 +193,18 @@ public:
     // Draws the current frame with its untrimmed top-left at (x, y), scaled by
     // an integer factor. A no-op for a sprite with nothing to show, rather than
     // a crash — a missing pose should leave a hole, not take the demo down.
-    void draw(renderer::Context& context, int x, int y, int scale = 1) const;
+    //
+    // `mirror` is handed to Atlas::draw, which reverses the frame inside its
+    // logical box, so (x, y) and frame_width() mean the same either way — and
+    // which throws std::logic_error if the atlas is not mirrorable(). That one
+    // does take the demo down: it is a mistake in the program, not a pose
+    // missing from an asset.
+    //
+    // It is an argument and not playback state, so frame_art() always
+    // describes the frame as packed; mirrored, the art's left edge is at
+    // frame_width() - frame_art().x - frame_art().w.
+    void draw(renderer::Context& context, int x, int y, int scale = 1,
+              Mirror mirror = Mirror::None) const;
 
 private:
     // The frame currently showing, or null if there is nothing to show. The

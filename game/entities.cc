@@ -177,7 +177,8 @@ int Entities::draw(gfx::renderer::Context& context, int camera_x,
         const Entity& entity = slots[index].entity;
 
         entity.sprite.draw(context, to_pixel(entity.x) - camera_x,
-                           to_pixel(entity.y) - camera_y, entity.scale);
+                           to_pixel(entity.y) - camera_y, entity.scale,
+                           entity.mirror);
         ++drawn;
     }
 

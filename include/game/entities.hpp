@@ -85,6 +85,17 @@ struct Entity {
 
     int scale = 1;
 
+    // Whether the sprite is drawn reversed left to right. Presentation only:
+    // nothing in this module reads it but draw(), and what it stands for — a
+    // facing, a recoil, nothing at all — is the consumer's business.
+    //
+    // The reversal is about the vertical centre line of the sprite's logical
+    // frame, which is the line align_box_to_sprite() centres `box` on, so
+    // changing this moves neither `box` nor where the art sits across it. The
+    // sprite's atlas must be mirrorable() for anything but None; drawing
+    // throws otherwise.
+    gfx::Mirror mirror = gfx::Mirror::None;
+
     // Draw order, low to high. Ties break on y, so something further down the
     // screen draws in front — the usual 2D depth cue, and the reason this is
     // not simply insertion order.
