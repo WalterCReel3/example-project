@@ -285,6 +285,9 @@ void Pad::handle_event(const SDL_Event& event)
 {
     switch (event.type) {
     case SDL_QUIT:
+        // Logged because a signal raises it too, and a run that ended this way
+        // was not ended by a control.
+        util::log_info("input: SDL_QUIT received");
         _quit = true;
         break;
 
@@ -298,6 +301,16 @@ void Pad::handle_event(const SDL_Event& event)
         }
         bool found = false;
         const Button button = from_key(event.key.keysym.sym, found);
+        // Where the pad is the keyboard, a wrong row in from_key is a control
+        // that does nothing, and the keysym that actually arrived is the only
+        // thing that says which row. Debug level, so silent unless asked for.
+        if (event.type == SDL_KEYDOWN) {
+            util::log_debug("input: key %s (sym 0x%x, scancode %d) -> %s",
+                            SDL_GetKeyName(event.key.keysym.sym),
+                            static_cast<unsigned>(event.key.keysym.sym),
+                            static_cast<int>(event.key.keysym.scancode),
+                            found ? button_name(button) : "unmapped");
+        }
         if (found) {
             set(button, event.type == SDL_KEYDOWN);
         }

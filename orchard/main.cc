@@ -8,6 +8,8 @@
 #include <exception>
 #include <string>
 
+#include <SDL.h>
+
 #include <rig/assets.hpp>
 #include <util/logging.hpp>
 #include <util/number.hpp>
@@ -28,6 +30,7 @@ void usage()
         "  --seconds <n>             exit after n seconds; 0 runs until quit\n"
         "  --software                force the software driver\n"
         "  --mute                    silence every cue\n"
+        "  --verbose                 log every key as it arrives\n"
         "  --screenshot <path.bmp>   render a few frames, save, exit\n"
         "  --frames <n>              frames to render before a screenshot\n"
         "  -h, --help                this text\n"
@@ -60,6 +63,7 @@ std::string log_path()
 int main(int argc, char** argv)
 {
     orchard::Options options;
+    bool verbose = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -70,6 +74,8 @@ int main(int argc, char** argv)
             options.software = true;
         } else if (arg == "--mute") {
             options.mute = true;
+        } else if (arg == "--verbose") {
+            verbose = true;
         } else if (arg == "--size" && i + 2 < argc) {
             if (!parse_int(argv[++i], options.width, "--size") ||
                 !parse_int(argv[++i], options.height, "--size")) {
@@ -111,7 +117,19 @@ int main(int argc, char** argv)
     if (!path.empty()) {
         util::log_open_file(path.c_str());
     }
-    util::log_set_level(util::LogInfo);
+    util::log_set_level(verbose ? util::LogDebug : util::LogInfo);
+
+    // A log pulled off an SD card has to say which build wrote it, and which
+    // SDL2 the loader actually found beside it.
+    SDL_version compiled;
+    SDL_version linked;
+    SDL_VERSION(&compiled);
+    SDL_GetVersion(&linked);
+    util::log_info("orchard %s [target %s], compiler %s, SDL %d.%d.%d "
+                   "compiled, %d.%d.%d linked",
+                   WREEL_VERSION, WREEL_TARGET_ID, __VERSION__, compiled.major,
+                   compiled.minor, compiled.patch, linked.major, linked.minor,
+                   linked.patch);
 
     int status = 0;
     try {

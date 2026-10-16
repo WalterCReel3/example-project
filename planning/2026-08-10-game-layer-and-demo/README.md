@@ -2,11 +2,15 @@
 
 **Status:** `in-progress` — the game layer landed 2026-08-22 and was finished
 2026-08-30 with `game::Level` and `game::Action`; one landed piece has since been
-removed from the layer entirely. The game itself is now three slices in and
-playable end to end as of 2026-09-14 — see
-[decision 18](#18-contact-costs-the-last-pickup-the-goal-ends-the-run) — with
-sound the one part of "The game" still unwritten. See
-[Where this stands](#where-this-stands-2026-09-01).
+removed from the layer entirely. The game itself, `orchard`, is playable end to
+end as of 2026-09-14 — see
+[decision 18](#18-contact-costs-the-last-pickup-the-goal-ends-the-run) — and has
+had its cues and music since 2026-09-15. It has run once on a Miyoo Mini, from
+the GCC 8.3 Onion bundle, and was played to the goal
+([results.md](../2026-07-25-target-validation/results.md), 2026-10-06). None of
+it is committed: `orchard/` and everything after #18 is uncommitted on
+`feature/orchard-demo`. See
+[Where this stands](#where-this-stands-2026-10-16).
 **Written:** 2026-08-10
 **Blocked by:** nothing. The frame-name question that held the art ingest and
 everything downstream of it is answered — see
@@ -22,12 +26,68 @@ document's.
 > physics, input mapping. Those are a game layer and belong in their own
 > snapshot."* This is that snapshot.
 
-## Where this stands (2026-09-01)
+## Where this stands (2026-10-16)
 
-The **layer** is complete, one piece smaller than it was. The **game** does not
-exist. Everything through `game::Camera` merged as `a9ca839` on PR #16;
+The **layer** is complete, one piece smaller than it was, and all of it is
+committed: everything through `game::Camera` merged as `a9ca839` on PR #16;
 `game::Level` and `game::Action` merged as `c1a1c00` on PR #17, which also
-carried D28–D30.
+carried D28–D30; the deletion of `game::Action` merged as `62714da` on PR #18,
+2026-09-04. Nothing is committed after that.
+
+The **game** exists and is not committed. `orchard` has the level, the player,
+the cast, the rules, the HUD, the cues and the music; the table below has each
+slice. It sits on `feature/orchard-demo` (cut from `62714da` on 2026-10-06) as a
+staged layer plus a further unstaged one, and
+[orchard-first-device-run](../2026-10-06-orchard-first-device-run/) is the
+handoff that says how to commit it, in eight groups.
+
+**It has run on a device once.** The Onion bundle built under GCC 8.3 in the
+`wreel-miyoomini` container was launched as shipped (`--software --verbose`) on
+a Miyoo Mini and the level was played to the goal: 4383 frames at 59.7 fps on a
+capped run, the game's own work 4.1 ms of a 16.762 ms frame, `present` 12.582 ms,
+cues playing, exit `stopped by the rules`. Recorded in
+[results.md § 2026-10-06](../2026-07-25-target-validation/results.md); the log
+is the root `stdout.log`. One run, software renderer only; the handoff's runs 2
+and 3 (uncapped, and the `Miyoo Mini` render driver) have no log in the tree.
+The log shows the cues and `emerald-droplets.xm` executing; 2026-10-16:
+confirmed audible by the user on the device (sound effects and module playback
+in orchard and coppers); not logged. The mixer's cost is still unisolated: no
+`--mute` run.
+
+**On the dev box, 2026-10-16:** `desktop-software`, a full compile with ccache
+disabled, and `desktop-debug`, 35 TUs recompiled (ccache misses), both build the
+current working tree with zero warnings under `WREEL_WERROR` and pass **26/26**
+([results.md § 2026-10-16](../2026-07-25-target-validation/results.md)).
+
+**Under GCC 8.3, 2026-10-16, the current tree does not build.** An incremental
+build in `build/miyoomini-83` stops on two `-Wcast-align` errors in the
+mirroring tests below,
+[D34](../2026-07-25-cxx17-modernization/defects.md). Under `qemu-arm`, 20 of the
+24 suites that do build pass; the failing four are September's.
+
+**After the handoff, unrecorded until now: mirrored sprites and facing
+(2026-10-09, unstaged).** The `mini` render driver no-ops
+`SDL_RenderCopyEx` ([MIYOO-MINI.md](../../docs/MIYOO-MINI.md)), so a
+left-facing sprite cannot be had from the renderer. `gfx::Atlas` gained a
+constructor from an `SDL_Surface` that uploads a second, row-reversed copy of
+the sheet, and `gfx::Mirror { None, Horizontal }` is threaded through
+`AnimatedSprite::draw` and `game::Entity::mirror`. Mirroring reflects about the
+untrimmed frame, and the cost is the sheet held twice, only for atlases built
+that way. orchard records each actor's native facing (`native_facing()`,
+`drawn_reversed()` in `orchard/actors.*`: foxy's art faces right, the opossum,
+frog and eagle face left, pickups and the goal have none) and loads foxy and
+the critters mirrorable. +14 test cases: `test_atlas` +8, `test_animation` +1,
+`test_entities` +1, `test_orchard` +4. It was written after the handoff,
+whose commit plan has since been extended to eight groups; this is group 7
+([orchard-first-device-run § What is uncommitted](../2026-10-06-orchard-first-device-run/README.md#what-is-uncommitted-in-the-order-it-should-be-committed)).
+Not run on a device. The 2026-10-16 desktop runs above compiled and passed its
+tests. Under GCC 8.3 its library code compiles but `test_atlas` and
+`test_animation` do not (D34), so their new cases have not run there;
+`test_orchard`, with its facing cases, passed under `qemu-arm`. It needs D34
+fixed before it goes into a bundle.
+
+The rest of this section is the 2026-09-01 account of the layer, with its
+statements of state brought up to date.
 
 **`game::Action` shipped and has been deleted** — it is the one row below that
 went backwards. It defines orchard's verb vocabulary inside a module whose
@@ -38,7 +98,7 @@ occupies belongs to `rig`, the verbs belong to whichever executable declares
 them, and `game/` has no input line at all. Decision 12 is left in place with its
 reasoning rather than rewritten, because most of it was right.
 
-The deletion has landed in the working tree. `include/game/action.hpp`,
+The deletion is committed, as `62714da` on PR #18. `include/game/action.hpp`,
 `game/action.cc` and `tests/test_action.cc` are gone, along with their entries
 in `game/CMakeLists.txt` and `tests/CMakeLists.txt`. Two charter changes went
 with them, both argued under decision 14: **"input actions" is out of the
@@ -51,8 +111,9 @@ anywhere under `game/` or `include/game/` is `rig::asset_path` inside a usage
 example in a comment. The module's dependency line is now
 `game -> gfx -> util -> posix`.
 
-Both desktop presets are green after it at **25/25**, one fewer than the 26/26
-recorded below, and `test_action` is the only test that left.
+Both desktop presets were green after it at **25/25** on 2026-09-01, one fewer
+than the 26/26 recorded below, and `test_action` is the only test that left.
+`test_orchard` has since brought the count back to 26.
 
 | Piece | State |
 |---|---|
@@ -61,12 +122,14 @@ recorded below, and `test_action` is the only test that left.
 | `game::Camera` | done — `test_camera`, 21 / 330 |
 | `tools/make_sfx.py` + `data/sfx.xml` + 5 WAVs | done — sounds heard and approved provisionally |
 | `game::Level` | done 2026-08-30 — `test_level`, 19 cases / 70 assertions. Decision 10's spawn check is paid |
-| `game::Action` | **superseded 2026-09-01 — deleted from this layer, see decision 14.** Shipped as `test_action`, 15 cases / 78 assertions, all of which pin orchard's verbs rather than the mechanism. Decision 12 first proposed reworking it into `game::InputBindings`; decision 14 supersedes that and removes it instead. The verb table becomes orchard's when orchard exists |
+| `game::Action` | **superseded 2026-09-01 — deleted from this layer, see decision 14.** Shipped as `test_action`, 15 cases / 78 assertions, all of which pin orchard's verbs rather than the mechanism. Decision 12 first proposed reworking it into `game::InputBindings`; decision 14 supersedes that and removes it instead. The verb table is orchard's, in `orchard/verbs.{hpp,cc}` |
 | `game::Sfx`, the cues | **`game::Sfx` superseded 2026-09-15 — never built, see [decision 17](#17-gamesfx-is-not-built-the-cue-table-is-orchards).** The cue table is `orchard::Cues` in `orchard/cues.{hpp,cc}`: five WAVs, the module, and `--mute` as constructing no device at all. Wired to the rules and to the player's jump and landing edges |
 | `tools/make_orchard_level.py` + `data/orchard.tmx` | done 2026-09-08 — 96×40, two visible layers and an invisible `collision` layer, 23 spawns. **The first `.tmx` in this tree that builds a `game::Level`**, proven in `test_tmx` rather than asserted |
-| the art ingest, `orchard` | the ingest landed as `data/critters.{png,xml}` and `critters.anim.xml`. `orchard` is four slices in: the level and the player, the cast, the rules with the HUD and the goal, and — 2026-09-15 — the cues and the music. `tests/test_orchard.cc` is 26 cases / 180 assertions and crosses the shipped map twice, once on geometry alone in 758 frames and once under the rules in 1204. **Both numbers are unchanged by the sound**, which is the check that says no cue was wired into the simulation |
+| the art ingest, `orchard` | the ingest landed as `data/critters.{png,xml}` and `critters.anim.xml`. `orchard` is four slices in: the level and the player, the cast, the rules with the HUD and the goal, and — 2026-09-15 — the cues and the music. `tests/test_orchard.cc` was 26 cases / 180 assertions at 2026-09-15 and crosses the shipped map twice, once on geometry alone in 758 frames and once under the rules in 1204. **Both numbers are unchanged by the sound**, which is the check that says no cue was wired into the simulation. It is 30 cases by grep in the working tree (26 staged): the four "Facing" cases from 2026-10-09; assertion count not re-taken |
+| mirrored sprites and facing | written 2026-10-09, unstaged — `gfx::Mirror`, the mirrorable `gfx::Atlas`, `Entity::mirror`, orchard's per-actor facing; see above. Group 7 of the handoff's commit plan. 26/26 on both desktop presets 2026-10-16; **does not build under GCC 8.3** (D34, open) |
+| the Onion bundle entry | `App/Orchard` built under GCC 8.3 into `pkg/wreel-0.2.0-onion.tar.gz` 2026-10-06; **run once on a Miyoo Mini and played to the goal** — [results.md § 2026-10-06](../2026-07-25-target-validation/results.md). Software renderer only; runs 2 and 3 not returned |
 | `orchard`'s rules | done 2026-09-14 — collection, contact, the goal and a score line. See [decision 18](#18-contact-costs-the-last-pickup-the-goal-ends-the-run) |
-| `orchard`'s cues and music | done 2026-09-15 — five WAVs on five events, `emerald-droplets.xm` playing, `--mute` opening no device, and voices on the fill-rate line. See [decision 17](#17-gamesfx-is-not-built-the-cue-table-is-orchards). Not listened to |
+| `orchard`'s cues and music | done 2026-09-15 — five WAVs on five events, `emerald-droplets.xm` playing, `--mute` opening no device, and voices on the fill-rate line. See [decision 17](#17-gamesfx-is-not-built-the-cue-table-is-orchards). Not listened to when written. 2026-10-16: confirmed audible by the user on the device (sound effects and module playback in orchard and coppers); not logged. Firmware not stated; the matching orchard log is the Onion run. The mixer's cost is still unisolated |
 | the sprite baseline anchor | done 2026-09-15 — `gfx::AnimatedSprite::frame_art()`, and `Entity::align_box_to_sprite()` sits the box on the art rather than on the logical frame. The frog's ±5 px hop pop is 0.00 px at all eight transitions over 400 frames, and the player's 1 px run bob and 3 px jump pop went with it. `sprites --screenshot` byte-identical; 758 and 1204 unchanged. See [decision 19](#19-the-baseline-anchor-reads-the-art-not-the-logical-frame) |
 
 Verified 2026-08-30, from forced cold recompiles: `desktop-software` and
@@ -97,8 +160,9 @@ decision 4, the 24-channel mixing load under Risks — is a Miyoo Mini measureme
 because it is the only device there is. The condition is the hardware arriving,
 not a date; when it does, the matrix widens back with no decision needed.
 
-Not verified, and it is the same gap every snapshot before this one has had:
-**no line of `game/` has run on ARM or under GCC 8.3.** Both green presets are
+As of 2026-09-01, and it was the same gap every snapshot before this one had:
+**no line of `game/` had run on ARM or under GCC 8.3.** That is no longer true;
+see the end of this passage. Both green presets are
 the same x86-64 host compiler and libstdc++, differing only in
 `WREEL_TARGET_HAS_GPU` and optimisation. `game::collide` and `game::Camera` are
 pure double/int arithmetic, and the two places a different toolchain would
@@ -125,9 +189,44 @@ entirely unexercised, because the run has not been repeated. Nothing about
 `game/` on ARM or under GCC 8.3 has changed as a matter of fact — only what a
 future run would cover.
 
-Also unpaid, from decision 4: **the fill-rate claim is still a prediction.**
-Nothing has been measured, because `orchard --seconds` is the instrument and
-`orchard` does not exist.
+**Since then `game/` has run on ARM under GCC 8.3 three times: once on the
+device and twice under qemu. The device run has a log in this tree; neither
+qemu run does.**
+
+- **On the device, 2026-10-06** (build date): `orchard` links `wreel::game`,
+  was built under GCC 8.3 in the container, and played to the goal on a Miyoo
+  Mini — [results.md](../2026-07-25-target-validation/results.md). That
+  exercises `game::Level`, `collide`, `Camera` and `Entities` on hardware, as
+  one program; it runs no test.
+- **Under `qemu-arm`, 2026-09-21**: the whole suite, built under GCC 8.3 in
+  `build/miyoomini-83`, passed **22 of 26**, `test_orchard` 26/26 among them.
+  `test_audio`, `test_playlist` and `test_renderer` failed on their premises
+  (no dummy audio driver; the grafted `Miyoo Mini` render driver is selected and
+  calls itself accelerated), and `test_entities` segfaulted, cause not pinned.
+  **Relayed, not verified:** this is known only from the
+  [handoff](../2026-10-06-orchard-first-device-run/), which read it out of the
+  September session's transcript; no log of it is in the tree. The segfault is
+  [D33](../2026-07-25-cxx17-modernization/defects.md#d33--test_entities-segfaults-under-qemu-arm-on-the-miyoomini-build),
+  which also records a second core from 2026-10-06 stopped at the same `pc`.
+- **Under `qemu-arm`, 2026-10-16**, on the current working tree, with its logs
+  in a scratch directory outside the repository: the build fails on D34, so `test_atlas` and `test_animation` were excluded. 20 of
+  the other 24 pass, `test_orchard` among them; the same four fail.
+  `test_entities` crashes in the case at `test_entities.cc:774` and passes
+  31/31 with `SDL_RENDER_DRIVER=software`. Detail in
+  [results.md § 2026-10-16](../2026-07-25-target-validation/results.md) and D33.
+
+Of the cross presets, only `miyoomini` has been run since, and into
+`build/miyoomini-83` rather than its poisoned default directory; the others
+have not been re-run.
+
+Also from decision 4: **the fill-rate claim is measured on the desktop and once
+on the device, and the desktop figures do not stand.** The 2026-09-13 and
+2026-09-17 desktop numbers under decision 4 were taken before
+`Context::flush()` existed and time the queueing of the tilemap rather than its
+drawing; the handoff's flushed re-measure puts the tilemap at most of the
+frame. On the device, flushed and capped: 316 tiles/frame, tilemap 2.274 ms of
+16.762, 7.21 µs/tile. The orchard-against-`sunnyland` comparison the decision
+turns on has not been redone with the flushed meter on either.
 
 ### Two housekeeping items a new session will trip over
 
@@ -424,7 +523,7 @@ The result should be a level that is *cheaper* than the fixture while looking
 like more. That is a claim, and `orchard --seconds N` reporting frame cost the
 way `sprites --tilemap` does is how it gets checked rather than asserted.
 
-**Checked 2026-09-13, and it holds.** Both uncapped (`--fps 0 --seconds 3`) on
+**Checked 2026-09-13.** Both uncapped (`--fps 0 --seconds 3`) on
 `desktop-software`, 640x480, software driver, on an x86-64 dev box:
 
 ```
@@ -440,6 +539,54 @@ one the budget is written in. **This is a desktop measurement and not the
 answer**: the claim is about two Cortex-A7 cores, and nothing here has run on a
 Miyoo Mini. A capped run reports the cap and not the cost, so `--fps 0` is
 required to measure anything.
+
+**Re-measured 2026-09-17 with a corrected instrument, and the conclusion above
+is narrower than it looked.** Two defects were found in the meter, neither in
+the tile count:
+
+- `ms/frame` was `1000 / FrameClock::fps()`, and `fps()` is an exponential
+  moving average weighted 0.05 on the newest frame. It described the last
+  handful of frames, not the run — five runs of identical work spread 0.898 to
+  1.709 ms. It is now the run mean, `elapsed() / (frames() - 1)`.
+- `us/tile` divided the *whole frame* by the tile count, so it charged the
+  clear, the entities and the per-frame HUD rasterisation to the tilemap. The
+  demos now time `TileMap::draw` directly and divide that.
+
+`tiles/frame` was never wrong. It counts blits and clips to the target, which
+`tests/test_tmx.cc` already pinned. The three disputed figures were three
+window sizes of the same sound meter: 320/318 at 640x480, 567 at 1024x768
+(reproduced exactly), 903 fullscreen — where a 1920x1080 panel holds all 96x40
+cells of the map, so "tiles drawn" legitimately equals "filled cells". The
+report line now carries `view WxH` and a min/max so this cannot recur.
+
+Same preset, same 640x480, `--fps 0 --seconds 3`:
+
+```
+orchard      318 tiles/frame   1.06-1.35 ms/frame   0.063-0.082 ms tilemap   0.20 us/tile
+sunnyland   1296 tiles/frame   2.16-2.20 ms/frame   0.144-0.146 ms tilemap   0.11 us/tile
+```
+
+**Corrected 2026-10-06: the figures below were taken on a batching renderer and
+time the queueing of the tilemap, not the drawing of it.** With the queue flushed
+at each boundary the tilemap is most of the frame and `us/tile` is roughly ten
+times what is printed here. The conclusion drawn from them does not stand as
+written; see
+[orchard-first-device-run](../2026-10-06-orchard-first-device-run/), *Where the
+frame goes*. Not yet re-measured in this document.
+
+**The tilemap is about 6% of the frame in both.** The backdrop orchard omits is
+978 extra tiles and costs roughly 0.08 ms — not the ~1.6 ms gap between the two
+demos, which is the sprite grid and the HUD. So decision 4's architectural
+reasoning stands (a covering layer *is* a full-screen blit, and it does cost
+linearly in coverage) but the claim "this level is cheaper **because** it has no
+backdrop" is not what the numbers show at this resolution on this hardware: at
+0.08 ms the backdrop is affordable here, and what separates the two demos is
+everything else in the frame.
+
+What remains genuinely unestablished is the part that always was: two Cortex-A7
+cores with no GPU, where a full-screen blit competes with the mixer for the same
+memory bandwidth and the ratios need not resemble these at all. That is the
+user's to run.
 
 ### 5. The entity store is promoted and extended, not templated
 
@@ -1524,7 +1671,11 @@ them; decision 9 reversed that, because `Aabb` lives in `collide.hpp` and
 `entities.hpp` includes it. And the promotion's "two commits" clause was not
 honoured — see decision 11.
 
-- [ ] Ingest the art — **unblocked, decision 15 settles the names.** Unpack
+- [x] Ingest the art — **done, uncommitted**: the eight directories under
+      `data/sunny-land/critters/`, `data/critters.{png,xml}` and
+      `critters.anim.xml` (file dates 2026-09-05), with their
+      `data/PROVENANCE.md` rows. Unblocked by decision 15, which settles the
+      names. Unpack
       `data/Sunny-land-files/` first; it is gitignored and not in a clean
       checkout. Copy the seven targets into `data/sunny-land/` as the eight
       directories decision 15 names: `frog-idle`, `frog-jump`, `opossum-walk`,
@@ -1614,7 +1765,11 @@ honoured — see decision 11.
       closed**: `test_tmx` now loads the file and builds a `game::Level` from it,
       five cases / 123 assertions, and `tests/CMakeLists.txt` gained
       `wreel::game` on that line to allow it
-- [ ] `orchard` — the rules, the HUD, `--screenshot`, `--seconds`, `--mute`, and
+- [x] `orchard` — **done, uncommitted: the rules and HUD 2026-09-14, the cues
+      and music 2026-09-15** (rows below and in the table at the top). Built
+      under GCC 8.3 and played to the goal on a Miyoo Mini from the Onion
+      bundle; see the Onion bundle task below. The rules, the HUD,
+      `--screenshot`, `--seconds`, `--mute`, and
       the fill-rate line. No GPU requirement, same as `sprites`. Builds on the
       desktop presets and `miyoomini`, which is the whole matrix this initiative
       is answerable for until the ordered devices arrive; nothing about it should
@@ -1662,7 +1817,11 @@ honoured — see decision 11.
       opened and all five chunks played through it with nothing dropped, so the
       mixer path is exercised rather than stubbed. **Nobody has listened to it,
       though** — every check here is a count, a log line or a checksum, and
-      whether the cues sit well against the module is still unheard. Decision 6
+      whether the cues sit well against the module is still unheard.
+      2026-10-16: confirmed audible by the user on the device (sound effects
+      and module playback in orchard and coppers); not logged. That says the
+      output is heard and correct, not how the cues balance against the
+      module, which nobody has reported on. Decision 6
       already records that listening is the only real review method for a sound
 - [x] Add the `data/emerald-droplets.xm` row to `data/PROVENANCE.md` — malmen,
       copyleft with artist attribution — done 2026-08-10, with the detail block
@@ -1673,7 +1832,12 @@ honoured — see decision 11.
       than assumed that `cmake -E copy_if_different` creates the `data/sfx/`
       subdirectory in a bundle, since every other entry in that list is flat
 - [ ] Add it to the Onion bundle as a fourth entry, and to `docs/DEVELOPMENT.md
-      § Status` with an honest verification state
+      § Status` with an honest verification state — **entry written 2026-10-06,
+      built under GCC 8.3 into `pkg/wreel-0.2.0-onion.tar.gz` the same day, and
+      run once on a Miyoo Mini, played to the goal**
+      ([results.md](../2026-07-25-target-validation/results.md)). Open: the
+      `docs/DEVELOPMENT.md § Status` row, and committing. The rest is in
+      [orchard-first-device-run](../2026-10-06-orchard-first-device-run/)
 
 ## Risks
 
@@ -1692,6 +1856,12 @@ where per-frame CPU lives, and the handheld runs 22050 Hz / 2048 samples /
 evidence for this one. Cheap to settle rather than argue about: `orchard
 --seconds` with and without music, on the device.
 
+*2026-10-16, citing [results.md § 2026-10-06](../2026-07-25-target-validation/results.md#2026-10-06--orchard-first-run-on-the-device):*
+with the XM playing, the one device run held a capped 59.7 fps and the game's
+own work was 4.1 ms a frame. That shows the 24-channel mix fits under the cap;
+it does not say what the mix costs, because the `--mute` half of the pair has
+not been run on the device.
+
 **That experiment is now runnable rather than arguable, and it is the user's to
 run.** Since 2026-09-15 `orchard` plays the module and `--mute` opens no audio
 device at all, so `orchard --seconds N` and `orchard --seconds N --mute` are the
@@ -1699,7 +1869,12 @@ two halves of the measurement with nothing else differing between them. The
 fill-rate line reports voices alongside the tile figures for the same reason.
 On this dev box the two read 16.659 and 16.673 ms/frame at 318 tiles/frame,
 which is a difference of 0.08% and says nothing at all — a 44100 Hz mixer with
-16 voices on an idle desktop was never going to be the bottleneck. The number
+16 voices on an idle desktop was never going to be the bottleneck. **Nor could
+that pair have shown anything either way: 16.66 ms is 60.0 fps to three digits,
+so both runs were sitting on a frame cap and reporting it rather than reporting
+a cost.** Uncapped and with the corrected meter the frame is around 1.1 ms, so
+the cap was absorbing more than 90% of the interval. Re-run it with `--fps 0`.
+The number
 that matters is the same pair on the Miyoo Mini, where 24 channels are mixed at
 22050 Hz on two Cortex-A7 cores that are also rasterising every pixel.
 
@@ -1735,6 +1910,12 @@ overdraw *should* cost less than the fixture. It has not been measured and might
 not, particularly if a parallax layer sneaks in. `orchard --seconds` is the
 instrument; the number goes in results.md next to the others.
 
+*2026-10-16, citing [results.md § 2026-10-06](../2026-07-25-target-validation/results.md#2026-10-06--orchard-first-run-on-the-device):*
+measured once on the device, flushed and capped: 316 tiles/frame, tilemap
+2.274 ms of 16.762, no parallax layer. The comparison against the fixture that
+the claim is about has not been redone with the flushed meter, so the claim
+itself is still unsettled.
+
 **Still nothing has run on a device.** Unchanged from every snapshot before this
 one, and this one adds code on top of a fill-rate figure taken only on a dev box —
 1.162 ms at 640×480, times a guessed 10–20× for two Cortex-A7 cores, which
@@ -1742,6 +1923,11 @@ straddles the 60 fps budget. The mitigation is that this work does not *depend* 
 that answer: a wrong guess changes how much fits on screen, not whether the
 collision code is correct. But it is the reason not to build a second level before
 the first one runs on hardware.
+
+**Since 2026-10-06 the first one has run on hardware**, once: software
+renderer, capped, music on, 59.7 fps, the game's own work 4.1 ms a frame — see
+[Where this stands](#where-this-stands-2026-10-16). Uncapped, muted and the
+`Miyoo Mini` render driver are still unmeasured.
 
 ## Open questions
 

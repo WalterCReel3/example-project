@@ -261,6 +261,31 @@ private:
     // run reports work done and not only frames per second.
     int _tiles_drawn = 0;
     long long _tiles_total = 0;
+
+    // The extremes behind the mean. A tile count that never moves is a count
+    // that does not depend on where the camera is, and reporting only the
+    // average hides which of the two a run was.
+    int _tiles_min = -1;
+    int _tiles_max = -1;
+
+    // Wall-clock seconds spent inside TileMap::draw over the whole run. The
+    // per-tile cost divides by this and not by the frame: a frame here also
+    // clears, draws entities and rasterises the HUD afresh, and charging that
+    // to the tilemap inflates us/tile by whatever else the demo happens to do.
+    double _tilemap_seconds = 0.0;
+
+    // The same for the rest of the frame. A capped run reports the cap whenever
+    // the device keeps up, so the frame time alone says nothing about cost;
+    // these are the work, whatever the cap was. Event polling and the cap's own
+    // sleep are in none of them.
+    //
+    // draw() flushes the renderer at each boundary, so a batching driver's
+    // deferred work is charged to the phase that queued it.
+    double _step_seconds = 0.0;
+    double _clear_seconds = 0.0;
+    double _entities_seconds = 0.0;
+    double _hud_seconds = 0.0;
+    double _present_seconds = 0.0;
 };
 
 } // namespace orchard

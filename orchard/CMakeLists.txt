@@ -34,6 +34,10 @@ target_link_libraries(orchard PRIVATE
     wreel::util
     wreel::posix)
 
+target_compile_definitions(orchard PRIVATE
+    WREEL_TARGET_ID="${WREEL_TARGET_ID}"
+    WREEL_VERSION="${PROJECT_VERSION}")
+
 set_target_properties(orchard PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${WREEL_RUNTIME_OUTPUT_DIRECTORY}")
 

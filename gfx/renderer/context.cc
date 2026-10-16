@@ -269,6 +269,11 @@ void Context::present()
     SDL_RenderPresent(_renderer);
 }
 
+void Context::flush()
+{
+    SDL_RenderFlush(_renderer);
+}
+
 void Context::draw(const Texture& texture, const Rect* src, const Rect* dst)
 {
     if (!texture.handle()) {

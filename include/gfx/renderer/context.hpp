@@ -98,6 +98,12 @@ public:
     void clear(const Color& color);
     void present();
 
+    // Executes whatever draw calls SDL has queued. A batching driver otherwise
+    // defers them to the next present or texture change, which puts the cost
+    // of a draw wherever the queue happens to drain — so a caller timing part
+    // of a frame calls this at each boundary. Drawing is unaffected.
+    void flush();
+
     // Blits part of a texture into part of the render target. Null src means
     // the whole texture, null dst the whole target; sizes that differ scale.
     //

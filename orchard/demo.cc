@@ -15,6 +15,8 @@
 #include "verbs.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdio>
 #include <stdexcept>
 #include <string>
@@ -25,6 +27,21 @@ namespace orchard
 
 namespace
 {
+
+// Mean milliseconds per frame over a whole run.
+//
+// FrameClock::elapsed() accumulates the clamped deltas, and there is one delta
+// per frame *boundary*: the first advance() establishes the origin and
+// contributes zero, so N frames carry N-1 measured intervals. Dividing by
+// frames() instead would report a cost that is too low by 1/N, which is
+// invisible over a long run and wrong over a short one.
+double mean_frame_ms(const rig::FrameClock& clock)
+{
+    if (clock.frames() < 2) {
+        return 0.0;
+    }
+    return 1000.0 * clock.elapsed() / static_cast<double>(clock.frames() - 1);
+}
 
 // Decision 4's sky: one fill, and no backdrop layer to blit over.
 const gfx::renderer::Color sky = {104, 168, 208, 255};
@@ -720,15 +737,33 @@ void Demo::step(const Intent& intent, double delta)
 
 void Demo::draw()
 {
+    // Each phase is flushed before its closing timestamp, so the time recorded
+    // is the drawing and not the queueing of it.
+    const double clear_start = rig::FrameClock::now();
     _context.clear(sky);
+    _context.flush();
 
     // The collision layer ships visible="0" and TileMap::draw skips it, so this
     // draws `ground` and `canopy` and costs nothing for the third.
+    const double tilemap_start = rig::FrameClock::now();
+    _clear_seconds += tilemap_start - clear_start;
     _tiles_drawn = _map->draw(_context, _camera.x(), _camera.y());
+    _context.flush();
+    const double entities_start = rig::FrameClock::now();
+    _tilemap_seconds += entities_start - tilemap_start;
+
     _tiles_total += _tiles_drawn;
+    _tiles_min =
+        _tiles_min < 0 ? _tiles_drawn : std::min(_tiles_min, _tiles_drawn);
+    _tiles_max = std::max(_tiles_max, _tiles_drawn);
 
     _entities.draw(_context, _camera.x(), _camera.y());
+    _context.flush();
+    const double hud_start = rig::FrameClock::now();
+    _entities_seconds += hud_start - entities_start;
     draw_hud();
+    _context.flush();
+    _hud_seconds += rig::FrameClock::now() - hud_start;
 }
 
 std::string Demo::hud_text() const
@@ -771,8 +806,24 @@ void Demo::run()
 {
     rig::FrameClock clock(_options.target_fps);
 
+    // What a device run cannot be asked afterwards: which controls arrived, why
+    // the loop ended, and whether any frame stalled. Start and the Menu key
+    // both end a run, and only the first of them is a binding under test.
+    std::array<int, static_cast<std::size_t>(Verb::Count)> presses{};
+    const char* stopped_by = nullptr;
+    double previous_frame = 0.0;
+    double longest_frame = 0.0;
+    int clamped_frames = 0;
+
     bool running = true;
     while (running) {
+        const double frame_start = rig::FrameClock::now();
+        if (clock.frames() > 0) {
+            longest_frame =
+                std::max(longest_frame, frame_start - previous_frame);
+        }
+        previous_frame = frame_start;
+
         _pad.begin_frame();
 
         SDL_Event event;
@@ -781,8 +832,18 @@ void Demo::run()
         }
 
         const Controls controls(_pad);
-        if (_pad.quit_requested() || controls.pressed(Verb::Quit)) {
+        for (std::size_t i = 0; i < presses.size(); ++i) {
+            if (controls.pressed(static_cast<Verb>(i))) {
+                ++presses[i];
+            }
+        }
+
+        if (_pad.quit_requested()) {
             running = false;
+            stopped_by = "a quit event or Escape";
+        } else if (controls.pressed(Verb::Quit)) {
+            running = false;
+            stopped_by = "the Quit verb";
         }
 
         Intent intent;
@@ -792,48 +853,102 @@ void Demo::run()
         intent.jump_held = controls.down(Verb::Jump);
 
         const double delta = clock.tick();
+        if (clock.clamped()) {
+            ++clamped_frames;
+        }
+        const double step_start = rig::FrameClock::now();
         step(intent, delta);
+        _step_seconds += rig::FrameClock::now() - step_start;
         draw();
+
+        const double present_start = rig::FrameClock::now();
         _context.present();
+        _present_seconds += rig::FrameClock::now() - present_start;
 
         // The run ends when the rules say the victory pose has held long
         // enough, not when the animation ends — it is one frame on a repeat
         // loop and has no end to reach.
         if (_rules.run_over()) {
             running = false;
+            stopped_by = stopped_by ? stopped_by : "the rules";
         }
 
         if (_options.seconds > 0.0 && clock.elapsed() >= _options.seconds) {
             running = false;
+            stopped_by = stopped_by ? stopped_by : "--seconds";
         }
+    }
+
+    util::log_info("orchard: stopped by %s", stopped_by);
+    for (std::size_t i = 0; i < presses.size(); ++i) {
+        // Zero is printed too: "Jump pressed x0" after a run somebody played is
+        // the finding.
+        util::log_info("orchard: %s pressed x%d",
+                       verb_name(static_cast<Verb>(i)), presses[i]);
     }
 
     report_run();
 
-    util::log_info("orchard: %llu frames, %.1f fps average",
+    // clock.fps() is an exponential moving average weighted 0.05 on the newest
+    // frame, so it describes the last handful of frames and not the run. The
+    // mean below is what a fill-rate figure has to be divided by, and the two
+    // differ by more than the effects this instrument is used to measure.
+    const double mean_ms = mean_frame_ms(clock);
+
+    util::log_info("orchard: %llu frames, %.1f fps mean, %.1f fps recent",
                    static_cast<unsigned long long>(clock.frames()),
-                   clock.fps());
+                   mean_ms > 0.0 ? 1000.0 / mean_ms : 0.0, clock.fps());
 
     if (clock.frames() > 0) {
         const double per_frame = static_cast<double>(_tiles_total) /
                                  static_cast<double>(clock.frames());
-        const double ms = clock.fps() > 0.0 ? 1000.0 / clock.fps() : 0.0;
+        const double ms = mean_ms;
+
+        // us/tile is the tilemap's cost per tile, so it divides the tilemap's
+        // own time. Dividing the frame's would fold in the clear, the entities
+        // and a HUD string that is rasterised and uploaded every frame — which
+        // is most of this demo's frame and none of its fill rate.
+        const double tilemap_ms =
+            1000.0 * _tilemap_seconds / static_cast<double>(clock.frames());
+        const double us_per_tile =
+            per_frame > 0.0 ? tilemap_ms * 1000.0 / per_frame : 0.0;
         util::log_info(
-            "orchard: tilemap %d layers, %.0f tiles/frame, %.3f ms/frame, "
-            "%.2f us/tile",
-            static_cast<int>(_map->layers().size()), per_frame, ms,
-            per_frame > 0.0 ? ms * 1000.0 / per_frame : 0.0);
+            "orchard: tilemap %d layers, %.0f tiles/frame (min %d, max %d "
+            "over a %dx%d target), %.3f ms/frame of which %.3f ms is the "
+            "tilemap, %.2f us/tile",
+            static_cast<int>(_map->layers().size()), per_frame, _tiles_min,
+            _tiles_max, _context.width(), _context.height(), ms, tilemap_ms,
+            us_per_tile);
+
+        const double per_frame_ms =
+            1000.0 / static_cast<double>(clock.frames());
+        util::log_info(
+            "orchard: ms/frame step %.3f, clear %.3f, tilemap %.3f, "
+            "entities %.3f, hud %.3f, present %.3f; longest frame %.1f ms, "
+            "%d clamped",
+            _step_seconds * per_frame_ms, _clear_seconds * per_frame_ms,
+            tilemap_ms, _entities_seconds * per_frame_ms,
+            _hud_seconds * per_frame_ms, _present_seconds * per_frame_ms,
+            longest_frame * 1000.0, clamped_frames);
         // The voice fields are appended rather than woven in, so the four
         // figures results.md already records stay in the columns it reads them
         // from. They are here because the Risks section asks the fill-rate run
         // to report voice count alongside frame cost: a module and five cues
         // are per-frame mixer work on the same two Cortex-A7 cores that are
         // rasterising, and `--mute` is the other half of that measurement.
+        //
+        // `view` and the min/max are appended on the same terms. A tile count
+        // is only meaningful against the target it was drawn into — this map is
+        // 96x40 cells, so a large enough target holds all of it and the count
+        // saturates at the map's filled-cell total. Reporting the target beside
+        // the count is what stops that being read as the map being counted.
         std::printf("tiles/frame %.0f  ms/frame %.3f  fps %.1f  us/tile %.2f  "
-                    "voices %d  peak %d  dropped %d\n",
-                    per_frame, ms, clock.fps(),
-                    per_frame > 0.0 ? ms * 1000.0 / per_frame : 0.0,
-                    _cues.voices(), _cues.peak_voices(), _cues.dropped());
+                    "voices %d  peak %d  dropped %d  view %dx%d  tiles/frame "
+                    "min %d max %d  tilemap ms/frame %.3f\n",
+                    per_frame, ms, ms > 0.0 ? 1000.0 / ms : 0.0, us_per_tile,
+                    _cues.voices(), _cues.peak_voices(), _cues.dropped(),
+                    _context.width(), _context.height(), _tiles_min, _tiles_max,
+                    tilemap_ms);
     }
 }
 

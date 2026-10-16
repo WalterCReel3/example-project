@@ -10,6 +10,7 @@
 #include <util/format.hpp>
 #include <util/logging.hpp>
 
+#include <algorithm>
 #include <cstdio>
 #include <memory>
 #include <stdexcept>
@@ -20,6 +21,21 @@ namespace sprites
 
 namespace
 {
+
+// Mean milliseconds per frame over a whole run.
+//
+// FrameClock::elapsed() accumulates the clamped deltas, and there is one delta
+// per frame *boundary*: the first advance() establishes the origin and
+// contributes zero, so N frames carry N-1 measured intervals. fps() is an
+// exponential moving average instead, which describes the last handful of
+// frames rather than the run, and is not what a per-tile cost divides by.
+double mean_frame_ms(const rig::FrameClock& clock)
+{
+    if (clock.frames() < 2) {
+        return 0.0;
+    }
+    return 1000.0 * clock.elapsed() / static_cast<double>(clock.frames() - 1);
+}
 
 const gfx::renderer::Color background = {40, 48, 72, 255};
 
@@ -233,9 +249,19 @@ void Demo::draw()
     _context.clear(background);
 
     if (_map) {
+        // Flushed either side, so the interval holds the tilemap's drawing
+        // and neither the clear queued before it nor only the queueing.
+        _context.flush();
+        const double tilemap_start = rig::FrameClock::now();
         _tiles_drawn = _map->draw(_context, static_cast<int>(_camera), 0,
                                   _options.tile_scale);
+        _context.flush();
+        _tilemap_seconds += rig::FrameClock::now() - tilemap_start;
+
         _tiles_total += _tiles_drawn;
+        _tiles_min =
+            _tiles_min < 0 ? _tiles_drawn : std::min(_tiles_min, _tiles_drawn);
+        _tiles_max = std::max(_tiles_max, _tiles_drawn);
     }
 
     // Camera 0 for the entities: the grid and the hero are laid out in screen
@@ -270,22 +296,40 @@ void Demo::run()
         }
     }
 
-    util::log_info("sprites: %llu frames, %.1f fps average",
+    const double mean_ms = mean_frame_ms(clock);
+
+    util::log_info("sprites: %llu frames, %.1f fps mean, %.1f fps recent",
                    static_cast<unsigned long long>(clock.frames()),
-                   clock.fps());
+                   mean_ms > 0.0 ? 1000.0 / mean_ms : 0.0, clock.fps());
 
     if (_map && clock.frames() > 0) {
         const double per_frame = static_cast<double>(_tiles_total) /
                                  static_cast<double>(clock.frames());
-        const double ms = clock.fps() > 0.0 ? 1000.0 / clock.fps() : 0.0;
+        const double ms = mean_ms;
+
+        // us/tile divides the tilemap's own time, not the frame's: the sprite
+        // grid over the top is not fill rate and charging it to the tiles is
+        // what made this demo and orchard incomparable.
+        const double tilemap_ms =
+            1000.0 * _tilemap_seconds / static_cast<double>(clock.frames());
+        const double us_per_tile =
+            per_frame > 0.0 ? tilemap_ms * 1000.0 / per_frame : 0.0;
         util::log_info(
-            "sprites: tilemap %d layers, %.0f tiles/frame, %.3f ms/frame, "
+            "sprites: tilemap %d layers, %.0f tiles/frame (min %d, max %d over "
+            "a %dx%d target), %.3f ms/frame of which %.3f ms is the tilemap, "
             "%.2f us/tile",
-            static_cast<int>(_map->layers().size()), per_frame, ms,
-            per_frame > 0.0 ? ms * 1000.0 / per_frame : 0.0);
-        std::printf("tiles/frame %.0f  ms/frame %.3f  fps %.1f  us/tile %.2f\n",
-                    per_frame, ms, clock.fps(),
-                    per_frame > 0.0 ? ms * 1000.0 / per_frame : 0.0);
+            static_cast<int>(_map->layers().size()), per_frame, _tiles_min,
+            _tiles_max, _context.width(), _context.height(), ms, tilemap_ms,
+            us_per_tile);
+        // Appended, not woven in, so the four figures results.md reads stay in
+        // their columns. A tile count only means something against the target
+        // it was drawn into, which is what `view` records.
+        std::printf("tiles/frame %.0f  ms/frame %.3f  fps %.1f  us/tile %.2f  "
+                    "view %dx%d  tiles/frame min %d max %d  tilemap ms/frame "
+                    "%.3f\n",
+                    per_frame, ms, ms > 0.0 ? 1000.0 / ms : 0.0, us_per_tile,
+                    _context.width(), _context.height(), _tiles_min, _tiles_max,
+                    tilemap_ms);
     }
 }
 

@@ -143,7 +143,7 @@ endfunction()
 
 # Stages one App/<Dir>/ and returns the commands that populate it.
 #
-# Split out because the bundle carries two of them. MainUI builds its Apps menu
+# Split out because the bundle carries several of them. MainUI builds its Apps menu
 # from App/<Dir>/config.json, one entry per directory, so two menu entries means
 # two directories — there is no way to put a second launchable thing behind one
 # config.json, and a variable in local.env would have meant editing a text file
@@ -307,8 +307,34 @@ function(_wreel_add_onion_bundle target)
             TARGET      "sprites"
             LABEL       "Sprites"
             DESCRIPTION "Atlas, animation and tilemap, with a fill-rate report"
-            ARGS        "$SPRITES_ARGS")
+            ARGS        "$SPRITES_ARGS"
+            REPORT      ".local/share/wreel/sprites/sprites.log")
         list(APPEND bundle_depends sprites)
+    endif()
+
+    # The game. REPORT is its own log: util::log_* writes to that file and not
+    # to stderr once it is open, so without folding it back the launcher's
+    # stdout.log would carry one printf line and an exit status.
+    #
+    # The default arguments are --software --verbose, and only the default. The
+    # `Miyoo Mini` render driver ignores SDL_RenderClear, and orchard's sky is a
+    # clear with no backdrop layer over it, so on that driver nothing paints
+    # three quarters of the frame. --verbose logs each key as it arrives: Jump
+    # is on a binding no device run has confirmed, and the keysym that did
+    # arrive is what a second trip to the device would otherwise be for.
+    #
+    # `${VAR-word}` substitutes only when the variable is unset: ORCHARD_ARGS in
+    # local.env, even set to nothing, replaces the default WHOLE — including
+    # --software — and is how the other driver gets measured.
+    if(TARGET orchard)
+        _wreel_onion_app(orchard_commands
+            DIR         "Orchard"
+            TARGET      "orchard"
+            LABEL       "Orchard"
+            DESCRIPTION "The game layer: a level, a player, rules and cues"
+            ARGS        "\${ORCHARD_ARGS---software --verbose}"
+            REPORT      ".local/share/wreel/orchard/orchard.log")
+        list(APPEND bundle_depends orchard)
     endif()
 
     if(TARGET wreel-diag)
@@ -330,12 +356,13 @@ function(_wreel_add_onion_bundle target)
     # the root of an SD card, and carries every entry staged above.
     #
     # Named for the project rather than for coppers: it stopped being one demo's
-    # bundle when wreel-diag was added, and carries three entries now.
+    # bundle when wreel-diag was added, and carries four entries now.
     set(tarball "${CMAKE_SOURCE_DIR}/pkg/wreel-${PROJECT_VERSION}-onion.tar.gz")
 
     add_custom_target(bundle-onion
         ${demo_commands}
         ${sprites_commands}
+        ${orchard_commands}
         ${diag_commands}
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_SOURCE_DIR}/pkg"
         COMMAND "${CMAKE_COMMAND}" -E chdir "${WREEL_ONION_BUNDLE_ROOT}"

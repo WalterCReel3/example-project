@@ -23,8 +23,7 @@ namespace
 
 const char* const log_path = "test_logging.out.txt";
 
-// Closes the sink first: the contents are only guaranteed complete once the
-// FILE* is closed, since only errors are flushed eagerly.
+// Closes the sink first, so the read never races the stream's own buffering.
 std::string read_log()
 {
     util::log_close_file();
