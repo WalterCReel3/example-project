@@ -154,6 +154,40 @@ public:
     // is nothing to show.
     Atlas::Index frame() const;
 
+    // The LOGICAL (untrimmed) size of the frame currently showing, which is
+    // what anything positioning this sprite wants: two frames of one animation
+    // that trim differently have the same logical size and different source
+    // sizes, and laying out against the source size makes the sprite jitter.
+    //
+    // Zero when there is nothing to show. Unlike frame(), these need the atlas
+    // — a size is not a property of the animation — so a sprite holding a
+    // sequence but no atlas answers 0 rather than guessing.
+    //
+    // Here because the atlas and the current index are both private: without
+    // them a caller that wants to place this sprite has to be handed the atlas
+    // separately and index it by hand, which is the arithmetic this replaces.
+    int frame_width() const;
+    int frame_height() const;
+
+    // Where the ART sits inside that logical frame: the trimmed region's size
+    // at the trim offset, in frame-local pixels with (0, 0) at the frame's
+    // top-left. {0, 0, frame_width(), frame_height()} for an untrimmed frame,
+    // and a zero rect when there is nothing to show.
+    //
+    // The logical size above is what a LAYOUT wants; this is what an ANCHOR
+    // wants, and they are not the same question. A frame packed with empty rows
+    // below its art has a logical bottom edge that is not the bottom of
+    // anything drawn, so a caller sitting a sprite on a floor against
+    // frame_height() plants the padding rather than the feet — and because the
+    // padding differs between an animation's poses, the sprite then steps
+    // vertically when the pose changes. `critters` has both halves of that:
+    // frog-idle carries five empty rows under the frog and frog-jump carries
+    // none.
+    //
+    // Frame-local and not world: the caller composes this with wherever it is
+    // drawing, which is the same contract frame_width() has.
+    renderer::Rect frame_art() const;
+
     const Animation* animation() const { return _animation; }
 
     // Draws the current frame with its untrimmed top-left at (x, y), scaled by
@@ -162,6 +196,11 @@ public:
     void draw(renderer::Context& context, int x, int y, int scale = 1) const;
 
 private:
+    // The frame currently showing, or null if there is nothing to show. The
+    // one place the atlas is indexed, so the bounds test cannot be written out
+    // correctly in one of the three callers and wrongly in another.
+    const AtlasFrame* current_frame() const;
+
     const Atlas* _atlas = nullptr;
     const Animation* _animation = nullptr;
     double _elapsed = 0.0;  // within the current frame

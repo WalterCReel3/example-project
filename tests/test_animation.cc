@@ -385,6 +385,85 @@ TEST_CASE("frame indexes address the atlas, not the sequence")
     CHECK(sprite.frame() == 7);
 }
 
+TEST_CASE("the frame size a sprite reports is the logical one, not the source")
+{
+    // The distinction that makes this accessor worth having: a trimmed frame's
+    // source is smaller than what the art occupies, and laying out against the
+    // source makes a sprite jitter as the trim varies from frame to frame.
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
+
+    gfx::Atlas::Frames frames;
+    // Same logical 33x32, trimmed differently — which is the case the source
+    // size gets wrong, and by a different amount on each of the two.
+    frames.push_back(gfx::AtlasFrame{"a.000", {0, 0, 20, 30}, 6, 1, 33, 32});
+    frames.push_back(gfx::AtlasFrame{"a.001", {0, 0, 12, 9}, 10, 20, 33, 32});
+    // Untrimmed: frame_width/height are 0 and the source size is the answer.
+    frames.push_back(gfx::AtlasFrame{"a.002", {0, 0, 33, 32}, 0, 0, 0, 0});
+
+    const gfx::Atlas atlas(gfx::renderer::Texture(context, 1, 1),
+                           std::move(frames));
+
+    gfx::Animation animation;
+    animation.seconds_per_frame = frame_time;
+    animation.frames = {0, 1, 2};
+
+    gfx::AnimatedSprite sprite(atlas, animation);
+    for (int i = 0; i < 3; ++i) {
+        CHECK(sprite.frame_width() == 33);
+        CHECK(sprite.frame_height() == 32);
+        sprite.advance(frame_time);
+    }
+}
+
+TEST_CASE("a sprite with nothing to show reports a zero frame size")
+{
+    // Zero rather than a guess, so a caller placing against it can tell that
+    // there is no answer yet instead of laying out against a 0x0 frame it
+    // believes in.
+    gfx::AnimatedSprite nothing;
+    CHECK(nothing.frame_width() == 0);
+    CHECK(nothing.frame_height() == 0);
+
+    // An animation but no atlas: frame() still answers, a size cannot.
+    gfx::Animation animation;
+    animation.seconds_per_frame = frame_time;
+    animation.frames = {0, 1};
+
+    gfx::AnimatedSprite headless;
+    headless.play(animation);
+    REQUIRE(headless.frame() == 0);
+    CHECK(headless.frame_width() == 0);
+    CHECK(headless.frame_height() == 0);
+}
+
+TEST_CASE("a frame index past the end of the atlas reports zero, not garbage")
+{
+    // An Animation built against one atlas and played against another is the
+    // documented way to get here. draw() already refuses it; so must this.
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false,
+                                   gfx::renderer::Driver::Software);
+
+    gfx::Atlas::Frames frames;
+    frames.push_back(gfx::AtlasFrame{"only", {0, 0, 8, 8}, 0, 0, 0, 0});
+    const gfx::Atlas atlas(gfx::renderer::Texture(context, 1, 1),
+                           std::move(frames));
+
+    gfx::Animation animation;
+    animation.seconds_per_frame = frame_time;
+    animation.frames = {0, 9};
+
+    gfx::AnimatedSprite sprite(atlas, animation);
+    CHECK(sprite.frame_width() == 8);
+
+    sprite.advance(frame_time);
+    REQUIRE(sprite.frame() == 9);
+    CHECK(sprite.frame_width() == 0);
+    CHECK(sprite.frame_height() == 0);
+}
+
 //============================================================================
 // Animation
 //============================================================================

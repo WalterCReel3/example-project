@@ -86,7 +86,14 @@ wreel_add_test(test_animation
 # Parser cases are headless; the culling cases need a Context, because "drew the
 # whole map" and "drew the visible rectangle" look identical on screen and only
 # differ in the tile count draw() returns.
-wreel_add_test(test_tmx      LIBS wreel::gfx wreel::loaders wreel::posix)
+#
+# wreel::game is here for the data/orchard.tmx cases, which are the only ones in
+# the suite that run a file through loaders::load_tmx and then into game::Level.
+# test_level keeps building its layers in-test — that is what lets the level
+# rules run under qemu with no fixture — so the two-module contract has nowhere
+# else to be checked.
+wreel_add_test(test_tmx      LIBS wreel::game wreel::gfx wreel::loaders
+                                  wreel::posix)
 
 # Links the store rather than compiling it in, because it is a module now and
 # not a source file inside one demo. A third of its cases need a Context — the
@@ -94,6 +101,18 @@ wreel_add_test(test_tmx      LIBS wreel::gfx wreel::loaders wreel::posix)
 # reading back which colour landed on top — which is why it sits with test_atlas
 # rather than in the headless group.
 wreel_add_test(test_entities LIBS wreel::game)
+
+# orchard/player.cc is compiled in rather than linked, for the reason test_bars
+# gives: the demo is an executable and its sources are not a library. It is the
+# half of orchard that has no gfx and no rig in it, which is what lets the real
+# data/orchard.tmx be crossed here without a window — the map's 48 px branch
+# steps and 32 px ground walls are a claim about playability that loading the
+# file cannot check.
+wreel_add_test(test_orchard
+               SOURCES test_orchard.cc ../orchard/player.cc ../orchard/actors.cc
+                       ../orchard/rules.cc
+               LIBS wreel::game wreel::gfx wreel::loaders wreel::rig
+                    wreel::posix)
 
 # --- Priority queue ----------------------------------------------------------
 #

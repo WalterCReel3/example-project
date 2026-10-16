@@ -142,3 +142,34 @@ Two properties are load-bearing for the fill-rate measurement, so do not
 renderer has to cull rather than draw everything, and its backdrop layer covers
 **every cell**, so a screenful is a screenful of blits. A map with sky would
 leave half the target unpainted and report a number that flatters the renderer.
+
+## `make_orchard_level.py`
+
+Writes `data/orchard.tmx`, orchard's level and the first map in this tree that
+builds a `game::Level`.
+
+```sh
+python3 tools/make_orchard_level.py --out data
+```
+
+Stdlib only — no Pillow, and no `data/Sunny-land-files/` — because it adds no
+art: it references the `sunnyland.tsx` and `tileset.png` that `make_tilemap.py`
+already put in `data/`. Run that one first in a checkout that has neither.
+
+A sibling of `make_tilemap.py` rather than a flag on it, because the two maps
+have **opposite** jobs. The paragraph above says the fixture's backdrop covering
+every cell is load-bearing; decision 4 of
+[the game-layer snapshot](../planning/2026-08-10-game-layer-and-demo/) says this
+one has no backdrop at all and clears to sky. One generator serving both would
+need a flag meaning "be the bad case", and regenerating the fixture to share
+code would churn the tests that assert against it.
+
+Deterministic in the same way, so an unchanged map regenerates to identical
+bytes, and it edits in Tiled with the same warning: the tool will overwrite you.
+
+It refuses to write a map whose own tables disagree — a platform buried in the
+hillside, a pickup perched where there is no platform, a spawn outside the level.
+`game::Level` loads all three of those happily; they are level-design errors, not
+format errors, and this is the only place that catches them. `tests/test_tmx.cc`
+catches the same class from the other end, against the file rather than the
+tables.

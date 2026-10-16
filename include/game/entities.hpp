@@ -66,6 +66,18 @@ struct Entity {
     double y = 0.0;
 
     // Pixels per second.
+    //
+    // VELOCITY AND A RESOLVED POSITION ARE TWO WAYS TO DRIVE THE SAME TWO
+    // MEMBERS, AND AN ENTITY USING BOTH GETS BOTH. update() integrates these
+    // into (x, y) unconditionally, so a caller that resolves a position
+    // against collision itself and *also* leaves a velocity set has its
+    // resolved position silently advanced by velocity * delta on top. The
+    // resolved position is not overwritten, it is added to, which is why the
+    // symptom is a drift rather than an obviously ignored write.
+    //
+    // Pick one per entity. An entity the store moves sets these and does not
+    // write (x, y); an entity collision moves writes (x, y) — through
+    // place_box() — every step and leaves these at zero.
     double velocity_x = 0.0;
     double velocity_y = 0.0;
 
@@ -109,6 +121,56 @@ struct Entity {
     {
         return Aabb{x + box.x, y + box.y, box.width, box.height};
     }
+
+    // Moves the entity so that world_box()'s top-left lands at
+    // (world_x, world_y). The exact inverse of world_box(), and here for the
+    // same reason: a caller that has resolved where the *box* must be — which
+    // is what a collision step produces — would otherwise subtract `box`'s
+    // offset by hand at every such site, and subtracting it the wrong way
+    // presents as art drawn in the wrong place rather than as bad arithmetic.
+    void place_box(double world_x, double world_y)
+    {
+        x = world_x - box.x;
+        y = world_y - box.y;
+    }
+
+    // Offsets `box` within the current sprite frame by this module's one
+    // placement convention: THE BOX IS CENTRED HORIZONTALLY ON THE LOGICAL
+    // FRAME AND ITS BOTTOM EDGE IS FLUSH WITH THE LOWEST DRAWN ROW OF THE ART.
+    // That is what an actor standing on a floor wants — a sprite wider than its
+    // box hangs off both sides evenly, and the feet of the art are the feet of
+    // the collider.
+    //
+    // THE TWO AXES READ DIFFERENT THINGS, AND THAT IS DELIBERATE. A frame's
+    // bottom edge and its art's bottom edge are only the same row when the
+    // packer trimmed nothing below the art, and a sprite anchored to the frame
+    // edge plants its padding instead of its feet: it hovers by however many
+    // empty rows that pose carries, and it STEPS VERTICALLY when it changes to
+    // a pose that carries a different number. Horizontally there is no contact
+    // point for the art to be measured against, so the logical frame — which
+    // is constant across an animation — is the stable reference and the art's
+    // own bounding box is not.
+    //
+    // Only box.x and box.y move; the extent is the collider's own and is not
+    // the sprite's business. Call it before place_box() rather than after:
+    // place_box() reads the offset this writes.
+    //
+    // The box does not move in the world. This shifts where the ART sits
+    // relative to the box, and the paired place_box() then puts the box
+    // exactly where the caller resolved it — so changing the anchor cannot
+    // change what collides with what.
+    //
+    // A no-op when the sprite has nothing to show, so a frame that has not
+    // resolved yet leaves the spawn's box where the spawn put it instead of
+    // treating the sprite as 0x0 and shifting the collider half its own width.
+    //
+    // Cheap enough to call every step, and calling it every step is the
+    // correct habit: the offset is derived from the frame showing now, so it
+    // cannot go stale the way a value computed once at spawn does when the
+    // entity plays an animation with a different logical frame size — or, now
+    // that the anchor reads the art, when the pose it was computed from trims
+    // differently from the one showing.
+    void align_box_to_sprite();
 };
 
 class Entities

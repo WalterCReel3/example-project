@@ -1,0 +1,41 @@
+<?xml version='1.0' encoding='utf-8'?>
+<TextureAtlas imagePath="critters.png">
+    <SubTexture name="cherry.000" x="0" y="0" width="17" height="15" frameX="0" frameY="-3" frameWidth="21" frameHeight="21" />
+    <SubTexture name="cherry.001" x="17" y="0" width="17" height="15" frameX="-1" frameY="-3" frameWidth="21" frameHeight="21" />
+    <SubTexture name="cherry.002" x="34" y="0" width="15" height="15" frameX="-2" frameY="-3" frameWidth="21" frameHeight="21" />
+    <SubTexture name="cherry.003" x="49" y="0" width="14" height="16" frameX="-4" frameY="-2" frameWidth="21" frameHeight="21" />
+    <SubTexture name="cherry.004" x="63" y="0" width="14" height="16" frameX="-5" frameY="-2" frameWidth="21" frameHeight="21" />
+    <SubTexture name="cherry.005" x="77" y="0" width="14" height="16" frameX="-4" frameY="-2" frameWidth="21" frameHeight="21" />
+    <SubTexture name="cherry.006" x="91" y="0" width="15" height="15" frameX="-2" frameY="-3" frameWidth="21" frameHeight="21" />
+    <SubTexture name="eagle-swoop.000" x="0" y="16" width="32" height="39" frameX="-3" frameY="0" frameWidth="40" frameHeight="41" />
+    <SubTexture name="eagle-swoop.001" x="32" y="16" width="35" height="32" frameX="-3" frameY="-6" frameWidth="40" frameHeight="41" />
+    <SubTexture name="eagle-swoop.002" x="67" y="16" width="28" height="25" frameX="-2" frameY="-14" frameWidth="40" frameHeight="41" />
+    <SubTexture name="eagle-swoop.003" x="95" y="16" width="31" height="24" frameX="-2" frameY="-15" frameWidth="40" frameHeight="41" />
+    <SubTexture name="frog-idle.000" x="0" y="55" width="26" height="19" frameX="-4" frameY="-8" frameWidth="35" frameHeight="32" />
+    <SubTexture name="frog-idle.001" x="26" y="55" width="29" height="20" frameX="-2" frameY="-7" frameWidth="35" frameHeight="32" />
+    <SubTexture name="frog-idle.002" x="55" y="55" width="31" height="21" frameX="-1" frameY="-6" frameWidth="35" frameHeight="32" />
+    <SubTexture name="frog-idle.003" x="86" y="55" width="29" height="20" frameX="-2" frameY="-7" frameWidth="35" frameHeight="32" />
+    <SubTexture name="frog-jump.000" x="0" y="76" width="33" height="30" frameX="-2" frameY="-2" frameWidth="35" frameHeight="32" />
+    <SubTexture name="frog-jump.001" x="33" y="76" width="34" height="32" frameX="0" frameY="0" frameWidth="35" frameHeight="32" />
+    <SubTexture name="gem.000" x="0" y="108" width="13" height="11" frameX="-1" frameY="-1" frameWidth="15" frameHeight="13" />
+    <SubTexture name="gem.001" x="13" y="108" width="13" height="11" frameX="-1" frameY="-1" frameWidth="15" frameHeight="13" />
+    <SubTexture name="gem.002" x="26" y="108" width="13" height="11" frameX="-1" frameY="-1" frameWidth="15" frameHeight="13" />
+    <SubTexture name="gem.003" x="39" y="108" width="13" height="11" frameX="-1" frameY="-1" frameWidth="15" frameHeight="13" />
+    <SubTexture name="gem.004" x="52" y="108" width="13" height="11" frameX="-1" frameY="-1" frameWidth="15" frameHeight="13" />
+    <SubTexture name="opossum-walk.000" x="0" y="119" width="28" height="25" frameX="-1" frameY="-2" frameWidth="36" frameHeight="28" />
+    <SubTexture name="opossum-walk.001" x="28" y="119" width="29" height="22" frameX="-1" frameY="-6" frameWidth="36" frameHeight="28" />
+    <SubTexture name="opossum-walk.002" x="57" y="119" width="32" height="20" frameX="-1" frameY="-8" frameWidth="36" frameHeight="28" />
+    <SubTexture name="opossum-walk.003" x="89" y="119" width="35" height="20" frameX="-1" frameY="-8" frameWidth="36" frameHeight="28" />
+    <SubTexture name="opossum-walk.004" x="124" y="119" width="35" height="20" frameX="-1" frameY="-8" frameWidth="36" frameHeight="28" />
+    <SubTexture name="opossum-walk.005" x="159" y="119" width="31" height="23" frameX="-1" frameY="-5" frameWidth="36" frameHeight="28" />
+    <SubTexture name="puff.000" x="0" y="144" width="18" height="18" frameX="-11" frameY="-12" frameWidth="40" frameHeight="41" />
+    <SubTexture name="puff.001" x="18" y="144" width="31" height="31" frameX="-4" frameY="-6" frameWidth="40" frameHeight="41" />
+    <SubTexture name="puff.002" x="49" y="144" width="30" height="28" frameX="-4" frameY="-7" frameWidth="40" frameHeight="41" />
+    <SubTexture name="puff.003" x="79" y="144" width="34" height="34" frameX="-2" frameY="-5" frameWidth="40" frameHeight="41" />
+    <SubTexture name="puff.004" x="113" y="144" width="37" height="36" frameX="-1" frameY="-4" frameWidth="40" frameHeight="41" />
+    <SubTexture name="puff.005" x="150" y="144" width="36" height="39" frameX="-2" frameY="-2" frameWidth="40" frameHeight="41" />
+    <SubTexture name="sparkle.000" x="0" y="183" width="18" height="18" frameX="-7" frameY="-7" frameWidth="32" frameHeight="32" />
+    <SubTexture name="sparkle.001" x="18" y="183" width="26" height="26" frameX="-3" frameY="-3" frameWidth="32" frameHeight="32" />
+    <SubTexture name="sparkle.002" x="44" y="183" width="28" height="29" frameX="-2" frameY="-2" frameWidth="32" frameHeight="32" />
+    <SubTexture name="sparkle.003" x="72" y="183" width="31" height="31" frameX="-1" frameY="-1" frameWidth="32" frameHeight="32" />
+</TextureAtlas>

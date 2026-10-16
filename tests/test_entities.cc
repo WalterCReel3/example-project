@@ -220,6 +220,210 @@ TEST_CASE("a spawn rectangle fills the box without a conversion")
     CHECK(world.height == doctest::Approx(spawn.height));
 }
 
+TEST_CASE("place_box is the exact inverse of world_box")
+{
+    // The pair is the whole point: a caller that has resolved where the box
+    // must be should not have to know which way the offset subtracts. An
+    // offset and a target that are both non-zero and unequal on both axes, so
+    // a sign error or a swapped axis cannot pass.
+    game::Entity actor = at(0.0, 0.0);
+    actor.box = game::Aabb{3.0, -5.0, 10.0, 14.0};
+
+    actor.place_box(100.0, 200.0);
+
+    const game::Aabb world = actor.world_box();
+    CHECK(world.x == doctest::Approx(100.0));
+    CHECK(world.y == doctest::Approx(200.0));
+
+    // (x, y) is the sprite origin and is NOT the target: it is the target less
+    // the offset, which is the arithmetic this replaces at the call site.
+    CHECK(actor.x == doctest::Approx(97.0));
+    CHECK(actor.y == doctest::Approx(205.0));
+
+    // The extent is untouched by a placement.
+    CHECK(world.width == doctest::Approx(10.0));
+    CHECK(world.height == doctest::Approx(14.0));
+}
+
+TEST_CASE("place_box on a box with no offset is a plain position write")
+{
+    // What `sprites` and any whole-object spawn see: with a zero offset the
+    // two spellings agree, so adopting place_box() costs an existing caller
+    // nothing.
+    game::Entity actor;
+    actor.box = game::Aabb{0.0, 0.0, 16.0, 24.0};
+    actor.place_box(64.0, 48.0);
+
+    CHECK(actor.x == doctest::Approx(64.0));
+    CHECK(actor.y == doctest::Approx(48.0));
+}
+
+TEST_CASE("align_box_to_sprite centres the box and sits it on the art's foot")
+{
+    // foxy's numbers: a 33x32 logical frame around a 16x28 box. The convention
+    // is horizontal centre on the logical frame, bottom edge flush with the
+    // art — and 33 against 16 is odd on purpose, because a half-pixel offset is
+    // exactly what an integer would quietly lose.
+    //
+    // The frame is trimmed to a 20x24 region at (5, 3), so the art's lowest
+    // drawn row is 3 + 24 = 27 and the frame's own bottom edge is 32. Those
+    // five rows are the whole defect this convention exists to avoid, so the
+    // fixture keeps them.
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+
+    gfx::Atlas::Frames frames;
+    frames.push_back(gfx::AtlasFrame{"pose", {0, 0, 20, 24}, 5, 3, 33, 32});
+    const gfx::Atlas atlas(gfx::renderer::Texture(context, 1, 1),
+                           std::move(frames));
+
+    gfx::Animation animation;
+    animation.frames = {0};
+
+    game::Entity actor;
+    actor.sprite = gfx::AnimatedSprite(atlas, animation);
+    actor.box = game::Aabb{0.0, 0.0, 16.0, 28.0};
+
+    actor.align_box_to_sprite();
+
+    // Horizontal reads the logical frame: (33 - 16) / 2.
+    CHECK(actor.box.x == doctest::Approx(8.5));
+    // Vertical reads the art: 27 - 28, and negative is correct — a box taller
+    // than the art it stands on starts above the frame.
+    CHECK(actor.box.y == doctest::Approx(-1.0));
+
+    // The extent is the collider's own and is not the sprite's to change.
+    CHECK(actor.box.width == doctest::Approx(16.0));
+    CHECK(actor.box.height == doctest::Approx(28.0));
+
+    // And the pair composes: place_box() puts the BOX where it was asked for,
+    // and the sprite origin lands wherever that implies.
+    actor.place_box(100.0, 200.0);
+    CHECK(actor.x == doctest::Approx(91.5));
+    CHECK(actor.y == doctest::Approx(201.0));
+    CHECK(actor.world_box().x == doctest::Approx(100.0));
+    CHECK(actor.world_box().y == doctest::Approx(200.0));
+
+    // The art's lowest row lands on the box's bottom edge, which is the whole
+    // claim: 201 + 27 == 200 + 28.
+    CHECK(actor.y + actor.sprite.frame_art().y + actor.sprite.frame_art().h ==
+          doctest::Approx(actor.world_box().y + actor.world_box().height));
+}
+
+TEST_CASE("the anchor holds the art still across poses that trim differently")
+{
+    // The defect in its own terms, with `critters`' own numbers. frog-idle is
+    // packed with five empty rows below the frog and frog-jump with none, both
+    // in a 35x32 logical frame. Anchored to the frame edge the two poses draw
+    // their art five rows apart while resting on the same floor, which is a
+    // visible snap on every take-off and every landing.
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+
+    gfx::Atlas::Frames frames;
+    // frog-idle.000: a 26x19 region at (4, 8), so the art ends at row 27.
+    frames.push_back(gfx::AtlasFrame{"idle", {0, 0, 26, 19}, 4, 8, 35, 32});
+    // frog-jump.001: a 34x32 region at (0, 0), so the art ends at row 32.
+    frames.push_back(gfx::AtlasFrame{"jump", {0, 0, 34, 32}, 0, 0, 35, 32});
+    const gfx::Atlas atlas(gfx::renderer::Texture(context, 1, 1),
+                           std::move(frames));
+
+    gfx::Animation idle;
+    idle.frames = {0};
+    gfx::Animation jump;
+    jump.frames = {1};
+
+    game::Entity actor;
+    actor.sprite = gfx::AnimatedSprite(atlas, idle);
+    actor.box = game::Aabb{0.0, 0.0, 24.0, 20.0};
+
+    // The floor the frog's box rests on, unchanged by the pose.
+    const double floor_y = 460.0;
+
+    actor.align_box_to_sprite();
+    actor.place_box(704.0, floor_y);
+    const double idle_art_bottom =
+        actor.y + actor.sprite.frame_art().y + actor.sprite.frame_art().h;
+
+    actor.sprite.play(jump);
+    actor.align_box_to_sprite();
+    actor.place_box(704.0, floor_y);
+    const double jump_art_bottom =
+        actor.y + actor.sprite.frame_art().y + actor.sprite.frame_art().h;
+
+    // Both poses draw their lowest row on the same line, so the take-off does
+    // not move the art. Anchoring to the frame edge put these five apart.
+    CHECK(idle_art_bottom == doctest::Approx(jump_art_bottom));
+    CHECK(idle_art_bottom == doctest::Approx(floor_y + 20.0));
+
+    // And the sprite origin is what moved to absorb it, not the box.
+    CHECK(actor.world_box().y == doctest::Approx(floor_y));
+}
+
+TEST_CASE("align_box_to_sprite leaves the box alone when there is no frame")
+{
+    // The constraint the first consumer imposes: `sprites` sets no box at all,
+    // and an entity whose sprite has nothing to show must not have its box
+    // shifted by half of nothing. Treating a missing frame as 0x0 would move
+    // a 16x28 box to (-8, -28) and drag the entity with it.
+    game::Entity actor;
+    actor.box = game::Aabb{3.0, 5.0, 16.0, 28.0};
+
+    actor.align_box_to_sprite();
+
+    CHECK(actor.box.x == doctest::Approx(3.0));
+    CHECK(actor.box.y == doctest::Approx(5.0));
+
+    // Including the default empty box, which is what every `sprites` entity
+    // has: it stays empty, so world_box() still means "there is nothing here".
+    game::Entity bare;
+    bare.align_box_to_sprite();
+    CHECK(bare.box.x == doctest::Approx(0.0));
+    CHECK(bare.box.y == doctest::Approx(0.0));
+    CHECK(bare.box.width == doctest::Approx(0.0));
+    CHECK(bare.box.height == doctest::Approx(0.0));
+}
+
+TEST_CASE("aligning every step tracks a frame size that changes with the pose")
+{
+    // Why this is a per-step call rather than a spawn-time one. Within one
+    // animation the logical frame size is constant — both shipped atlases are
+    // — but across animations it is not, and a value computed once at spawn
+    // goes stale the moment the entity plays a differently sized pose.
+    VideoFixture video;
+    gfx::renderer::Context context("test", 64, 64, /*fullscreen=*/false);
+
+    gfx::Atlas::Frames frames;
+    frames.push_back(gfx::AtlasFrame{"small", {0, 0, 20, 20}, 0, 0, 0, 0});
+    frames.push_back(gfx::AtlasFrame{"large", {0, 0, 40, 40}, 0, 0, 0, 0});
+    const gfx::Atlas atlas(gfx::renderer::Texture(context, 1, 1),
+                           std::move(frames));
+
+    gfx::Animation small;
+    small.frames = {0};
+    gfx::Animation large;
+    large.frames = {1};
+
+    game::Entity actor;
+    actor.sprite = gfx::AnimatedSprite(atlas, small);
+    actor.box = game::Aabb{0.0, 0.0, 10.0, 10.0};
+
+    actor.align_box_to_sprite();
+    actor.place_box(100.0, 100.0);
+    CHECK(actor.box.x == doctest::Approx(5.0));
+    CHECK(actor.world_box().x == doctest::Approx(100.0));
+
+    actor.sprite.play(large);
+    actor.align_box_to_sprite();
+    actor.place_box(100.0, 100.0);
+    CHECK(actor.box.x == doctest::Approx(15.0));
+    CHECK(actor.box.y == doctest::Approx(30.0));
+
+    // The box is where it was asked for either way; only the art moved.
+    CHECK(actor.world_box().x == doctest::Approx(100.0));
+    CHECK(actor.world_box().y == doctest::Approx(100.0));
+}
+
 TEST_CASE("the world box follows the entity as update integrates it")
 {
     // The reason the box is relative: position is integrated in one place and

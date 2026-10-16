@@ -189,18 +189,51 @@ Atlas::Index AnimatedSprite::frame() const
     return _animation->frames[_frame];
 }
 
-void AnimatedSprite::draw(renderer::Context& context, int x, int y,
-                          int scale) const
+const AtlasFrame* AnimatedSprite::current_frame() const
 {
     if (_atlas == nullptr) {
-        return;
+        return nullptr;
     }
 
     const Atlas::Index index = frame();
     if (index == Atlas::npos || index >= _atlas->size()) {
-        return;
+        return nullptr;
     }
-    _atlas->draw(context, index, x, y, scale);
+    return &(*_atlas)[index];
+}
+
+int AnimatedSprite::frame_width() const
+{
+    const AtlasFrame* const current = current_frame();
+    return current != nullptr ? current->width() : 0;
+}
+
+int AnimatedSprite::frame_height() const
+{
+    const AtlasFrame* const current = current_frame();
+    return current != nullptr ? current->height() : 0;
+}
+
+renderer::Rect AnimatedSprite::frame_art() const
+{
+    const AtlasFrame* const current = current_frame();
+    if (current == nullptr) {
+        return renderer::Rect{0, 0, 0, 0};
+    }
+
+    // Uniform across trimmed and untrimmed frames without a branch: an
+    // untrimmed frame has a zero trim offset and a `source` that is the whole
+    // frame, so the two cases produce the same answer from the same expression.
+    return renderer::Rect{current->trim_x, current->trim_y, current->source.w,
+                          current->source.h};
+}
+
+void AnimatedSprite::draw(renderer::Context& context, int x, int y,
+                          int scale) const
+{
+    if (current_frame() != nullptr) {
+        _atlas->draw(context, frame(), x, y, scale);
+    }
 }
 
 } // namespace gfx
