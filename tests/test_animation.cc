@@ -37,6 +37,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
@@ -489,10 +490,13 @@ std::vector<std::uint32_t> read_back(const gfx::renderer::Context& context)
 
     std::vector<std::uint32_t> pixels;
     for (int y = 0; y < argb->h; ++y) {
-        const std::uint32_t* row = reinterpret_cast<const std::uint32_t*>(
-            static_cast<const Uint8*>(argb->pixels) + y * argb->pitch);
+        // memcpy rather than a cast to uint32_t*, which -Wcast-align rejects.
+        const Uint8* const row =
+            static_cast<const Uint8*>(argb->pixels) + y * argb->pitch;
         for (int x = 0; x < argb->w; ++x) {
-            pixels.push_back(row[x] | 0xff000000u);
+            std::uint32_t pixel;
+            std::memcpy(&pixel, row + x * sizeof(pixel), sizeof(pixel));
+            pixels.push_back(pixel | 0xff000000u);
         }
     }
     SDL_FreeSurface(argb);

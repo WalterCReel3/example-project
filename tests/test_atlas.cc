@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -483,12 +484,15 @@ SDL_Surface* make_strip(Uint32 format)
         SDL_CreateRGBSurfaceWithFormat(0, 6, 2, 32, SDL_PIXELFORMAT_ARGB8888);
     REQUIRE(argb != nullptr);
 
+    // Pixels are written with memcpy: a row start is only byte-aligned as far
+    // as the type system knows, and a cast up to uint32_t* trips -Wcast-align.
+    Uint8* const top = static_cast<Uint8*>(argb->pixels);
+    Uint8* const bottom = top + argb->pitch;
     for (int x = 0; x < 6; ++x) {
-        std::uint32_t* top = static_cast<std::uint32_t*>(argb->pixels);
-        std::uint32_t* bottom = reinterpret_cast<std::uint32_t*>(
-            static_cast<Uint8*>(argb->pixels) + argb->pitch);
-        top[x] = strip[x];
-        bottom[x] = strip[5 - x];
+        std::memcpy(top + x * sizeof(std::uint32_t), &strip[x],
+                    sizeof(std::uint32_t));
+        std::memcpy(bottom + x * sizeof(std::uint32_t), &strip[5 - x],
+                    sizeof(std::uint32_t));
     }
 
     if (format == SDL_PIXELFORMAT_ARGB8888) {
