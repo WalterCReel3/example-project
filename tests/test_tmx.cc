@@ -467,6 +467,43 @@ TEST_CASE("a non-CSV encoding is rejected and names the setting to change")
     CHECK_THROWS_AS(loaders::load_tmx(xml.path()), loaders::TmxFormatError);
 }
 
+TEST_CASE("a tile object is rejected, and a gid of 0 or no gid is not")
+{
+    // y is the bottom edge of a tile object and the top edge of everything
+    // else, so a map carrying one would place a spawn a tile off.
+    auto with_object = [](const std::string& attributes) {
+        std::string text = map_of("", csv_2x2);
+        text.insert(text.find("</map>"),
+                    " <objectgroup name=\"o\">\n  <object id=\"7\" "
+                    "name=\"spawn\" x=\"0\" y=\"16\" " +
+                        attributes + "/>\n </objectgroup>\n");
+        return text;
+    };
+
+    const ScratchFile tile("test_tmx.scratch.tmx",
+                           with_object("width=\"16\" height=\"16\" gid=\"1\""));
+    try {
+        loaders::load_tmx(tile.path());
+        FAIL("expected a TmxFormatError");
+    } catch (const loaders::TmxFormatError& error) {
+        const std::string what = error.what();
+        CHECK(what.find("tile object") != std::string::npos);
+        CHECK(what.find("spawn") != std::string::npos);
+    }
+
+    // A flipped tile's gid does not fit an int, and must still be refused.
+    const ScratchFile flipped("test_tmx.scratch2.tmx",
+                              with_object("gid=\"2147483649\""));
+    CHECK_THROWS_AS(loaders::load_tmx(flipped.path()), loaders::TmxFormatError);
+
+    const ScratchFile zero("test_tmx.scratch3.tmx", with_object("gid=\"0\""));
+    CHECK(loaders::load_tmx(zero.path()).object_layers[0].objects.size() == 1);
+
+    const ScratchFile plain("test_tmx.scratch4.tmx",
+                            with_object("width=\"16\" height=\"16\""));
+    CHECK(loaders::load_tmx(plain.path()).object_layers[0].objects.size() == 1);
+}
+
 TEST_CASE("a layer whose data is the wrong length is rejected")
 {
     // Three entries for a 2x2 layer. Read as-is this is a map that is subtly
