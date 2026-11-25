@@ -22,6 +22,18 @@ int clamp_volume(float volume)
     return static_cast<int>(clamped * static_cast<float>(MIX_MAX_VOLUME));
 }
 
+// Some vendor audio drivers fail without calling SDL_SetError, which leaves the
+// error string empty. Say so, and say where the driver's own report may have
+// gone.
+const char* error_text(const char* error)
+{
+    if (error != nullptr && *error != '\0') {
+        return error;
+    }
+    return "SDL reported no error text; a vendor driver may have written the "
+           "reason to stdout";
+}
+
 } // namespace
 
 Spec::Spec()
@@ -76,7 +88,7 @@ void Device::_open(const Spec& requested)
         // device, and refusing to start would be worse than running silent.
         util::log_warning(
             "audio: SDL_INIT_AUDIO unavailable (%s); continuing without sound",
-            SDL_GetError());
+            error_text(SDL_GetError()));
         return;
     }
 
@@ -84,7 +96,7 @@ void Device::_open(const Spec& requested)
                       requested.channels, requested.buffer) != 0) {
         util::log_warning(
             "audio: Mix_OpenAudio failed (%s); continuing without sound",
-            Mix_GetError());
+            error_text(Mix_GetError()));
         SDL_QuitSubSystem(SDL_INIT_AUDIO);
         return;
     }

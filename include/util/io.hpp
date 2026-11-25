@@ -1,5 +1,4 @@
-#ifndef __WREEL_IO_HPP
-#define __WREEL_IO_HPP
+#pragma once
 
 #include <sys/types.h>
 #include <util/file.hpp>
@@ -34,5 +33,3 @@ void read_all(File &file, Buffer& fbuffer)
 std::string read_file(const char *path);
 
 } // namespace util
-
-#endif

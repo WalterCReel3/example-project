@@ -201,7 +201,8 @@ gfx::TileLayer read_layer(const util::xml::Node& node, const std::string& path,
     return layer;
 }
 
-gfx::ObjectLayer read_object_layer(const util::xml::Node& node)
+gfx::ObjectLayer read_object_layer(const util::xml::Node& node,
+                                   const std::string& path)
 {
     gfx::ObjectLayer group;
     group.name = node.attribute("name", "");
@@ -210,6 +211,20 @@ gfx::ObjectLayer read_object_layer(const util::xml::Node& node)
         gfx::MapObject object;
         object.id = node_object.attribute_int("id", 0);
         object.name = node_object.attribute("name", "");
+
+        // A tile object's y is its bottom edge, which MapObject cannot say.
+        // Read the attribute as text: the flip bits make a legal gid too big
+        // for attribute_int, which would read it as absent.
+        const char* const gid = node_object.attribute("gid", "");
+        char* gid_end = nullptr;
+        const unsigned long long gid_value = std::strtoull(gid, &gid_end, 10);
+        if (*gid != '\0' && (*gid_end != '\0' || gid_value != 0)) {
+            throw TmxFormatError(util::format(
+                "%s: object %d (\"%s\") is a tile object (gid=\"%s\"), which "
+                "is not supported: Tiled measures it from its bottom edge, not "
+                "its top. In Tiled, make it a rectangle object instead",
+                path.c_str(), object.id, object.name.c_str(), gid));
+        }
         object.type = node_object.attribute("type", "");
         object.x = node_object.attribute_double("x", 0.0);
         object.y = node_object.attribute_double("y", 0.0);
@@ -287,7 +302,7 @@ TmxMap load_tmx(const std::string& path)
         }
 
         for (const util::xml::Node& node : root.children("objectgroup")) {
-            map.object_layers.push_back(read_object_layer(node));
+            map.object_layers.push_back(read_object_layer(node, path));
         }
     } catch (const util::xml::ParseError& error) {
         throw TmxFormatError(

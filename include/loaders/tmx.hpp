@@ -98,6 +98,9 @@ struct TmxMap {
     std::vector<gfx::ObjectLayer> object_layers;
 };
 
+// A tile object (an <object> with a non-zero gid) is unsupported: Tiled measures
+// it from its bottom edge, and gfx::MapObject holds top-left coordinates.
+//
 // Throws TmxFormatError for a malformed or unsupported document, and the
 // matching posix:: exception for a file that cannot be read. An external .tsx
 // is resolved relative to the .tmx, which is how Tiled writes the reference.

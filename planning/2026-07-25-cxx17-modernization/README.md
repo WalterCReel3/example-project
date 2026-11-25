@@ -1,9 +1,11 @@
 # C++17 modernization of the 2016 sources
 
-**Status:** `done` — D5 and D6 remain open, tracked in [defects.md](defects.md)
-(checked 2026-10-16: `include/util/string.hpp:24` still has `using namespace std;`,
-and `__`-prefixed guards remain in `util/io.hpp`, `util/deleter.hpp`,
-`util/string.hpp` and others)
+**Status:** `done` — D5 and D6 were fixed 2026-11-25. Still open in
+[defects.md](defects.md) (read 2026-11-25): D19, D31 and D33, and the one
+remaining part of D27, its 100-entry texture table. D34, the GCC 8.3
+`-Wcast-align` build break, is fixed on desktop and verified under GCC 8.3 for
+`test_atlas` and `test_animation` only (an operator-run build and qemu run,
+2/2 passed; the rest of the suite was not run under qemu)
 **Written:** 2026-07-25
 **Landed:** 2026-07-26
 **Blocks:** [graphics-backends](../2026-07-25-graphics-backends/)

@@ -406,7 +406,7 @@ to ~735px (D23). It would have been missing even with the size right.
 | Question, and where it was asked | Answer |
 |---|---|
 | Does upstream SDL2 work here? | No, and the vendored `mmiyoo` SDL2 does. `video driver Mini` |
-| Is `WREEL_USE_SYSTEM_SDL2` the right call? | Yes. Vendored runtime loaded from the bundle's `lib/`; `libmi_*` came from `/config/lib` |
+| Is `WREEL_USE_SYSTEM_SDL2` the right call? | Yes, on 2026-07-28. Vendored runtime loaded from the bundle's `lib/`; `libmi_*` came from `/config/lib`. **Superseded 2026-08-01:** it is the escape hatch now, not the route — the pinned SDL2 is built with the SSD202D drivers (`WREEL_MINI_SDL2`), see [§ 2026-08-01](#2026-08-01--our-own-sdl2-on-the-device-and-the-conformance-baseline) |
 | Does `rig::asset_path()` work on a device? | **Yes** — `(beside the executable)`, first try, from a firmware launcher |
 | Does the mixer open? | Yes, at the handheld profile, once `audioserver` is stopped |
 | Is the audio contention real? | Yes — `MI_AO_SetPubAttr ... 0xa0052009` before the fix, silent after |
@@ -559,7 +559,7 @@ it.
 
 | Step | Needs | Since |
 |---|---|---|
-| 3 — Miyoo Mini device toolchain (GCC 8.3) | the toolchain container | **closed 2026-07-27** — see the step 3 section below |
+| 3 — Miyoo Mini device toolchain (GCC 8.3) | the toolchain container | **closed 2026-07-27** — see [the step 3 section](#2026-07-27--step-3-gcc-83-compiles-this-codebase-after-one-fix) above |
 | 4 — on-device run | a Miyoo Mini Plus or Flip | **closed 2026-07-28**, and again properly 2026-08-01 |
 | 5 — Steam Runtime | the sniper container | still open |
 | Mali GLES2 | an RK3326 or H700 device | still open |
@@ -995,7 +995,7 @@ the same screen. They are slower because a destination rectangle that differs
 from the source takes SDL's stretch path, which costs several times a 1:1 copy
 per pixel.
 
-That is consistent with what [§ fill rate](#) already recorded from the other
+That is consistent with what [§ 2026-07-27 fill rate](#2026-07-27--fill-rate-and-the-internal-resolution-lever) already recorded from the other
 direction: a lower internal resolution is a net *loss* on the software driver.
 Both are the same fact — on this driver, scaling is expensive and 1:1 is cheap —
 and it now has a second, independent measurement behind it.

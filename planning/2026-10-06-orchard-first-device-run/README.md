@@ -4,8 +4,9 @@
 and built into the Onion bundle under GCC 8.3, and device run 1 has been done
 and recorded ([results.md](../2026-07-25-target-validation/results.md)
 § 2026-10-06). Runs 2 and 3 have no log. The tree is committed on
-`feature/orchard-demo` as seven commits, `3af0cb9`..`9921511` (2026-10-16, not
-pushed), and has moved on since the bundle was built (group 7, `1b811fd`).
+`feature/orchard-demo` as eight commits, `3af0cb9`..`37bd1bb` (2026-10-16;
+pushed per the local reflog — see [Where the tree is](#where-the-tree-is)), and
+has moved on since the bundle was built (group 7, `1b811fd`).
 Group 7 does not build under GCC 8.3 (2026-10-16, D34) and has to be fixed
 before it ships.
 **Written:** 2026-10-06; status, commit plan and tasks updated 2026-10-16
@@ -24,8 +25,8 @@ whose last open task is "add it to the Onion bundle as a fourth entry".
 ## Where the tree is
 
 Branch `feature/orchard-demo`, cut from `master` at `62714da`. **Committed
-2026-10-16, not pushed**, as seven commits following the plan below, group 3
-folded into 6:
+2026-10-16** as eight commits: seven following the plan below, group 3 folded
+into 6, then `37bd1bb`, which records them in the status lines.
 
 | Group | Commit |
 |---|---|
@@ -36,6 +37,12 @@ folded into 6:
 | 6, with 3 | `dc534d4` feat(orchard): Onion bundle entry, run logging and per-phase frame timing |
 | 7, mirroring | `1b811fd` feat(gfx): mirrored sprites, and per-character facing in orchard |
 | 8, doc audit | `9921511` docs: audit the documentation against the tree, 2026-10-16 |
+| — | `37bd1bb` docs: record the 2026-10-16 commits in place of "uncommitted" |
+
+**Pushed, per the local record:** `git reflog` shows `update by push` for
+`origin/feature/orchard-demo` at `9921511` (12:50 -0400) and `37bd1bb` (12:52)
+on 2026-10-16, and that remote-tracking ref equals `37bd1bb`. The remote itself
+was not checked, and whether a PR exists is unknown.
 
 The plan is kept below as it was written, before the commits. Before them, the
 index held the game as the September builders staged it and the working tree
@@ -101,8 +108,9 @@ carries no meaning. The grouping below is by subject.
    it does not build**: an incremental build in `build/miyoomini-83` the same
    day stopped on two `-Wcast-align` errors, `tests/test_atlas.cc:489` and
    `tests/test_animation.cc:493`, both in this group's unstaged hunks
-   ([D34](../2026-07-25-cxx17-modernization/defects.md), open). It needs fixing
-   before it goes into a bundle. It is not in the bundle that ran on the device.
+   ([D34](../2026-07-25-cxx17-modernization/defects.md), fixed 2026-11-25 and
+   verified under GCC 8.3 for those two tests). A bundle still has to be rebuilt
+   to carry it. It is not in the bundle that ran on the device.
 8. **Documentation audit, 2026-10-16** — every file whose only uncommitted
    change is the audit's: `README.md`, `CLAUDE.md`, `THIRD-PARTY.md`,
    `docs/TARGETS.md`, `tools/README.md`,
@@ -270,9 +278,10 @@ workload, which is what the first run measures.
 
 ## Tasks
 
-- [x] Commit, in the grouping above — done 2026-10-16, not pushed: `3af0cb9`
+- [x] Commit, in the grouping above — done 2026-10-16: `3af0cb9`
       (1), `479e26f` (2), `c74e310` (4), `69d6aff` (5), `dc534d4` (6, with
-      group 3 folded in), `1b811fd` (7), `9921511` (8)
+      group 3 folded in), `1b811fd` (7), `9921511` (8), and `37bd1bb` (the
+      status lines). Pushed per the local reflog; remote not checked
 - [x] Build in the container under GCC 8.3 with `-DWREEL_TARGET_FIRMWARE=onion`,
       zero warnings, and build `bundle-onion`
 - [x] List the tarball: `App/Orchard/{orchard,launch.sh,config.json}`,
@@ -287,7 +296,7 @@ workload, which is what the first run measures.
       `:774` and passes 31/31 with `SDL_RENDER_DRIVER=software` (results.md
       § 2026-10-16, D33). Still open: pinning the cause, and the premise-failure
       decision
-- [ ] Fix D34, the two `-Wcast-align` errors that stop group 7 building under
+- [x] Fix D34 (2026-11-25), the two `-Wcast-align` errors that stop group 7 building under
       GCC 8.3 (found 2026-10-16), then build `test_atlas` and `test_animation`
       there and run them under qemu
 - [x] `docs/DEVELOPMENT.md § Status`: a row for orchard and the `game::` pieces,
@@ -416,17 +425,18 @@ still works. The `--verbose` log then names the keysym that did arrive.
 > and is authoritative on what is and is not verified — treat its claims as
 > claims and check the ones you build on.
 >
-> You are on `feature/orchard-demo`, committed through `9921511` and not
-> pushed (step 2 below is done). This session
+> You are on `feature/orchard-demo`, committed through `37bd1bb`, which
+> the local reflog records as pushed (step 2 below is done). This session
 > needs `git commit`, Docker (`sg docker -c '…'` if the socket is refused) and
 > write access to `build/` and `pkg/`; if any of those is refused, stop and say
 > which.
 >
 > 1. Build `desktop-software` and run its tests first. Expect 26/26 outside a
 >    sandbox; anything else is a finding.
-> 2. ~~Commit in the eight groups the handoff lists.~~ Done 2026-10-16; not
->    pushed (`3af0cb9`..`9921511`, group 3 folded into 6). Do not push or open
->    a PR without my say.
+> 2. ~~Commit in the eight groups the handoff lists.~~ Done 2026-10-16
+>    (`3af0cb9`..`9921511`, group 3 folded into 6; `37bd1bb` followed), and
+>    the local reflog records both branch tips as pushed. Do not push or open a PR
+>    without my say.
 > 3. Build the Onion bundle in the `wreel-miyoomini` container under GCC 8.3
 >    with `-DWREEL_TARGET_FIRMWARE=onion`. Zero warnings. The handoff's command
 >    was run once, on 2026-10-06, before group 7 existed; fix it if it is wrong

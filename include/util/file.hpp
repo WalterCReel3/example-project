@@ -1,5 +1,4 @@
-#ifndef __WREEL_FILE_HPP__
-#define __WREEL_FILE_HPP__
+#pragma once
 
 #include <util/filetypes.hpp>
 #ifdef WIN32
@@ -28,5 +27,3 @@ private:
 } // namespace util
 
 // vim: set sts=2 sw=2 expandtab:
-
-#endif

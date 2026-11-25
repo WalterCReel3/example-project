@@ -9,7 +9,8 @@ had its cues and music since 2026-09-15. It has run once on a Miyoo Mini, from
 the GCC 8.3 Onion bundle, and was played to the goal
 ([results.md](../2026-07-25-target-validation/results.md), 2026-10-06).
 `orchard/` and everything after #18 is committed on `feature/orchard-demo` as
-`3af0cb9`..`9921511` (2026-10-16), not pushed. See
+`3af0cb9`..`37bd1bb` (2026-10-16), pushed per the local reflog (remote not
+checked, PR existence unknown). See
 [Where this stands](#where-this-stands-2026-10-16).
 **Written:** 2026-08-10
 **Blocked by:** nothing. The frame-name question that held the art ingest and
@@ -35,12 +36,14 @@ carried D28–D30; the deletion of `game::Action` merged as `62714da` on PR #18,
 2026-09-04. Nothing after that is on `master`.
 
 The **game** exists and is committed on `feature/orchard-demo` (cut from
-`62714da` on 2026-10-06), not pushed. `orchard` has the level, the player,
+`62714da` on 2026-10-06), pushed per the local reflog; the remote was not
+checked and no PR is known. `orchard` has the level, the player,
 the cast, the rules, the HUD, the cues and the music; the table below has each
 slice. It was committed 2026-10-16 in the groups
 [orchard-first-device-run](../2026-10-06-orchard-first-device-run/) laid out:
 `3af0cb9` "feat(orchard): add the orchard platformer demo" is the game itself,
-and `479e26f`, `c74e310`, `69d6aff`, `dc534d4`, `1b811fd` and `9921511` follow
+and `479e26f`, `c74e310`, `69d6aff`, `dc534d4`, `1b811fd`, `9921511` and
+`37bd1bb` follow
 it (that handoff's § Where the tree is has the subjects).
 
 **It has run on a device once.** The Onion bundle built under GCC 8.3 in the
@@ -64,7 +67,7 @@ current working tree with zero warnings under `WREEL_WERROR` and pass **26/26**
 **Under GCC 8.3, 2026-10-16, the current tree does not build.** An incremental
 build in `build/miyoomini-83` stops on two `-Wcast-align` errors in the
 mirroring tests below,
-[D34](../2026-07-25-cxx17-modernization/defects.md). Under `qemu-arm`, 20 of the
+[D34](../2026-07-25-cxx17-modernization/defects.md), since fixed 2026-11-25. Under `qemu-arm`, 20 of the
 24 suites that do build pass; the failing four are September's.
 
 **After the handoff, unrecorded until now: mirrored sprites and facing
@@ -1833,12 +1836,14 @@ honoured — see decision 11.
       `make_sfx.py`'s input and no line of the game opens it. Checked rather
       than assumed that `cmake -E copy_if_different` creates the `data/sfx/`
       subdirectory in a bundle, since every other entry in that list is flat
-- [ ] Add it to the Onion bundle as a fourth entry, and to `docs/DEVELOPMENT.md
+- [x] Add it to the Onion bundle as a fourth entry, and to `docs/DEVELOPMENT.md
       § Status` with an honest verification state — **entry written 2026-10-06,
       built under GCC 8.3 into `pkg/wreel-0.2.0-onion.tar.gz` the same day, and
       run once on a Miyoo Mini, played to the goal**
-      ([results.md](../2026-07-25-target-validation/results.md)). Open: the
-      `docs/DEVELOPMENT.md § Status` row, and committing. The rest is in
+      ([results.md](../2026-07-25-target-validation/results.md)). The
+      `docs/DEVELOPMENT.md § Status` rows for `orchard` and the Onion bundle
+      exist, and the work is committed (`3af0cb9`..`37bd1bb`, 2026-10-16). What
+      the device run has not covered is in
       [orchard-first-device-run](../2026-10-06-orchard-first-device-run/)
 
 ## Risks
@@ -1982,7 +1987,8 @@ blocked the level task specifically, and the level task answered it.
    origin.** An object with a `gid` is anchored bottom-left, and
    `loaders::load_tmx` reads `y` without inspecting `gid`, so a tile object's `y`
    is its bottom edge while `Level` reads it as the top. Both candidates are
-   written out in the D29 row with their costs; neither is picked. Note the
+   written out in the D29 row with their costs. **Answered 2026-11-25:** option B,
+   `load_tmx` rejects a non-zero `gid` with `TmxFormatError`. Note the
    complication recorded there: bottom-left is Tiled's *default*, not an
    invariant — `objectalignment` on `<tileset>` can override it and
    `read_tileset_body` does not read that attribute.

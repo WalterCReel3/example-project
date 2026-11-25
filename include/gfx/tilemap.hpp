@@ -77,7 +77,10 @@ struct MapObject {
     std::string type;
     int id = 0;
 
-    // Pixels. Tiled measures a point or rectangle object from the map origin.
+    // Pixels, from the map origin to the object's top-left corner. That is
+    // Tiled's convention for a point or a rectangle object. A tile object (one
+    // with a gid) is measured from its bottom-left instead, so load_tmx rejects
+    // it rather than hand over a y that means something else.
     double x = 0.0;
     double y = 0.0;
     double width = 0.0;

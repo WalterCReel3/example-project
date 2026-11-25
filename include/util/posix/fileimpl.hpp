@@ -1,5 +1,4 @@
-#ifndef __UTIL_FILEIMPL_HPP__
-#define __UTIL_FILEIMPL_HPP__
+#pragma once
 
 #include <util/filetypes.hpp>
 #include <sys/types.h>
@@ -23,5 +22,3 @@ private:
 };
 
 }
-
-#endif

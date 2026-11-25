@@ -1,5 +1,4 @@
-#ifndef __UTIL_FILETYPES_HPP__
-#define __UTIL_FILETYPES_HPP__
+#pragma once
 namespace util { 
 
 enum Whence {
@@ -15,4 +14,3 @@ enum OpenMode {
 };
 
 }
-#endif
