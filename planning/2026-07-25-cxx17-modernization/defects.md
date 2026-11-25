@@ -11,7 +11,8 @@ D10 and D11 were added 2026-07-25 while researching the character-classification
 replacement, D12 and D13 while clearing warnings from the same files, and D14–D16
 while replacing the logger. D3's resolution changed at the same time. D6 carried a
 factual error and **D4 turned out not to be a defect at all** — both corrected in
-place. Everything else is as originally written.
+place. Everything else is as originally written, apart from the fixes recorded in
+the entries themselves: D5, D6, D11, D13, D26, D29 and D34 on 2026-11-25.
 
 ---
 
@@ -162,6 +163,20 @@ predicates can be written as bare `ptr_fun` without qualification.
 **Fix:** remove it and qualify explicitly. Mechanical but touches most of the
 file.
 
+**Fixed** 2026-11-25. The namespace-scope `using namespace std;` is gone, along
+with the two function-local ones in `whitespace_tokenizer` and
+`quoted_whitespace_tokenizer` and the ones in `wctomb_insert_iterator::operator=`,
+`to_string` and `to_wstring`, and every standard name in the header is now spelled
+`std::`. Nothing outside the header needed to change: its only includers are
+`tests/test_string.cc`, `tests/test_ascii.cc` and `loaders/obj.cc`. Two commented-out
+blocks (`contains_key`, `contains_value`) still mention `using namespace std;`;
+they are dead code and were left as they were.
+
+Ran on `desktop-software`: a full rebuild with zero warnings under
+`WREEL_WERROR`, and `test_string` at 22/22 cases, 83 assertions. **Not run:** the
+`desktop-debug` build (`skratch` includes nothing from this header, but the preset
+was not built) and the GCC 8.3 `miyoomini` build.
+
 ---
 
 ## D6 — reserved identifiers as include guards
@@ -218,6 +233,25 @@ them fixes that entry as well. `loaders/sparrow.hpp` is due a rewrite anyway whe
 `load_sparrow` is revived. Every header authored since the survey uses
 `#pragma once`.
 
+**Fixed** 2026-11-25. Surveyed again over every tracked header, whatever its guard
+was spelled: the 11 above had become **10**, because `loaders/sparrow.hpp` had
+already been rewritten with `#pragma once` when `load_sparrow` was revived, and
+the survey found **one the list never had**, `skratch/input.hpp`
+(`__WREEL_INPUTS_H__`), which sits outside `include/`. All 11 are now
+`#pragma once`: the 10 above less `sparrow.hpp`, plus `skratch/input.hpp`. The
+guard `#ifndef`/`#define` and its matching `#endif` were removed and nothing else
+in any of them changed, so **no authored header with a reserved-name guard
+remains.** The `WREEL_AUDIO_*_HPP` guards on `audio/device.hpp`, `music.hpp` and
+`sound.hpp` are not reserved identifiers and were left. Four headers under
+`platform/miyoomini/sdl2/src/` (`SDL_audio_mini.h`, `SDL_event_mini.h`,
+`SDL_fb_mini.h`, `SDL_video_mini.h`) also use `__NAME__` guards; they are the
+Miyoo SDL fork's code rather than this project's headers and were not touched.
+
+Ran on `desktop-software`: a full rebuild with zero warnings under `WREEL_WERROR`
+and `ctest`; `skratch/input.hpp` is not part of that build, so it was only
+syntax-checked on its own with `-fsyntax-only -Wall -Wextra`. **Not run:** the
+`desktop-debug` build that compiles `skratch`, and the GCC 8.3 build.
+
 Three of the 2016 guards are also simply wrong about their own file, which is
 worth fixing in the same pass: `gfx/context.hpp` declares `__GFX_VIEW_HPP__`
 (leftover from a rename) and `gfx/primitives.hpp` declares
@@ -249,6 +283,10 @@ error at the include.
 
 **Fix:** distinct names, or `#pragma once` per D6, which removes the class of
 problem entirely.
+
+**Fixed** 2026-11-25 by the D6 conversion: both headers are `#pragma once` now.
+Only the POSIX one compiles on the dev box, so the case this entry describes —
+both included into one translation unit — was not tried.
 
 ---
 
@@ -452,6 +490,12 @@ saying it is incomplete, since the typedefs currently imply otherwise.
 
 **Fix:** qualify `std::string::iterator`; document it as unimplemented. Implement
 or delete when something actually needs a multibyte-to-wide input iterator.
+
+**Fixed** 2026-11-25 as the entry says, and no further: the member is
+`std::string::iterator`, `iterator_category` is `std::input_iterator_tag`, and a
+comment above the class states that it is a declaration only, with no `operator*`,
+`operator++` or `operator==`. The class is still unimplemented and still kept.
+Built with D5 (same file); see there for what was run.
 
 ---
 
@@ -1260,6 +1304,20 @@ and must stay, and the stock MI_AO owner is still unidentified, so a future
 reader hitting this warning needs to be sent somewhere useful rather than
 reassured.
 
+**Fixed** 2026-11-25, the warning only. `audio/device.cc` now passes both error
+strings through `error_text()`, which returns SDL's text when there is some and
+otherwise `SDL reported no error text; a vendor driver may have written the
+reason to stdout`, so the line reads `audio: Mix_OpenAudio failed (SDL reported no
+error text; a vendor driver may have written the reason to stdout); continuing
+without sound`. The wording says "may" and names neither MI_AO nor a cause, since
+the stock owner is still unidentified. The two failure paths log and return
+exactly as before. Nothing changes in the vendor layer or in `launch.sh`.
+
+Ran on `desktop-software`: a build with zero warnings and `test_audio`. **Not
+run:** the empty-string branch. No test forces an open failure, and the desktop
+dummy driver does not fail; it needs the Miyoo Mini, or a fault-injecting
+`Mix_GetError`, to see the new line.
+
 ## D27 — the Miyoo Mini's SDL2 renders textures from a pointer it does not own
 
 **Not our defect**, but it fires on our code path, and unlike D25 it is a
@@ -1277,11 +1335,13 @@ memory-safety bug rather than a missing feature.
 > — avoid `SDL_CreateTextureFromSurface`, or re-upload every frame — are no
 > longer needed and should not be designed around.
 >
-> The rest of the entry is kept as written. The two sub-rectangle bugs at the
-> bottom are **not** fixed, and the 100-entry table is still unbounded; they were
-> recorded here rather than as separate entries and they outlive the defect they
-> were filed under. Fixes are scoped as items 2, 3 and 6 in
-> [2026-07-31-miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/).
+> The rest of the entry is kept as written. ~~The two sub-rectangle bugs at the
+> bottom are **not** fixed, and the 100-entry table is still unbounded;~~ they
+> were recorded here rather than as separate entries and they outlive the defect
+> they were filed under. Fixes are scoped as items 2, 3 and 6 in
+> [2026-07-31-miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/). **Items 2 and 3,
+> the two sub-rectangle bugs, landed 2026-08-08; the 100-entry table (item 6) is
+> still unbounded.**
 
 Found 2026-07-31 by reading `steward-fu/sdl2` from a local checkout — the first
 time the port's source had been read rather than viewed.
@@ -1378,12 +1438,20 @@ because they share a cause — nobody has exercised a sub-rectangle blit:
 blit cannot be correct on this device.~~ **Two, as of 2026-08-02, and both are on
 the source side.** The rotation was never one of them — it compensates for a
 panel mounted inverted, established by looking at the screen on 2026-08-01 — and
-the destination-placement bug it did conceal is fixed (item 20). What remains is
+the destination-placement bug it did conceal is fixed (item 20). ~~What remains is
 the pair above: the staging copy ignoring `srt.y`, and the format inferred from
 `pitch / srt.w`. Until those land,
 [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/) must
 still composite into a layer here rather than calling `Context::draw()` with a
-source rect.
+source rect.~~ **The pair above is fixed as of 2026-08-08** (items 2 and 3 of the
+fork snapshot). In `GFX_Copy` the staging copy now starts at `src_rt.y * pitch`,
+the blitter reads from row 0 of what was staged, and `Mini_QueueCopy` passes
+`texture->format` with the surface width taken from `pitch` rather than from the
+rect. That is read from the tree; the on-device verification is the fork
+snapshot's and D25's account, not something re-run here. A source rect is
+therefore usable on this backend, as D25 records for
+`software-2d-sprites-tiling`. The 100-entry table above is what remains open from
+this entry.
 
 ---
 
@@ -1581,6 +1649,25 @@ a refusal for them is churn.
 Either way `gfx::MapObject`'s comment needs to stop naming only points and
 rectangles, and if A is chosen it should say which convention the struct holds
 after normalisation.
+
+**Fixed 2026-11-25, by B.** `read_object_layer` reads `gid` and throws
+`TmxFormatError` for a tile object, naming the file, the object's id and name and
+the gid, and saying to make it a rectangle in Tiled. It reads the attribute as
+text and refuses anything that is not a whole zero, rather than going through
+`attribute_int`: a flipped tile's gid carries bits above `INT_MAX`, which
+`attribute_int` reads as unparseable and so as absent. `gid="0"` and a missing
+`gid` load as before. `MapObject`'s comment now says its coordinates are the
+top-left corner and that a tile object is rejected, and the `load_tmx` comment in
+`loaders/tmx.hpp` says the same. `tests/test_tmx.cc` has a new case for a plain
+gid, a flipped gid, `gid="0"` and no gid. `sunnyland.tmx` and `orchard.tmx` have
+no `gid` and their cases are unchanged.
+
+A is still the end state, and nothing here prevents it: every map B accepts, A
+accepts identically.
+
+Ran on `desktop-software`: a build with zero warnings and `test_tmx` at 26/26
+cases. **Not run:** the new case against the old loader, which could not have
+thrown, and the GCC 8.3 build.
 
 ---
 
@@ -1935,5 +2022,31 @@ commit group 7 can't go into a GCC 8.3 bundle as it stands. No shipped code is
 affected. Nothing has established whether either cast is ever misaligned at
 runtime. The warning is about the type, not about a fault anyone has observed.
 
-**Not fixed; open.** Recorded 2026-10-16. Fixing it is out of scope for the pass
-that found it.
+**Fixed 2026-11-25; verified under GCC 8.3 for `test_atlas` and `test_animation` only.** Recorded open
+2026-10-16, where fixing it was out of scope for the pass that found it. Each
+pixel is now copied with `std::memcpy` rather than read through a cast pointer:
+`make_strip` in `test_atlas.cc` writes through `Uint8*` row pointers, and
+`read_back` in `test_animation.cc` copies each pixel into a local `uint32_t`.
+`memcpy` is the fix the warning asks for. It says what the code means, that the
+row is bytes which happen to hold pixels, instead of asserting an alignment
+nothing here guarantees, and `-Wcast-align` stays on and `WREEL_WERROR` stays on.
+Test behaviour is unchanged, and no shipped code is touched.
+
+Ran on `desktop-software`: a full build with zero warnings under `WREEL_WERROR`
+(this is GCC 12, which never emitted these errors, so a clean build proves
+nothing about them). The two tests were not run unmodified, because this sandbox
+has a read-only `/tmp` and both write `/tmp/wreel-test-*.bmp`. They were run as
+scratch copies with that path moved, from the source root with
+`WREEL_DATA_DIR`, `SDL_VIDEODRIVER=dummy` and `SDL_AUDIODRIVER=dummy` set as
+`ctest` sets them: `test_atlas` 20/20 cases, 172 assertions and `test_animation`
+31/31 cases, 262 assertions. The rest of `ctest` passes; `test_renderer` also
+needs `/tmp` and failed there for the same reason.
+
+**Run under GCC 8.3, 2026-11-25** (operator-run command
+`cmd-20261125T200652Z-90db24650172`, in the `wreel-miyoomini` container): a fresh
+configure and full build of the `miyoomini` preset into a new directory with
+`WREEL_WERROR` on, which built clean (555 steps; the log carries only GCC 7.1
+ABI `note:` lines, no errors), then `test_atlas` and `test_animation` under
+qemu through `ctest`: 2/2 passed. That run started while the other fixes of the
+same day were still going in, so it compiled the tree as it stood then; the
+rest of the suite was not run under qemu.
