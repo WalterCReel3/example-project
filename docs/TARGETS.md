@@ -12,7 +12,7 @@ elsewhere don't have to re-derive them.
 | `desktop-debug` / `-release` | your dev box | any | `x86_64` | any | `opengl` | host GCC/Clang |
 | `desktop-software` | your dev box | any | `x86_64` | any | `software` (forced) | host GCC/Clang |
 | `steam` | Steam / Steam Deck | any | `x86_64` | any | `opengl` | Steam Runtime **sniper** container |
-| `miyoomini` | Miyoo Mini, Mini Plus, Mini Flip | SigmaStar SSD202D | `armv7-a` | **none** | `software` **only** | `union-miyoomini-toolchain` (GCC 8.3) |
+| `miyoomini` | Miyoo Mini, Mini Plus, Mini Flip | SigmaStar SSD202D | `armv7-a` | **none** | `Miyoo Mini` (SDL's pick) or `software` (forced); no GL | `union-miyoomini-toolchain` (GCC 8.3) |
 | `rk3326` | RG351P/M/V, RG353P/M/V | Rockchip RK3326 | `aarch64` | Mali-G31 | `opengles2` | device sysroot or Debian cross |
 | `h700` | RG35XX Plus/H/SP, RG40XX | Allwinner H700 | `aarch64` | Mali-G31 MP2 | `opengles2` | device sysroot or Debian cross |
 
@@ -40,8 +40,11 @@ see [planning/2026-07-26-coppers-cracktro](../planning/2026-07-26-coppers-crackt
 
 `desktop-software` is how you exercise the Miyoo Mini code path without a device.
 It sets `WREEL_TARGET_HAS_GPU=OFF`, so SDL is built with no GL at all and the
-software driver is the only one available — the same situation as the SSD202D,
-at native speed and without a cross-compiler.
+software driver is the only one available. That is the SSD202D with `software`
+forced, which is how `orchard` ships, at native speed and without a
+cross-compiler. It does not exercise the device's default `Miyoo Mini` render
+driver, which exists only in the grafted SDL2
+([below](#gfxrenderers-driver-is-not-always-software)).
 
 ### Out of scope
 
@@ -52,6 +55,29 @@ at native speed and without a cross-compiler.
   ([util/mswin/fileimpl.cc](../util/mswin/fileimpl.cc)) and scattered `__APPLE__`
   branches. Those stay in the tree because the platform-pimpl pattern is worth
   keeping, but neither is a build target and neither is tested.
+
+### Validation scope: desktop and `miyoomini`
+
+Recorded in
+[planning/2026-09-01-rig-device-bindings](../planning/2026-09-01-rig-device-bindings/)
+(its **Target scope** header, committed in `69d6aff`, "docs: record the Miyoo
+Mini input evidence and orchard's first device run"). In its
+words, as of 2026-10-16: "the build is narrowed to **desktop
+and `miyoomini`** … The `rk3326` and `h700` presets remain in the tree and
+cross-compile — what has narrowed is what is being built and validated, not
+what exists."
+
+So all seven presets above remain in `CMakePresets.json`, and the two Mali rows
+keep their build-verified-only status; they are not being validated further. The same
+document records the consequence for input — the GUID-keyed mapping route
+serves only `rk3326` and `h700`, so it waits until they "re-enter the build
+scope" — and it records no reason for the narrowing itself. None is supplied
+here.
+
+The source does not name `steam`, so whether "desktop" includes it is not
+recorded. The planning index and target-validation treat it as outside the
+scope. Either way it has never been configured: there is no `build/steam` in
+this tree as of 2026-10-16.
 
 ## The three constraints that actually matter
 
@@ -156,6 +182,18 @@ ldd --version | head -1
 strings /lib/libc.so.6 | grep -oE 'GLIBC_2\.[0-9]+' | sort -Vu | tail -1
 ```
 
+**Miyoo Mini Plus (OnionOS): at least 2.28, exact version not recorded.** That
+is a floor proven by a load, not a reading of the device's libc. The `orchard`
+in `pkg/wreel-0.2.0-onion.tar.gz` (GCC 8.3, 2,287,508 bytes) requires
+`GLIBC_2.28` — `readelf -V` lists it in `.gnu.version_r`, and `fcntl64` is a
+non-weak undefined symbol at that version — and the same-sized binary loaded and
+exited 0 on the device on 2026-10-06 (root `stdout.log`, untracked;
+[results.md § 2026-10-06](../planning/2026-07-25-target-validation/results.md#2026-10-06--orchard-first-run-on-the-device)).
+The 2.28 figure is also the toolchain sysroot's glibc
+([results.md § step 3](../planning/2026-07-25-target-validation/results.md#2026-07-27--step-3-gcc-83-compiles-this-codebase-after-one-fix)),
+so binaries from that container cannot exceed it. No device output of either
+command above is recorded, and stock firmware has not been checked separately.
+
 Shippable device binaries come from the device SDK container, which is built
 against a matching (old) glibc. Static-linking `libstdc++` and `libgcc`
 (`-static-libstdc++ -static-libgcc`) removes the *C++* runtime half of the
@@ -220,8 +258,8 @@ means no programmable 3D pipeline, not no acceleration.
 
 Consequences:
 
-- `gfx::renderer` with its software driver is not a fallback here, it is the
-  **only** thing that runs, so it has to be good enough to be the baseline
+- `gfx::renderer` is not a fallback here, it is the **only** renderer that
+  runs, so it has to be good enough to be the baseline
   everywhere. `WREEL_ENABLE_GLES2` is rejected outright on this target.
 - `WREEL_ENABLE_GLES2` is **rejected** here rather than silently downgraded, and
   `WREEL_BUILD_DEMOS` turns itself off because `skratch` needs that renderer. The
@@ -243,6 +281,7 @@ easiest to get wrong:
 | `audio` | sound and music over SDL2_mixer | yes, and hides it |
 | `gfx` | `renderer` always, `gles2` where there is a GPU | yes |
 | `loaders` | asset formats to plain data | yes |
+| `game` | entity store, collision, camera, level spawn tables; one game's own rules stay in its executable | through `gfx`, which is in its interface |
 
 **Why `rig` exists rather than putting this in `util`.** `util` is generic to any
 application on any platform and links no SDL. Asset resolution wants
@@ -279,7 +318,7 @@ renamed. SDL picks a **render driver** underneath `SDL_Renderer`:
 
 | Target | Driver | Consequence |
 |---|---|---|
-| Miyoo Mini | `software` | two Cortex-A7 cores doing the blitting |
+| Miyoo Mini | `Miyoo Mini` by default; `software` when forced | no GPU either way. The default reports itself accelerated but is an `MI_GFX` copy with most of the render API stubbed ([MIYOO-MINI.md § 5](MIYOO-MINI.md)); `software` is two Cortex-A7 cores doing the blitting, and is what `orchard` ships on |
 | RK3326, H700 | `opengles2` | **hardware accelerated**, same source |
 | desktop | `opengl` | whatever Mesa offers |
 
@@ -314,9 +353,9 @@ further than `gfx` itself:
 
 | | always | `+ WREEL_ENABLE_GLES2` |
 |---|---|---|
-| `gfx` | `spritesheet.cc`, `system.cc`, `renderer/` | plus `gles2/` |
-| `loaders` | `image.cc`, `obj.cc`, `sparrow.cc` | — |
-| `rig` | `assets.cc`, `timing.cc` | — |
+| `gfx` | `animation.cc`, `atlas.cc`, `tilemap.cc`, `system.cc`, `renderer/` | plus `gles2/` |
+| `loaders` | `animations.cc`, `image.cc`, `obj.cc`, `sparrow.cc`, `tmx.cc` | — |
+| `rig` | `assets.cc`, `input.cc`, `timing.cc` | — |
 | `skratch` demo | **not built** | built |
 | `wreel-probe` | built | built |
 | tests | built | built |

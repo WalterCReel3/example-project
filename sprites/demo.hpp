@@ -108,6 +108,18 @@ private:
     int _tiles_drawn = 0;
     long long _tiles_total = 0;
 
+    // The extremes behind the mean. This demo scrolls its camera the whole
+    // time, so min and max differing is the visible proof that the count
+    // follows what is on screen rather than what is in the map.
+    int _tiles_min = -1;
+    int _tiles_max = -1;
+
+    // Wall-clock seconds spent inside TileMap::draw over the whole run, so the
+    // per-tile cost divides the tilemap's own time rather than the frame's.
+    // This demo draws a grid of animated sprites over the map, and that work is
+    // not fill rate.
+    double _tilemap_seconds = 0.0;
+
     // Every animated thing on screen, including the hero, so the store is what
     // the demo actually runs on rather than something tested beside it.
     game::Entities _entities;

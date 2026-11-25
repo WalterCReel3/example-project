@@ -59,7 +59,9 @@ file we built ourselves and none of these:
 | `libjson-c.so.5` | [OnionUI/Onion](https://github.com/OnionUI/Onion) — **not** steward-fu | blob `80db6c95`, present since commit `78b3660d` (2023-12-17) | MIT upstream; **version unknown** |
 
 Staged but **removed** by the build before it ships, so it is not in the table
-above:
+above. The removal needs `WREEL_ONION_DROP_GLES` ON (the default) and both
+`readelf` and `patchelf` found; if either is missing the library ships, and if the
+symbol check fails the build stops:
 
 | File | Origin | Why it goes |
 |---|---|---|
@@ -129,9 +131,9 @@ else, so a user substituting their own build of that library is unobstructed.
 same way rather than differently: `WREEL_SDL2_LINKAGE` forces SHARED on this
 target precisely so the relink stays possible, and the source is in the tree
 rather than pinned to somebody else's repository. Note where the LGPL comes
-from — upstream SDL2 is **zlib**; it is steward-fu's ~1,290 driver lines that
-carry `// LGPL-2.1 License`. So the obligation follows those files through the
-rebase, and only replacing them would change it.
+from — upstream SDL2 is **zlib**; it is steward-fu's driver files (nine, 1,355
+lines as of 2026-10-16) that carry `// LGPL-2.1 License`. So the obligation
+follows those files through the rebase, and only replacing them would change it.
 
 **The modification must be declared, and this is the declaration.** The
 `libSDL2-2.0.so.0` this project ships is **not** byte-identical to the upstream
@@ -139,11 +141,10 @@ blob pinned above: one `DT_NEEDED` entry, `libGLESv2.so`, is removed at bundle
 time. Nothing else is touched. The upstream file is recoverable from the pin, and
 the transformation is one documented command.
 
-**`libEGL.so` is the open item.** Shipping a binary of unknown licence is fine
-for personal hardware and is not fine for distribution. That makes it the thing
-to settle before any channel that counts as distribution, and it is recorded as
-such in
-[planning/2026-07-25-packaging-distribution](planning/2026-07-25-packaging-distribution/).
+**`libEGL.so` was the open item — closed 2026-08-01, see the banner at the top.**
+Shipping a binary of unknown licence is fine for personal hardware and is not
+fine for distribution, so it was the thing to settle before any channel that
+counts as distribution. Only the `WREEL_ONION_SDL2_RUNTIME` path still stages it.
 
 > **Corrected 2026-07-31.** This paragraph used to continue: "It is 55 KB and one
 > symbol of it is load-bearing — `eglUpdateBufferSettings`, called from

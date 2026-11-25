@@ -1,13 +1,20 @@
 # A game layer, and a small game to define it
 
 **Status:** `in-progress` — the game layer landed 2026-08-22 and was finished
-2026-08-30 with `game::Level` and `game::Action`; the game has not started, and
-one landed piece has since been removed from the layer entirely. See
-[Where this stands](#where-this-stands-2026-09-01).
+2026-08-30 with `game::Level` and `game::Action`; one landed piece has since been
+removed from the layer entirely. The game itself, `orchard`, is playable end to
+end as of 2026-09-14 — see
+[decision 18](#18-contact-costs-the-last-pickup-the-goal-ends-the-run) — and has
+had its cues and music since 2026-09-15. It has run once on a Miyoo Mini, from
+the GCC 8.3 Onion bundle, and was played to the goal
+([results.md](../2026-07-25-target-validation/results.md), 2026-10-06).
+`orchard/` and everything after #18 is committed on `feature/orchard-demo` as
+`3af0cb9`..`9921511` (2026-10-16), not pushed. See
+[Where this stands](#where-this-stands-2026-10-16).
 **Written:** 2026-08-10
-**Blocked by:** nothing, to continue. The art ingest and everything downstream
-of it wait on the frame-name question in
-[Open questions](#one-open-question-found-2026-08-14-while-checking-the-first-task).
+**Blocked by:** nothing. The frame-name question that held the art ingest and
+everything downstream of it is answered — see
+[decision 15](#15-frame-names-are-namespaced-by-prefixing-in-the-copy).
 Device verification runs in parallel and is
 [target-validation](../2026-07-25-target-validation/)'s job, not this
 document's.
@@ -19,12 +26,70 @@ document's.
 > physics, input mapping. Those are a game layer and belong in their own
 > snapshot."* This is that snapshot.
 
-## Where this stands (2026-09-01)
+## Where this stands (2026-10-16)
 
-The **layer** is complete, one piece smaller than it was. The **game** does not
-exist. Everything through `game::Camera` merged as `a9ca839` on PR #16;
+The **layer** is complete, one piece smaller than it was, and all of it is
+committed: everything through `game::Camera` merged as `a9ca839` on PR #16;
 `game::Level` and `game::Action` merged as `c1a1c00` on PR #17, which also
-carried D28–D30.
+carried D28–D30; the deletion of `game::Action` merged as `62714da` on PR #18,
+2026-09-04. Nothing after that is on `master`.
+
+The **game** exists and is committed on `feature/orchard-demo` (cut from
+`62714da` on 2026-10-06), not pushed. `orchard` has the level, the player,
+the cast, the rules, the HUD, the cues and the music; the table below has each
+slice. It was committed 2026-10-16 in the groups
+[orchard-first-device-run](../2026-10-06-orchard-first-device-run/) laid out:
+`3af0cb9` "feat(orchard): add the orchard platformer demo" is the game itself,
+and `479e26f`, `c74e310`, `69d6aff`, `dc534d4`, `1b811fd` and `9921511` follow
+it (that handoff's § Where the tree is has the subjects).
+
+**It has run on a device once.** The Onion bundle built under GCC 8.3 in the
+`wreel-miyoomini` container was launched as shipped (`--software --verbose`) on
+a Miyoo Mini and the level was played to the goal: 4383 frames at 59.7 fps on a
+capped run, the game's own work 4.1 ms of a 16.762 ms frame, `present` 12.582 ms,
+cues playing, exit `stopped by the rules`. Recorded in
+[results.md § 2026-10-06](../2026-07-25-target-validation/results.md); the log
+is the root `stdout.log`. One run, software renderer only; the handoff's runs 2
+and 3 (uncapped, and the `Miyoo Mini` render driver) have no log in the tree.
+The log shows the cues and `emerald-droplets.xm` executing; 2026-10-16:
+confirmed audible by the user on the device (sound effects and module playback
+in orchard and coppers); not logged. The mixer's cost is still unisolated: no
+`--mute` run.
+
+**On the dev box, 2026-10-16:** `desktop-software`, a full compile with ccache
+disabled, and `desktop-debug`, 35 TUs recompiled (ccache misses), both build the
+current working tree with zero warnings under `WREEL_WERROR` and pass **26/26**
+([results.md § 2026-10-16](../2026-07-25-target-validation/results.md)).
+
+**Under GCC 8.3, 2026-10-16, the current tree does not build.** An incremental
+build in `build/miyoomini-83` stops on two `-Wcast-align` errors in the
+mirroring tests below,
+[D34](../2026-07-25-cxx17-modernization/defects.md). Under `qemu-arm`, 20 of the
+24 suites that do build pass; the failing four are September's.
+
+**After the handoff, unrecorded until now: mirrored sprites and facing
+(2026-10-09; committed 2026-10-16 as `1b811fd`).** The `mini` render driver no-ops
+`SDL_RenderCopyEx` ([MIYOO-MINI.md](../../docs/MIYOO-MINI.md)), so a
+left-facing sprite cannot be had from the renderer. `gfx::Atlas` gained a
+constructor from an `SDL_Surface` that uploads a second, row-reversed copy of
+the sheet, and `gfx::Mirror { None, Horizontal }` is threaded through
+`AnimatedSprite::draw` and `game::Entity::mirror`. Mirroring reflects about the
+untrimmed frame, and the cost is the sheet held twice, only for atlases built
+that way. orchard records each actor's native facing (`native_facing()`,
+`drawn_reversed()` in `orchard/actors.*`: foxy's art faces right, the opossum,
+frog and eagle face left, pickups and the goal have none) and loads foxy and
+the critters mirrorable. +14 test cases: `test_atlas` +8, `test_animation` +1,
+`test_entities` +1, `test_orchard` +4. It was written after the handoff,
+whose commit plan has since been extended to eight groups; this is group 7
+([orchard-first-device-run § What was uncommitted](../2026-10-06-orchard-first-device-run/README.md#what-was-uncommitted-in-the-order-it-should-be-committed)).
+Not run on a device. The 2026-10-16 desktop runs above compiled and passed its
+tests. Under GCC 8.3 its library code compiles but `test_atlas` and
+`test_animation` do not (D34), so their new cases have not run there;
+`test_orchard`, with its facing cases, passed under `qemu-arm`. It needs D34
+fixed before it goes into a bundle.
+
+The rest of this section is the 2026-09-01 account of the layer, with its
+statements of state brought up to date.
 
 **`game::Action` shipped and has been deleted** — it is the one row below that
 went backwards. It defines orchard's verb vocabulary inside a module whose
@@ -35,7 +100,7 @@ occupies belongs to `rig`, the verbs belong to whichever executable declares
 them, and `game/` has no input line at all. Decision 12 is left in place with its
 reasoning rather than rewritten, because most of it was right.
 
-The deletion has landed in the working tree. `include/game/action.hpp`,
+The deletion is committed, as `62714da` on PR #18. `include/game/action.hpp`,
 `game/action.cc` and `tests/test_action.cc` are gone, along with their entries
 in `game/CMakeLists.txt` and `tests/CMakeLists.txt`. Two charter changes went
 with them, both argued under decision 14: **"input actions" is out of the
@@ -48,8 +113,9 @@ anywhere under `game/` or `include/game/` is `rig::asset_path` inside a usage
 example in a comment. The module's dependency line is now
 `game -> gfx -> util -> posix`.
 
-Both desktop presets are green after it at **25/25**, one fewer than the 26/26
-recorded below, and `test_action` is the only test that left.
+Both desktop presets were green after it at **25/25** on 2026-09-01, one fewer
+than the 26/26 recorded below, and `test_action` is the only test that left.
+`test_orchard` has since brought the count back to 26.
 
 | Piece | State |
 |---|---|
@@ -58,9 +124,15 @@ recorded below, and `test_action` is the only test that left.
 | `game::Camera` | done — `test_camera`, 21 / 330 |
 | `tools/make_sfx.py` + `data/sfx.xml` + 5 WAVs | done — sounds heard and approved provisionally |
 | `game::Level` | done 2026-08-30 — `test_level`, 19 cases / 70 assertions. Decision 10's spawn check is paid |
-| `game::Action` | **superseded 2026-09-01 — deleted from this layer, see decision 14.** Shipped as `test_action`, 15 cases / 78 assertions, all of which pin orchard's verbs rather than the mechanism. Decision 12 first proposed reworking it into `game::InputBindings`; decision 14 supersedes that and removes it instead. The verb table becomes orchard's when orchard exists |
-| `game::Sfx`, the cues | not started |
-| the art ingest, the level, `orchard` | **blocked** on the frame-name question below |
+| `game::Action` | **superseded 2026-09-01 — deleted from this layer, see decision 14.** Shipped as `test_action`, 15 cases / 78 assertions, all of which pin orchard's verbs rather than the mechanism. Decision 12 first proposed reworking it into `game::InputBindings`; decision 14 supersedes that and removes it instead. The verb table is orchard's, in `orchard/verbs.{hpp,cc}` |
+| `game::Sfx`, the cues | **`game::Sfx` superseded 2026-09-15 — never built, see [decision 17](#17-gamesfx-is-not-built-the-cue-table-is-orchards).** The cue table is `orchard::Cues` in `orchard/cues.{hpp,cc}`: five WAVs, the module, and `--mute` as constructing no device at all. Wired to the rules and to the player's jump and landing edges |
+| `tools/make_orchard_level.py` + `data/orchard.tmx` | done 2026-09-08 — 96×40, two visible layers and an invisible `collision` layer, 23 spawns. **The first `.tmx` in this tree that builds a `game::Level`**, proven in `test_tmx` rather than asserted |
+| the art ingest, `orchard` | the ingest landed as `data/critters.{png,xml}` and `critters.anim.xml`. `orchard` is four slices in: the level and the player, the cast, the rules with the HUD and the goal, and — 2026-09-15 — the cues and the music. `tests/test_orchard.cc` was 26 cases / 180 assertions at 2026-09-15 and crosses the shipped map twice, once on geometry alone in 758 frames and once under the rules in 1204. **Both numbers are unchanged by the sound**, which is the check that says no cue was wired into the simulation. It is 30 cases by grep at `1b811fd` (26 at `3af0cb9`, the game's commit): the four "Facing" cases from 2026-10-09; assertion count not re-taken |
+| mirrored sprites and facing | written 2026-10-09, committed 2026-10-16 as `1b811fd` — `gfx::Mirror`, the mirrorable `gfx::Atlas`, `Entity::mirror`, orchard's per-actor facing; see above. Group 7 of the handoff's commit plan. 26/26 on both desktop presets 2026-10-16; **does not build under GCC 8.3** (D34, open) |
+| the Onion bundle entry | `App/Orchard` built under GCC 8.3 into `pkg/wreel-0.2.0-onion.tar.gz` 2026-10-06; **run once on a Miyoo Mini and played to the goal** — [results.md § 2026-10-06](../2026-07-25-target-validation/results.md). Software renderer only; runs 2 and 3 not returned |
+| `orchard`'s rules | done 2026-09-14 — collection, contact, the goal and a score line. See [decision 18](#18-contact-costs-the-last-pickup-the-goal-ends-the-run) |
+| `orchard`'s cues and music | done 2026-09-15 — five WAVs on five events, `emerald-droplets.xm` playing, `--mute` opening no device, and voices on the fill-rate line. See [decision 17](#17-gamesfx-is-not-built-the-cue-table-is-orchards). Not listened to when written. 2026-10-16: confirmed audible by the user on the device (sound effects and module playback in orchard and coppers); not logged. Firmware not stated; the matching orchard log is the Onion run. The mixer's cost is still unisolated |
+| the sprite baseline anchor | done 2026-09-15 — `gfx::AnimatedSprite::frame_art()`, and `Entity::align_box_to_sprite()` sits the box on the art rather than on the logical frame. The frog's ±5 px hop pop is 0.00 px at all eight transitions over 400 frames, and the player's 1 px run bob and 3 px jump pop went with it. `sprites --screenshot` byte-identical; 758 and 1204 unchanged. See [decision 19](#19-the-baseline-anchor-reads-the-art-not-the-logical-frame) |
 
 Verified 2026-08-30, from forced cold recompiles: `desktop-software` and
 `desktop-debug` each configure, build and test clean — 111 and 121 targets, zero
@@ -78,8 +150,21 @@ configured in this pass, and the two `miyoomini` build directories are blocked b
 the stale-cache item below — so "all seven presets configure" is a claim from
 2026-08-22 that nothing since has re-established.
 
-Not verified, and it is the same gap every snapshot before this one has had:
-**no line of `game/` has run on ARM or under GCC 8.3.** Both green presets are
+**This initiative is scoped to desktop and the Miyoo Mini until the ordered
+devices arrive.** That narrows what this work is answerable for, not what the
+project supports: `steam`, `rk3326` and `h700` remain configured presets and
+remain in [docs/TARGETS.md](../../docs/TARGETS.md), and nothing here may be
+written on the assumption they are gone. Two things follow while the narrowing
+holds. The unrun-cross-preset gap above is only worth paying down for
+`miyoomini`, which is also the one target `desktop-software` already stands in
+for. And every device measurement this document asks for — the fill-rate run in
+decision 4, the 24-channel mixing load under Risks — is a Miyoo Mini measurement,
+because it is the only device there is. The condition is the hardware arriving,
+not a date; when it does, the matrix widens back with no decision needed.
+
+As of 2026-09-01, and it was the same gap every snapshot before this one had:
+**no line of `game/` had run on ARM or under GCC 8.3.** That is no longer true;
+see the end of this passage. Both green presets are
 the same x86-64 host compiler and libstdc++, differing only in
 `WREEL_TARGET_HAS_GPU` and optimisation. `game::collide` and `game::Camera` are
 pure double/int arithmetic, and the two places a different toolchain would
@@ -92,14 +177,58 @@ precisely because it is easy to over-read. On 2026-08-30 **one** test binary was
 built with the union-miyoomini GCC 8.3 toolchain and run under `qemu-arm`:
 `test_tmx`, 20 cases / 2410 assertions, zero warnings. It was done to settle
 D30, a 32-bit `size_t` overflow that no 64-bit host can reproduce, and it is the
-first time any of this tree has executed under the device compiler. It says
-nothing about `game/` — `test_tmx` covers `loaders/`, and no `game/` test was
-built or run there — and it is not a cross-preset pass. Two facts, and they must
-not blur: one binary ran under GCC 8.3, and the cross presets remain unrun.
+first time any of this tree has executed under the device compiler. It said
+nothing about `game/` — at the time `test_tmx` covered `loaders/` only, and no
+`game/` test was built or run there — and it is not a cross-preset pass. Two
+facts, and they must not blur: one binary ran under GCC 8.3, and the cross
+presets remain unrun.
 
-Also unpaid, from decision 4: **the fill-rate claim is still a prediction.**
-Nothing has been measured, because `orchard --seconds` is the instrument and
-`orchard` does not exist.
+**That binary now reaches further than it did, and nobody has re-run it.** Since
+2026-09-08 `test_tmx` links `wreel::game` for the `data/orchard.tmx` cases, so
+the same GCC 8.3 / `qemu-arm` run would exercise `game::Level` and part of
+`game::collide` as well. That is a route `game/` did not have; it is also
+entirely unexercised, because the run has not been repeated. Nothing about
+`game/` on ARM or under GCC 8.3 has changed as a matter of fact — only what a
+future run would cover.
+
+**Since then `game/` has run on ARM under GCC 8.3 three times: once on the
+device and twice under qemu. The device run has a log in this tree; neither
+qemu run does.**
+
+- **On the device, 2026-10-06** (build date): `orchard` links `wreel::game`,
+  was built under GCC 8.3 in the container, and played to the goal on a Miyoo
+  Mini — [results.md](../2026-07-25-target-validation/results.md). That
+  exercises `game::Level`, `collide`, `Camera` and `Entities` on hardware, as
+  one program; it runs no test.
+- **Under `qemu-arm`, 2026-09-21**: the whole suite, built under GCC 8.3 in
+  `build/miyoomini-83`, passed **22 of 26**, `test_orchard` 26/26 among them.
+  `test_audio`, `test_playlist` and `test_renderer` failed on their premises
+  (no dummy audio driver; the grafted `Miyoo Mini` render driver is selected and
+  calls itself accelerated), and `test_entities` segfaulted, cause not pinned.
+  **Relayed, not verified:** this is known only from the
+  [handoff](../2026-10-06-orchard-first-device-run/), which read it out of the
+  September session's transcript; no log of it is in the tree. The segfault is
+  [D33](../2026-07-25-cxx17-modernization/defects.md#d33--test_entities-segfaults-under-qemu-arm-on-the-miyoomini-build),
+  which also records a second core from 2026-10-06 stopped at the same `pc`.
+- **Under `qemu-arm`, 2026-10-16**, on the current working tree, with its logs
+  in a scratch directory outside the repository: the build fails on D34, so `test_atlas` and `test_animation` were excluded. 20 of
+  the other 24 pass, `test_orchard` among them; the same four fail.
+  `test_entities` crashes in the case at `test_entities.cc:774` and passes
+  31/31 with `SDL_RENDER_DRIVER=software`. Detail in
+  [results.md § 2026-10-16](../2026-07-25-target-validation/results.md) and D33.
+
+Of the cross presets, only `miyoomini` has been run since, and into
+`build/miyoomini-83` rather than its poisoned default directory; the others
+have not been re-run.
+
+Also from decision 4: **the fill-rate claim is measured on the desktop and once
+on the device, and the desktop figures do not stand.** The 2026-09-13 and
+2026-09-17 desktop numbers under decision 4 were taken before
+`Context::flush()` existed and time the queueing of the tilemap rather than its
+drawing; the handoff's flushed re-measure puts the tilemap at most of the
+frame. On the device, flushed and capped: 316 tiles/frame, tilemap 2.274 ms of
+16.762, 7.21 µs/tile. The orchard-against-`sunnyland` comparison the decision
+turns on has not been redone with the flushed meter on either.
 
 ### Two housekeeping items a new session will trip over
 
@@ -134,6 +263,17 @@ next reader meets them as decisions rather than as discoveries.
   an identical audible result — only the justification overstates. The same
   phrasing has propagated to `tools/make_sfx.py` and `tools/README.md`, so the
   correction lands in three places when it is made.
+- **Loading a tracker module prints libxmp's debug trace to `stdout`, and it is
+  the same stream the fill-rate line goes to.** Found 2026-09-15 while wiring
+  orchard's music; **not caused by that work and not fixed by it.** The pinned
+  SDL2_mixer vendors libxmp, and on a `Debug` build type — which both desktop
+  presets are — its `D_()` tracing is compiled in and goes to standard output
+  rather than standard error. `coppers` has had it all along: a `.mod` load
+  prints 65 lines, and `emerald-droplets.xm` prints 130, because the XM has 46
+  patterns and 17 instruments to enumerate. The `tiles/frame … ms/frame …` line
+  results.md parses is intact and on its own line; it is simply buried. The fix
+  is in `cmake/Dependencies.cmake`, not in any demo, and it is worth checking
+  whether a Release-type build is already quiet before spending anything on it.
 - **`apply_fade` in `tools/make_sfx.py` both mutates in place and returns, and
   its caller discards the return.** Rewriting it as a pure function — the more
   natural spelling — would silently delete the fade from every effect with no
@@ -185,7 +325,7 @@ Surveyed 2026-08-10 by reading the headers, not from recollection of them.
 | `rig::Pad` | done, named `Button`s, three input paths, `down()` and `pressed()` | **nothing, per decision 14** — the binding row is rig's own, not a layer in `game/`. A demo declares its verbs and maps them itself. Per-device work and `released()` are deferred to [rig-device-bindings](../2026-09-01-rig-device-bindings/) |
 | `rig::FrameClock` / `FrameTiming` | done, clamped delta | a fixed-step mode for reproducible screenshots |
 | `tools/pack_atlas.py` | done, trims, verifies by rebuilding each frame, seeds an animation sidecar | nothing |
-| `tools/make_tilemap.py` | done, writes `.tsx` + `.tmx`, three tile layers and one object layer | a level rather than a stress fixture |
+| `tools/make_tilemap.py` | done, writes `.tsx` + `.tmx`, three tile layers and one object layer | nothing — the level it did not write is `tools/make_orchard_level.py`'s, a sibling that reuses its `.tsx` |
 
 ### The one real gap
 
@@ -218,16 +358,21 @@ scenes, no menus, no save, no dialogue.
 
 ### Naming, and why it is worth a paragraph
 
-The art pack calls two of its animations things this game is not.
-`Misc/Sunnyland FX/Sprites/enemy-death/` (6 frames, 32×32) is a generic dust puff,
-and `Characters/eagle/Sprites/attack/` (4 frames, 40×41) is a wing-down glide.
-`tools/pack_atlas.py` takes frame names from directory names, so whatever those
-directories are called at pack time is what lands in `data/*.xml` and gets quoted
-in every call site and test that follows.
+Three of the pack's animation names would be wrong or useless in this game's
+vocabulary. Two name something this game does not have:
+`Misc/Sunnyland FX/Sprites/enemy-death/` (6 frames, 40×41) is a generic dust puff,
+and `Characters/eagle/Sprites/attack/` (4 frames, 40×41) is a wing-down glide —
+nothing here dies and nothing attacks. The third,
+`Misc/Sunnyland FX/Sprites/item-feedback/` (4 frames, 32×32), is not wrong so much
+as it describes a pack's catalogue rather than a thing on screen; it is the
+twinkle a pickup leaves behind. `tools/pack_atlas.py` takes frame names from directory
+names, so whatever those directories are called at pack time is what lands in
+`data/*.xml` and gets quoted in every call site and test that follows.
 
-So they get renamed on ingest — `puff` and `swoop` — and the rename happens in the
-copy into `data/sunny-land/`, not by patching the atlas afterward. Renaming a
-frame later means touching the atlas, the sidecar, the code and the tests at once.
+So they get renamed on ingest — `puff`, `swoop` and `sparkle` — and the rename
+happens in the copy into `data/sunny-land/`, not by patching the atlas afterward.
+Renaming a frame later means touching the atlas, the sidecar, the code and the
+tests at once.
 
 The demo executable is proposed as **`orchard`**, one word, matching `skratch`,
 `coppers` and `sprites`. Open to a different one; it is cheap now and annoying
@@ -246,8 +391,8 @@ Counted and dimensioned on 2026-08-10 from
 | `Characters/eagle/Sprites/attack` → `swoop` | 4 | 40×41 | an air patroller, ignores terrain |
 | `Misc/Sunnyland items/Sprites/cherry` | 7 | 21×21 | the common pickup |
 | `Misc/Sunnyland items/Sprites/gem` | 5 | 15×13 | the rare pickup |
-| `Misc/Sunnyland FX/Sprites/item-feedback` | 4 | 40×41 | pickup sparkle |
-| `Misc/Sunnyland FX/Sprites/enemy-death` → `puff` | 6 | 32×32 | the bump reaction |
+| `Misc/Sunnyland FX/Sprites/item-feedback` → `sparkle` | 4 | 32×32 | pickup sparkle |
+| `Misc/Sunnyland FX/Sprites/enemy-death` → `puff` | 6 | 40×41 | the bump reaction |
 
 38 new frames. All CC0 1.0 under the same Ansimuz grant `data/PROVENANCE.md`
 already records for Foxy, so this adds art without adding a licence question —
@@ -265,6 +410,52 @@ something this game does not have, and at 2 frames playing once it is a flinch.
 the practical half — means the **recovery window sets the duration rather than
 the art doing it**. A once-through animation would have to be re-timed every time
 the recovery period was tuned.
+
+#### The source layout, and three things that do not follow from the table
+
+Re-measured 2026-09-01 against `data/Sunny-land-files/`, the upstream bundle as
+purchased. It is gitignored — `data/PROVENANCE.md` and `.gitignore` both say so —
+so it has to be unpacked before an ingest can run, and none of the paths below
+resolve in a clean checkout. Where each target comes from, under `Assets/`:
+
+| Target | Source path | Note |
+|---|---|---|
+| frog | `Characters/frog/Sprites/` | `idle` and `jump`, those two only |
+| opossum | `Characters/Opossum/opossum/` | flat — no animation subdirectory |
+| eagle | `Characters/eagle/Sprites/` | `attack` only |
+| cherry | `Misc/Sunnyland items/Sprites/cherry` | |
+| gem | `Misc/Sunnyland items/Sprites/gem` | |
+| puff | `Misc/Sunnyland FX/Sprites/enemy-death` | |
+| sparkle | `Misc/Sunnyland FX/Sprites/item-feedback` | |
+
+**The opossum has no per-animation directory.** The frog and the eagle are
+`Sprites/<animation>/`; the opossum is six frames sitting flat in
+`Opossum/opossum/` as `opossum-1.png` … `opossum-6.png`. Every other animation
+name in this ingest is transcribed from a source directory, and this one has to be
+**invented** — there is no directory to take it from. It is `opossum-walk`: the
+six frames are a ground patroller's single locomotion cycle, and the name should
+say what the animation is rather than repeat the actor, which is what a bare
+`opossum` would do once it sits in an atlas beside `frog-idle`.
+
+**There are three renames on ingest, not two.** `enemy-death` → `puff` and
+`attack` → `swoop` are the two the naming paragraph above argues. `sparkle` is the
+third and has the same justification — a pack-generic name for something this game
+uses specifically — but nothing in the source is called `sparkle` at all, so it is
+a rename rather than a transcription and the ingest step has to be told. It was
+previously carried only in the *Role* column above, which is a description of what
+the art is for and not an instruction.
+
+**Eight animations is the entire vocabulary, and it is thinner than "The game"
+reads.** `frog-idle`, `frog-jump`, `opossum-walk`, `eagle-swoop`, `cherry`, `gem`,
+`puff`, `sparkle`. The frog has two; the opossum and the eagle have one apiece, so
+two of the three animals have a single pose with no idle, no turn and no second
+gait. That is workable and it is not an obstacle — "The game" above already has the
+animals following fixed paths and ignoring the player, and an animal that never
+reacts never needs a pose for reacting — but it constrains how the animals can be
+written, and it is much less than a reader of "Three animals wander it" would
+otherwise assume. It belongs
+here rather than being discovered while hand-tuning `critters.anim.xml`. Foxy is
+the exception: it already has more than the game needs.
 
 ## Decisions
 
@@ -333,6 +524,71 @@ built the other way:
 The result should be a level that is *cheaper* than the fixture while looking
 like more. That is a claim, and `orchard --seconds N` reporting frame cost the
 way `sprites --tilemap` does is how it gets checked rather than asserted.
+
+**Checked 2026-09-13.** Both uncapped (`--fps 0 --seconds 3`) on
+`desktop-software`, 640x480, software driver, on an x86-64 dev box:
+
+```
+orchard      320 tiles/frame   1.598 ms/frame   626 fps
+sunnyland   1296 tiles/frame   3.244 ms/frame   308 fps   (sprites --tilemap)
+```
+
+A quarter of the tiles and half the frame cost, against a fixture built to be
+the worst case. Note the per-tile figure moves the *other* way — 4.99 us/tile
+against 2.50 — because the fixed per-frame work (the clear, the sprite, the
+present) is now spread over a quarter as many tiles; the per-frame number is the
+one the budget is written in. **This is a desktop measurement and not the
+answer**: the claim is about two Cortex-A7 cores, and nothing here has run on a
+Miyoo Mini. A capped run reports the cap and not the cost, so `--fps 0` is
+required to measure anything.
+
+**Re-measured 2026-09-17 with a corrected instrument, and the conclusion above
+is narrower than it looked.** Two defects were found in the meter, neither in
+the tile count:
+
+- `ms/frame` was `1000 / FrameClock::fps()`, and `fps()` is an exponential
+  moving average weighted 0.05 on the newest frame. It described the last
+  handful of frames, not the run — five runs of identical work spread 0.898 to
+  1.709 ms. It is now the run mean, `elapsed() / (frames() - 1)`.
+- `us/tile` divided the *whole frame* by the tile count, so it charged the
+  clear, the entities and the per-frame HUD rasterisation to the tilemap. The
+  demos now time `TileMap::draw` directly and divide that.
+
+`tiles/frame` was never wrong. It counts blits and clips to the target, which
+`tests/test_tmx.cc` already pinned. The three disputed figures were three
+window sizes of the same sound meter: 320/318 at 640x480, 567 at 1024x768
+(reproduced exactly), 903 fullscreen — where a 1920x1080 panel holds all 96x40
+cells of the map, so "tiles drawn" legitimately equals "filled cells". The
+report line now carries `view WxH` and a min/max so this cannot recur.
+
+Same preset, same 640x480, `--fps 0 --seconds 3`:
+
+```
+orchard      318 tiles/frame   1.06-1.35 ms/frame   0.063-0.082 ms tilemap   0.20 us/tile
+sunnyland   1296 tiles/frame   2.16-2.20 ms/frame   0.144-0.146 ms tilemap   0.11 us/tile
+```
+
+**Corrected 2026-10-06: the figures below were taken on a batching renderer and
+time the queueing of the tilemap, not the drawing of it.** With the queue flushed
+at each boundary the tilemap is most of the frame and `us/tile` is roughly ten
+times what is printed here. The conclusion drawn from them does not stand as
+written; see
+[orchard-first-device-run](../2026-10-06-orchard-first-device-run/), *Where the
+frame goes*. Not yet re-measured in this document.
+
+**The tilemap is about 6% of the frame in both.** The backdrop orchard omits is
+978 extra tiles and costs roughly 0.08 ms — not the ~1.6 ms gap between the two
+demos, which is the sprite grid and the HUD. So decision 4's architectural
+reasoning stands (a covering layer *is* a full-screen blit, and it does cost
+linearly in coverage) but the claim "this level is cheaper **because** it has no
+backdrop" is not what the numbers show at this resolution on this hardware: at
+0.08 ms the backdrop is affordable here, and what separates the two demos is
+everything else in the frame.
+
+What remains genuinely unestablished is the part that always was: two Cortex-A7
+cores with no GPU, where a full-screen blit competes with the mixer for the same
+memory bandwidth and the ratios need not resemble these at all. That is the
+user's to run.
 
 ### 5. The entity store is promoted and extended, not templated
 
@@ -890,6 +1146,450 @@ it mandates has since been built and tested — 25/25 on `desktop-software` and
 kind. **No line of `game/` has run on ARM or under GCC 8.3, and nothing has run
 on a device.**
 
+### 15. Frame names are namespaced by prefixing in the copy
+
+Settled 2026-09-01, closing the question opened 2026-08-14 that the art ingest and
+everything behind it were waiting on.
+
+**The source directories are copied into `data/sunny-land/` under their namespaced
+names** — `frog-idle/`, `frog-jump/`, `opossum-walk/`, `eagle-swoop/` — and
+`tools/pack_atlas.py` derives the animation names from them unchanged. Separator
+is a hyphen, matching `wall-grab` in `foxy.anim.xml`.
+
+The name *is* the directory name: `pack_atlas.py` builds every frame id as
+`f"{animation_dir.name}.{index:03d}"`. Decision 1 settled that the frog, opossum,
+eagle and the four items share one sheet, so those directory names all land in one
+namespace, and the frog and the opossum both arrive with an `idle`. Namespacing is
+what the one-sheet decision costs, and this is where it gets paid.
+
+**The prefix is free at the point it lands.** The copy is already renaming and
+renumbering — the source frames are 1-based and unpadded (`frog-idle-1.png`),
+while `pack_atlas.py`'s verify pass opens `<animation>/{index:03d}.png`, which is
+why `data/sunny-land/foxy/` holds `000.png` and not the names it was copied from.
+Prefixing is the same edit to the same step, and no tool changes: `pack_atlas.py`
+is untouched, so the property `data/PROVENANCE.md` records for `foxy.{png,xml}` —
+that regenerating produces identical bytes — is preserved by construction rather
+than by retesting.
+
+**This does not reopen decision 1.** One atlas per actor would make the collision
+impossible instead of naming around it, and it would not contradict decision 1's
+cost model — that model records binds as *not* what is billed for, so splitting
+the sheet costs nothing it measures. It is declined anyway, and the reason is not
+a cost: decision 1 is settled, its subject is how many sheets there are, and
+wanting shorter names is not new information about that. Splitting would also buy
+five files to keep in sync where there is one. A settled call gets reopened by
+evidence, not by a naming convenience.
+
+**The permanence decision 1 warns about is real and bounded here.** Decision 1
+declines to repack `foxy` partly because `data/foxy.xml` is a live test fixture,
+and a frame name is generally expensive to change once anything quotes it. For
+`critters` that exposure is smaller than it looks, because `AnimationSet` is built
+to make it so: it resolves a name to an `Index` once and then uses the `Index`, and
+`AnimatedSprite::play()` takes a `const Animation&` rather than a string. So the
+names appear in `AnimationSet::find()` calls at setup — `set[set.find("frog-idle")]`,
+the spelling `include/loaders/animations.hpp` documents — and not in the per-frame
+path. A rename touches `critters.anim.xml` and orchard's setup, which is one place
+each, rather than every site that plays an animation.
+
+That is a bound, not an exemption. Eight names chosen now are eight names the
+sidecar carries for good, and the reason to get them right at ingest stands.
+
+**The rule, which is the part that generalises:** *every animation name is unique
+within its atlas and reads as what it is.* That yields `frog-idle`, `frog-jump`,
+`opossum-walk`, `eagle-swoop`, `cherry`, `gem`, `puff`, `sparkle` — the four
+single-animation items carry no prefix, because they have nothing to be
+distinguished from and `cherry-cherry` names nothing that `cherry` does not.
+
+The rule is stated rather than a blanket "prefix everything" because the next
+person adding to `critters` needs to know which way to go, and the two cases go
+different ways. An actor with more than one animation is prefixed; a
+single-animation item whose own name is already unique and descriptive stays bare.
+Where they meet — a second item that happens to collide, or an actor whose one
+animation needs saying — uniqueness decides first and legibility second.
+
+### 16. The sprite-to-box offset is a pair of operations, not a field
+
+Settled 2026-09-13. `entities.hpp` records that the entity store's interface gets
+defined "when a second consumer turns up and says what the interface actually
+needs to be, not before, on a guess about what that will be." `orchard` is that
+consumer, and what it said is this: `Entity::draw()` draws the sprite at
+`(x, y)` and `box` is relative to `(x, y)`, so **`(x, y)` means two things at
+once** — the sprite's origin and the box's anchor. Every actor whose art is
+bigger than its collider carries the difference at the call site, which in
+`orchard/demo.cc` was nine lines reaching into the atlas by hand, and six more
+actor types were queued behind it.
+
+**No field, and no mode.** The Risks section below names "`game::Entity` becomes
+the place every later need gets appended to, one field at a time" as decision 5's
+residual risk, and a stored `offset_x/offset_y` or an `anchor` enum is exactly
+that. What landed instead is two operations over members that already exist:
+
+- `gfx::AnimatedSprite::frame_width()` / `frame_height()` — the *logical*
+  (untrimmed) size of the frame showing now. The atlas and the current index are
+  both private, so before this a caller wanting to place a sprite had to be
+  handed the atlas separately and index it itself; that is the arithmetic
+  `orchard` was doing. Zero when there is nothing to show, so "no answer yet" is
+  distinguishable from a 0×0 frame.
+- `Entity::align_box_to_sprite()` and `Entity::place_box(world_x, world_y)`.
+  The first writes `box.x`/`box.y` from the frame size by the one placement
+  convention — **centred horizontally, bottom edges flush** — and touches only
+  the offset, never the extent. The second is the exact inverse of
+  `world_box()`, and exists for the same reason it does: so a caller that has
+  resolved where the *box* must be does not subtract the offset by hand and get
+  the direction wrong.
+
+Methods rather than free functions, unlike `game::collide`: `collide` is free
+functions because it has no state and its arguments are a tile layer and a box,
+whereas both of these read and write an entity's own members and `place_box()`
+is literally `world_box()` run backwards. Splitting the pair across the two
+spellings would have been the arbitrary choice.
+
+**Both are opt-in, and that is load-bearing.** `sprites`, the first consumer,
+never sets a box at all. Anything that made `draw()` offset by the box
+unconditionally would have moved every entity in that demo by half a frame.
+`draw()` is unchanged; `align_box_to_sprite()` is a no-op when the sprite has
+nothing to show, so an unresolved frame leaves the spawn's box where the spawn
+put it rather than shifting the collider half its own width.
+
+**A premise in the report that prompted this was wrong, and checking it changed
+what was viable.** The report said the offset "has to be recomputed per frame
+... because trimmed frames differ in size." `AtlasFrame::width()`/`height()`
+return the *untrimmed* size, and no animation in either shipped atlas has a
+non-uniform logical frame size — `foxy` is 33×32 across all 36 frames, and
+`critters` has six sizes, one per animation and uniform within each. So the
+offset is constant per animation and there was never a per-frame constraint to
+design around. `orchard` still calls `align_box_to_sprite()` every step, because
+deriving from the frame showing now is always right and never stale — across
+animations the size *does* change, which is what would bite a value computed
+once at spawn.
+
+**Proof, because this moves arithmetic and must not move a pixel:**
+`orchard --screenshot` at 30, 90, 150, 240 and 400 frames is byte-identical
+before and after on `desktop-software`, and at 240 frames on `desktop-debug`
+too; `sprites --screenshot` is byte-identical as well, which is what covers the
+first consumer through the `AnimatedSprite::draw()` refactor. A deliberate
+one-pixel error in the bottom-align was injected and *did* change the hash, so
+the check is sensitive rather than vacuously passing. 26/26 on both presets,
+plus 10 new cases. Nothing has run on a device or under GCC 8.3.
+
+**One thing found on the way, documented rather than changed.** `orchard` writes
+`Entity::x`/`y` from the resolved collision position and then calls
+`Entities::update(delta)`, which integrates velocity into position
+unconditionally. It is correct today only because the avatar's velocity stays
+zero. An actor that sets both gets both — the resolved position is *added to*,
+not overwritten, so the symptom is a drift rather than an obviously ignored
+write. `entities.hpp` now says which of the two owns position: an entity the
+store moves sets a velocity and does not write `(x, y)`; an entity collision
+moves writes `(x, y)` through `place_box()` and leaves velocity at zero.
+
+### 17. `game::Sfx` is not built; the cue table is orchard's
+
+Settled by the operator, implemented 2026-09-15. It sits above decision 18 by
+number and lands after it in time, which decision 18's own opening paragraph
+already explains.
+
+**The reasoning is the charter's, not an argument against a proposal.**
+`game/CMakeLists.txt` puts **"anything that makes sound (`wreel::audio`)"** on
+its does-NOT list, and separately puts **"the rules of any ONE game, which live
+in that game's executable directory"** there too. A `game::Sfx` would be on the
+wrong side of both clauses at once: the cue names are `jump`, `land`, `pickup`,
+`bump` and `level-complete`, which is orchard's vocabulary and nobody else's,
+and holding `audio::Sound` handles would put `wreel::audio` on a dependency line
+that reads `game -> gfx -> util -> posix`. The module has just finished getting
+`wreel::rig` off that line under decision 14; adding `wreel::audio` to it in the
+next slice would be undoing that work while the reasoning was still warm.
+
+**This is decision 14's reasoning arriving a second time, and the second arrival
+is the part worth recording.** `game::Action` was "named `rig::Button` handles"
+carrying orchard's verbs. `game::Sfx` was "named `audio::Sound` handles" carrying
+orchard's cues. They are the same error with one noun changed, and — this is the
+bit — **they entered the plan by the same route**: the **Proposed shape** sketch
+below, written before the charter existed, quoted afterwards as though it were a
+specification. That section already records how `game::Action
+Pickup/Jump/Left/Right` got into the tree: "not by anyone arguing for it, but by
+a sketch being quoted as a specification." It has now happened twice.
+
+So the guard is stated once here rather than being rediscovered a third time:
+**a line in Proposed shape is a sketch, and the charter in
+`game/CMakeLists.txt` is the authority.** Where they disagree the charter wins,
+and the sketch gets corrected — which is what the `game::Sfx` line below now
+records rather than silently losing.
+
+#### The cues are named for the WAVs, not for the rules that fire them
+
+The rules slice left a seam of three — `Cue::Collect`, `Cue::Bump`,
+`Cue::Victory` — named after the rule that fired. The five files are named
+`jump`, `land`, `pickup`, `bump`, `level-complete`. Those are two vocabularies
+for one set of things, and this slice renamed the enum rather than adding two to
+it.
+
+The WAV names won because with five cues and five files, matching names make
+`cue_name()` the filename stem: `orchard::Cues` loads by looping over the enum
+and there is exactly one place that says which sounds exist. Naming for rules
+needs a second table from rule to file, and two tables that have to agree is the
+shape that drifts without anything failing. The cost is that renaming a WAV
+renames an enumerator, which is a compile error — the cheap kind of wrong.
+
+#### `jump` and `land` come off edges the player does not report
+
+Three of the five are free. `pickup`, `bump` and `level-complete` come off
+`orchard::Rules`, which is already once-per-event by construction — decision 18
+argues each of the three latches, and the cue is simply the `true` return.
+
+`jump` and `land` have no rule behind them at all, and this is the constraint the
+Risks section names: **effects are one-shot and fire on edges, once per event,
+never once per frame of the state that caused them.** `Player::on_ground()` is a
+*state*. A player standing still is on the ground on all sixty frames of every
+second it stands there, and a `land` cue taken from it directly restarts the same
+chunk sixty times a second. On this dev box — 44100 Hz, 16 voices, a forgiving
+buffer — that is inaudible as a defect. On the handheld, 22050 Hz with 8 voices
+and a 2048-sample buffer, it is a starved mixer.
+
+`orchard::CueEdges` turns the two states into the two events, and **the jump edge
+is taken from the vertical velocity turning upward, not from the ground going
+away.** That is not a stylistic preference. `coyote_time` exists precisely so a
+jump can fire several frames *after* the ground has gone, by which point the
+ground transition has already been spent on the walk-off; a ground-based detector
+misses every coyote jump. `Player::step()` applies gravity unconditionally and
+zeroes the velocity at both a floor and a ceiling, so a launch is the only thing
+in it that can turn the velocity upward — which makes the velocity sign crossing
+exact rather than approximate.
+
+Pinned in `tests/test_orchard.cc` rather than asserted: 300 frames of standing
+still produce **zero** land cues, one jump produces exactly one of each, a
+coyote-time press produces its jump cue, and the shipped 758-frame crossing
+produces 6 jump and 10 land cues — two orders of magnitude below the frame count,
+which is what "one-shot" means as a number.
+
+#### `--mute` silences by opening nothing
+
+`include/audio/device.hpp` states that a program constructing no `Device` does
+not initialise the audio subsystem at all. So `--mute` constructs no `Device`,
+loads no chunk and loads no module, rather than setting a volume to zero. A timed
+run and a screenshot run are then not audio tests in any residual sense, and the
+`--seconds` pair with and without `--mute` is the *with music / without music*
+measurement the Risks section asks for.
+
+Checked rather than assumed: `--screenshot` at 1400 frames is byte-identical
+across two sounding runs and a muted one.
+
+### 18. Contact costs the last pickup; the goal ends the run
+
+Settled 2026-09-14, implementing the rules slice. **Numbered 18 and not
+17**: 17 is reserved for the cue table, which the operator settled separately and
+which lands in the slice after this one. The numbers are identifiers and not a
+chronology, so this one landing first is not a reason to renumber that one. "The game" above already
+settles most of this and it is quoted rather than re-argued: *Touching one costs
+you your last pickup and sits you down dizzy for a moment.* Avoidance, not
+combat — nothing kills, there is no health, and the only fail state is losing
+progress you can re-earn. What follows is the four things that paragraph does
+not say, each of which had to be decided to write `orchard/rules.cc`.
+
+**A bump is edge-triggered, per animal, and that is the whole of the
+anti-loop.** A bump lands on the frame an overlap *begins* and on no other, so
+sixty frames spent standing inside an opossum is one bump — the same
+press-versus-held distinction `Intent` already makes for the Jump button, and
+the thing most likely to be silently wrong because every frame of it draws
+correctly. The latch is kept whatever the phase, which is what settles the case
+that would otherwise trap a run: a dizzy spell ending while the player is still
+inside the animal that caused it has no edge left to give, so the player has to
+separate before it can be bumped again. Without that it is re-bumped on the
+recovery frame, loses the next pickup, and never walks out. A grace timer was
+the alternative and is worse: it has to be long enough for the worst case and is
+therefore too long for every other one.
+
+**The goal ends the run, and this narrows "The game".** That paragraph ends
+*Collect everything and the level is done*, and it was written 2026-08-10. The
+map gained a `goal` spawn on 2026-09-08, three weeks later, and the level ships
+with one. So the exit condition is reaching the goal and not clearing the map:
+the pickups are what the run is *scored* on and the goal is what *ends* it,
+which also means a run can end with pickups left behind and that is a choice the
+player made rather than a failure. Requiring a full sweep would make the last
+cherry a search, which is a different game and a worse one on a level 2.4
+screens wide. **The older sentence is superseded, not reinterpreted.**
+
+**`victory` is one frame, so `Stakes::victory_time` holds the run open.**
+Decision 7's note, paid. The same reasoning that picked `dizzy` over `hurt` at
+ingest applies harder here: six frames on a repeat loop can at least be watched,
+whereas one frame has no duration at all and the art cannot end anything. The
+flourish is therefore the HUD line and the cue, and the clock is the rules'.
+
+**`sparkle` marks a collection and `puff` marks a bump**, which is read off the
+art table above rather than chosen: `sparkle` is the pack's `item-feedback` —
+"the twinkle a pickup leaves behind" — and `puff` is its `enemy-death`, a
+generic dust cloud renamed on ingest because nothing in this game dies. Both are
+`Loop::Once`, and a burst is an entity with a sprite, no box and no rules state,
+reaped when `finished()` goes true.
+
+#### The score is per `Behaviour`, not a field per pickup
+
+`Stakes::points[]` and the run's held counts are both indexed by `Behaviour`.
+A `cherries` field beside a `gems` field reads better at one call site and makes
+the pickup vocabulary exist in three places — the map, the enum, and the score —
+so adding a pear would be an edit to all three and forgetting the third is a
+pickup that scores nothing while drawing perfectly. The subscript idiom is
+already in the tree: `tests/test_orchard.cc` counts the shipped spawn table that
+way.
+
+#### The eagle's collision box is centred on its frame, and the fix is orchard's
+
+`Entity::align_box_to_sprite()` centres horizontally with the bottom edges
+flush, which is right for anything that stands. A flier has no feet, so there is
+nothing for that rule to be right about.
+
+**Measured, not argued.** Over all four `eagle-swoop` frames in the shipped
+atlas the art's centre of mass is row 21.8 of the 41-row logical frame. A 24-row
+box placed bottom-flush spans rows 17–41, centred on row 29: **7.2 rows low,
+most of a third of its own height**, which puts the bird's head outside its own
+hitbox and the empty sky under its talons inside it. Centred spans 8.5–32.5 and
+is 1.3 rows out. Before this slice that was invisible; now that contact costs a
+pickup it is the difference between being hit by a bird and being hit by
+nothing.
+
+**It landed in `orchard` and not in `game::Entity`, deliberately.** Decision 16
+is one slice old and rejected a stored `offset_x/offset_y` and an `anchor` enum
+*by name*, as the shape that would make `Entity` the place every later need gets
+appended to. One flier in one demo is not the second consumer that would justify
+reopening that. `orchard/demo.cc` has a nine-line `align_box_to_flight()` in its
+anonymous namespace instead. If a second demo grows a flier the question is
+open again, and the honest form of it then is not "add a mode" but "should the
+box be aligned to the *art* rather than to the logical frame" — see the next
+item, which is the same question arriving from a different direction.
+
+**Proved by screenshot diff rather than by reading it.** With and without the
+eagle branch, at 1150 frames on `desktop-software`, the only pixels that differ
+are a 31×32 region containing the eagle, and its art moved down exactly 8 px
+(17 − 8.5, floored at draw). Nothing else in the frame moved, which is the claim
+that mattered: the box stays where the spawn put it and only the art moves.
+
+#### Found on the way: the frog is drawn 5 px above its own collision box
+
+Not fixed in this slice, and not fixable from `orchard` — **fixed 2026-09-15 by
+[decision 19](#19-the-baseline-anchor-reads-the-art-not-the-logical-frame)**,
+which is where the answer and its proof are. `frog-idle`'s logical frame is 35×32
+but its art occupies rows 6–27, leaving five empty rows at the *bottom*. So
+"bottom edges flush" aligns the box to the frame's bottom and the frog is drawn
+floating five pixels over the floor it is standing on — visible in
+`orchard --screenshot --frames 480`. `frog-jump`'s art reaches row 32, so the
+frog also drops five pixels the instant it leaves the ground and rises five when
+it lands.
+
+The opossum is the only one of the three the convention is actually right for:
+its art runs to row 28 of a 28-row frame. So `align_box_to_sprite()`'s premise —
+that a logical frame's bottom edge is the art's baseline — holds for one actor
+out of three in this atlas and is a property of the *art*, not of the rule.
+
+The general fix is to align the box to where the art actually is, which needs
+the trim rectangle. `AtlasFrame` has it and `AnimatedSprite` does not expose it,
+so no demo can do this correctly today and a per-actor fudge constant in
+`orchard` would be six magic numbers hiding a missing accessor. **That makes it a
+`gfx`/`game` question and it is raised as one rather than worked around here.**
+
+**Answered 2026-09-15 by [decision 19](#19-the-baseline-anchor-reads-the-art-not-the-logical-frame).**
+
+### 19. The baseline anchor reads the art, not the logical frame
+
+Settled 2026-09-15, as the `gfx`/`game` answer to the question decision 18 left
+open above. `gfx::AnimatedSprite` gains `frame_art()` — the current cel's
+trimmed region as a rectangle in frame-local pixels — and
+`Entity::align_box_to_sprite()` sits the box's bottom edge on the art's lowest
+drawn row instead of on the logical frame's bottom edge.
+
+**No `anchor` enum and no stored offset.** Decision 16 rejected both by name and
+that still holds. This corrects what the one convention *measures*; it does not
+add a second one.
+
+**The two axes deliberately read different things**, and the asymmetry is the
+whole design. Vertically the box reads the art, because the bottom edge is a
+*contact point*. Horizontally it keeps reading the logical frame, because there
+is no contact point on the sides and the logical frame is the only reference
+that is constant across an animation. Centring on the art's own bounding box
+instead would pin its horizontal centre, and `opossum-walk` shows what that
+costs: its art spans cols 1–29 on one cel and 1–36 on another, so the body would
+slide 3.5 px backwards to hold the centre of an extending limb still.
+
+**What it fixed, measured on `desktop-software` with the frog probed per
+frame over 400 frames.** Before, the frog's art sat 5.00 px above its collision
+box while grounded and flush with it while airborne, so the art stepped ±5 px at
+all eight take-off and landing transitions. After, the gap is 0.00 px on every
+frame of the run and the step at all eight transitions is 0.00 px. The grounded
+frog's lowest drawn row moved from 475 to 480 — the floor its box was already
+resting on.
+
+**The player had the same defect and nobody had noticed.** `foxy`'s `run` cels
+end at rows 32, 31, 32, 32, 31, 32 of a 32-row frame and its `jump` cels at 30
+and 29, so the fox bobbed 1 px twice per stride and popped 2–3 px on every jump.
+Both are gone. Measured by screenshot diff at frames 100 and 108: the player's
+art moved +3 px airborne and +1 px on the two run cels that were short.
+
+**The opossum was not the clean case decision 18 recorded.** Its art reaches row
+28 of 28 on five cels but row 27 on `opossum-walk.000`, so it carried a 1 px bob
+of its own. The premise held for *no* actor in `critters` without qualification.
+
+#### The flight anchor stays, because it answers a different question
+
+The report that produced this row claimed that aligning to the art would be
+"correct for all four cases with no mode at all", so `orchard`'s
+`align_box_to_flight()` could be deleted. **Checked, and it is wrong.**
+
+`eagle-swoop`'s art ends at rows 39, 38, 39, 39 of its 41-row frame, so
+bottom-flush on the *art* puts its 24-row box at a centre of 26.75 against an
+art centre of mass at 21.8 — **4.5 rows low**, where bottom-flush on the frame
+was 7.2 rows low and centring is 1.3. Reading the art recovers about a third of
+the error and leaves the rest. It does not subsume the flier.
+
+**The reason it cannot, stated so nobody has to rederive it:** the two calls
+answer different questions, not one question with a mode.
+`align_box_to_sprite()` answers *"where are this thing's feet"*, and its whole
+content is that the answer is a property of the art rather than of the frame.
+A flier has no feet. There is no baseline to find, correctly or incorrectly, so
+a better way of finding one changes nothing. "A baseline in the wrong place" and
+"no baseline at all" are different defects and a single rule cannot be right
+about both — which is the concrete form of why decision 16's rejected `anchor`
+enum is still the wrong shape. The enum would make them look like two settings
+of one thing.
+
+**The helper is renamed `centre_box_on_sprite()` and now has two callers**, in
+`orchard/demo.cc`'s anonymous namespace. `align_box_to_flight` was named for the
+eagle, and the goal marker is the second piece of art in this demo with no
+baseline: it draws `sparkle`, a radially symmetric burst whose centre of mass is
+row 16.0–16.5 of a 32-row frame on every cel while its lowest drawn row travels
+from 25 to 32 as it expands. Anchoring that to its own growing edge pushed it
+7 px into the ground it marks — a regression this change introduced and this
+routing removes. Two pieces of centred art in one demo is a routing table in
+that demo; it is still not a mode on the shared call.
+
+#### What the screenshots show
+
+`sprites --screenshot` is **byte-identical**, captured from this build either
+side of the change. It is the first consumer, it never sets a box, and it is the
+control on `frame_art()` having touched the draw path.
+
+`orchard --screenshot` changes, and every region that moved is accounted for.
+At frames 1, 30, 60, 200, 600 and 1150 the differing pixels resolve to: the frog
+(+5 px, the defect), the opossum (+1 px, and only on the cel that is short), the
+cherries (+3 px), the gems (+1 px) and the player (+1 px running, +3 px
+airborne). **The eagle and the goal marker do not appear in the diff at all** —
+both are centred and neither reads the changed axis.
+
+The cherries and gems move because they are also centred art with no baseline:
+`cherry`'s 15-row art sits in a 21-row frame with three empty rows above and
+three below. The shift is an improvement rather than a correction — the cherry's
+art centre goes from 2.5 px above its pickup box's centre to 0.5 px below it —
+but it is **not** what this row set out to change, and routing the pickups to
+`centre_box_on_sprite()` as well would make them exact. Left alone deliberately:
+that is a placement judgement about two more actors, not part of fixing the
+anchor, and it is recorded here rather than made quietly.
+
+**A caution for whoever runs the next screenshot diff.** The first run of this
+one was contaminated: another row regenerated `data/orchard.tmx` and
+`data/tileset.png` between the baseline capture and the comparison, and the
+clouds it added read as five sky-coloured regions that looked like this change
+moving tiles. `orchard --screenshot` is deterministic — three runs produced
+identical bytes — so the whole discrepancy was the data moving underneath.
+Capture both sides against a frozen copy of `data/` through `$WREEL_DATA_DIR`
+when other rows are live.
+
 ## Proposed shape
 
 ```
@@ -899,6 +1599,8 @@ game::Level          the parsed layers + a copy of the collision layer + the spa
 game::collide        AABB vs. the collision layer; AABB vs. AABB
 game::Camera         follow with a deadzone, clamped to level bounds, integer out
 game::Sfx            named audio::Sound handles, loaded once through asset_path()
+                     ^ WRONG AND NOT BUILT — superseded by decision 17.
+                       The cue table is orchard::Cues, in orchard/cues.{hpp,cc}
 orchard/             the demo: rules, HUD, --screenshot, --seconds, --mute
 tools/make_sfx.py    data/sfx.xml -> the WAVs (decision 6)
 ```
@@ -927,6 +1629,13 @@ code is right where this sketch was wrong.** Corrected 2026-08-30 against
   can be moved, rebuilt or dropped without invalidating the level. The copy is
   one `std::vector<int>` of width × height — 9 KB for the 64×36 fixture, against
   128 MB on the smallest target.
+
+**The `game::Sfx` line is the second one this sketch got wrong in the same way,
+and decision 17 argues it at length.** It names a shared module for one game's
+five cue names, and it puts `wreel::audio` on a dependency line the charter
+excludes it from — the identical pair of faults the action line below had, with
+one noun changed. Nothing was built from it. It is struck above rather than
+deleted, so the route by which it arrived stays legible.
 
 **The action line above was wrong, and this document is where the error started.
 It has now been corrected twice, and the honest account is that the first
@@ -964,17 +1673,27 @@ them; decision 9 reversed that, because `Aabb` lives in `collide.hpp` and
 `entities.hpp` includes it. And the promotion's "two commits" clause was not
 honoured — see decision 11.
 
-- [ ] Ingest the art. Copy frog, opossum, eagle, cherry, gem, puff and sparkle
-      into `data/sunny-land/`, renaming `enemy-death` → `puff` and `attack` →
-      `swoop` **in the copy**. The source frames are 1-based and unpadded
-      (`frog-idle-1.png`), and `pack_atlas.py`'s verify pass opens
-      `<animation>/{index:03d}.png`, so the copy renumbers as well as renames —
-      as `data/sunny-land/foxy/` already did. Pack as `critters.{png,xml}` with
-      `tools/pack_atlas.py` (verification is on by default; `--no-verify` turns it
-      off — there is no `--verify` flag); hand-tune `critters.anim.xml`. Record the
-      new rows in `data/PROVENANCE.md` under the existing CC0 grant.
-      **Settle the frame-name question below first** — it is cheap now and
-      expensive once `critters.anim.xml` is hand-tuned against it
+- [x] Ingest the art — **done, committed 2026-10-16 in `3af0cb9`**: the eight directories under
+      `data/sunny-land/critters/`, `data/critters.{png,xml}` and
+      `critters.anim.xml` (file dates 2026-09-05), with their
+      `data/PROVENANCE.md` rows. Unblocked by decision 15, which settles the
+      names. Unpack
+      `data/Sunny-land-files/` first; it is gitignored and not in a clean
+      checkout. Copy the seven targets into `data/sunny-land/` as the eight
+      directories decision 15 names: `frog-idle`, `frog-jump`, `opossum-walk`,
+      `eagle-swoop`, `cherry`, `gem`, `puff`, `sparkle`. Three of those are
+      renames rather than transcriptions — `enemy-death` → `puff`,
+      `attack` → `swoop`, `item-feedback` → `sparkle` — and `opossum-walk` is
+      invented, because the opossum's six frames sit flat in
+      `Characters/Opossum/opossum/` with no animation directory to take a name
+      from. All of it happens **in the copy**, not by patching the atlas after.
+      The source frames are 1-based and unpadded (`frog-idle-1.png`), and
+      `pack_atlas.py`'s verify pass opens `<animation>/{index:03d}.png`, so the
+      copy renumbers as well as renames — as `data/sunny-land/foxy/` already did.
+      Pack as `critters.{png,xml}` with `tools/pack_atlas.py` (verification is on
+      by default; `--no-verify` turns it off — there is no `--verify` flag);
+      hand-tune `critters.anim.xml`, which is eight animations and no more.
+      Record the new rows in `data/PROVENANCE.md` under the existing CC0 grant
 - [x] `game::collide` — AABB against a tile layer, AABB against AABB, with the
       swept/resolve behaviour spelled out. Headless tests first; this is the part
       most likely to be subtly wrong and the easiest to pin. `util::floor_div`
@@ -1032,25 +1751,95 @@ honoured — see decision 11.
       Deferred, not scheduled. It inherits decision 13's `released()` analysis
       and the open question of how a per-device table relates to
       `SDL_GameControllerAddMapping`, which results.md already prefers
-- [ ] A level, by extending `tools/make_tilemap.py` or a sibling — Tiled is still
-      not available here, and `data/PROVENANCE.md` should keep saying so plainly
-- [ ] `orchard` — the rules, the HUD, `--screenshot`, `--seconds`, `--mute`, and
-      the fill-rate line. Builds on all five presets; no GPU requirement, same as
-      `sprites`. Its `WREEL_BUNDLE_ASSETS` list names every file it opens,
-      including the WAVs, since that list is what a firmware bundle carries
+- [x] A level, by extending `tools/make_tilemap.py` or a sibling — **done
+      2026-09-08, as a sibling: `tools/make_orchard_level.py` writes
+      `data/orchard.tmx`.** Tiled is still not available and `data/PROVENANCE.md`
+      says so for this map as it does for the fixture. A sibling rather than a
+      flag because the two maps have opposite jobs — decision 4 authors this one
+      *against* the overdraw `sunnyland.tmx` exists to maximise — and because
+      regenerating the fixture would churn tests that assert against it. It
+      borrows the fixture's `sunnyland.tsx` and `tileset.png`, so it adds no art
+      and needs neither Pillow nor the gitignored pack. 96×40 tiles of 16×16 =
+      1536×640, larger than the 640×480 panel on both axes so the camera scrolls
+      and clamps on each; `ground` and `canopy` visible, `collision`
+      `visible="0"`; 23 spawns typed `player`, `frog`, `opossum`, `eagle`,
+      `cherry`, `gem`, `goal`. **The end-to-end gap open question 2 named is
+      closed**: `test_tmx` now loads the file and builds a `game::Level` from it,
+      five cases / 123 assertions, and `tests/CMakeLists.txt` gained
+      `wreel::game` on that line to allow it
+- [x] `orchard` — **done: the rules and HUD 2026-09-14, the cues and music
+      2026-09-15; committed 2026-10-16 in `3af0cb9`** (rows below and in the table at the top). Built
+      under GCC 8.3 and played to the goal on a Miyoo Mini from the Onion
+      bundle; see the Onion bundle task below. The rules, the HUD,
+      `--screenshot`, `--seconds`, `--mute`, and
+      the fill-rate line. No GPU requirement, same as `sprites`. Builds on the
+      desktop presets and `miyoomini`, which is the whole matrix this initiative
+      is answerable for until the ordered devices arrive; nothing about it should
+      be written so that `steam`, `rk3326` or `h700` would need changing when
+      they are added back. Its `WREEL_BUNDLE_ASSETS` list names every file it opens,
+      including the WAVs, since that list is what a firmware bundle carries.
+      **First slice done 2026-09-13**: the executable, the draw, and walking and
+      jumping. `orchard/{main,demo,player,verbs}.cc` with the verb table in
+      `verbs.cc` per decision 14, `--screenshot`/`--seconds`/`--mute`, and the
+      fill-rate line. Animals, pickups, the goal as a goal, the HUD and every cue
+      are still out; `--mute` is a flag with nothing behind it. The `critters`
+      atlas is loaded and checked but nothing is placed from it. 26/26 on
+      `desktop-software` and `desktop-debug`, zero warnings; nothing has run on a
+      device or under GCC 8.3
+- [x] **Is the level playable, not merely loadable** — **answered 2026-09-13:
+      yes.** `tests/test_orchard.cc` compiles `orchard/player.cc` in and walks
+      the real `data/orchard.tmx` from the `player` spawn to the `goal` spawn,
+      arriving in 758 frames on a 1/60 step. The jump is `jump_speed` 400 px/s
+      against `gravity` 1200 px/s^2 — a 66.6 px rise in closed form, 63.3 px as
+      stepped at 60 Hz — which clears the 48 px branch step with margin. **Two
+      corrections to what the map was believed to be**, both read off the shipped
+      file rather than the generator: the ground profile steps up 32 px in
+      **three** places and not two (columns 20, 40 and 62), and the branch at
+      columns 46-48 sits two rows over ground at row 30, leaving a 16 px gap that
+      a 28 px player **cannot walk through**. The middle of the level therefore
+      has no ground-level route at all: crossing it means mounting that platform.
+      That is playable and arguably intentional, but it was not a property anyone
+      had stated, and neither `check_layout` nor `check_level_contract` in
+      `tools/make_orchard_level.py` would catch a branch placed low enough to seal
+      a route rather than low enough to bury itself
 - [x] `tools/make_sfx.py` + `data/sfx.xml` — square with a duty parameter, an
       LFSR noise channel, an envelope, a 1–2 ms fade at both ends, 22050 Hz mono
       WAV out. Merge-not-overwrite on the description, as `pack_atlas.py` does
       for the animation sidecar, and a sha256 regeneration check
-- [ ] Wire the cues: jump (glissando), land, pickup, bump, and the
+- [x] Wire the cues: jump (glissando), land, pickup, bump, and the
       level-complete flourish. One chunk each. `--mute` exists so a timed run and
-      a screenshot run are not also an audio test
+      a screenshot run are not also an audio test — **done 2026-09-15 as
+      `orchard::Cues`, per decision 17, and not as `game::Sfx`.** The three cues
+      with rules behind them come off `Rules`' own edges; `jump` and `land` come
+      off `orchard::CueEdges`, which reads the launch from the vertical velocity
+      turning upward rather than from `on_ground()`, because `coyote_time` means
+      a jump can fire after the ground has gone. `--mute` opens no device at all.
+      26/26 on `desktop-software` and `desktop-debug`, zero warnings; the two
+      crossings still take 758 and 1204 frames. The real `pulseaudio` device was
+      opened and all five chunks played through it with nothing dropped, so the
+      mixer path is exercised rather than stubbed. **Nobody has listened to it,
+      though** — every check here is a count, a log line or a checksum, and
+      whether the cues sit well against the module is still unheard.
+      2026-10-16: confirmed audible by the user on the device (sound effects
+      and module playback in orchard and coppers); not logged. That says the
+      output is heard and correct, not how the cues balance against the
+      module, which nobody has reported on. Decision 6
+      already records that listening is the only real review method for a sound
 - [x] Add the `data/emerald-droplets.xm` row to `data/PROVENANCE.md` — malmen,
       copyleft with artist attribution — done 2026-08-10, with the detail block
-- [ ] Name `emerald-droplets.xm` in the demo's `WREEL_BUNDLE_ASSETS`, which waits
-      on the demo existing
+- [x] Name `emerald-droplets.xm` in the demo's `WREEL_BUNDLE_ASSETS`, which waits
+      on the demo existing — **done 2026-09-15**, with the five WAVs beside it as
+      `sfx/<name>.wav`. `data/sfx.xml` is deliberately NOT listed: it is
+      `make_sfx.py`'s input and no line of the game opens it. Checked rather
+      than assumed that `cmake -E copy_if_different` creates the `data/sfx/`
+      subdirectory in a bundle, since every other entry in that list is flat
 - [ ] Add it to the Onion bundle as a fourth entry, and to `docs/DEVELOPMENT.md
-      § Status` with an honest verification state
+      § Status` with an honest verification state — **entry written 2026-10-06,
+      built under GCC 8.3 into `pkg/wreel-0.2.0-onion.tar.gz` the same day, and
+      run once on a Miyoo Mini, played to the goal**
+      ([results.md](../2026-07-25-target-validation/results.md)). Open: the
+      `docs/DEVELOPMENT.md § Status` row, and committing. The rest is in
+      [orchard-first-device-run](../2026-10-06-orchard-first-device-run/)
 
 ## Risks
 
@@ -1069,12 +1858,49 @@ where per-frame CPU lives, and the handheld runs 22050 Hz / 2048 samples /
 evidence for this one. Cheap to settle rather than argue about: `orchard
 --seconds` with and without music, on the device.
 
+*2026-10-16, citing [results.md § 2026-10-06](../2026-07-25-target-validation/results.md#2026-10-06--orchard-first-run-on-the-device):*
+with the XM playing, the one device run held a capped 59.7 fps and the game's
+own work was 4.1 ms a frame. That shows the 24-channel mix fits under the cap;
+it does not say what the mix costs, because the `--mute` half of the pair has
+not been run on the device.
+
+**That experiment is now runnable rather than arguable, and it is the user's to
+run.** Since 2026-09-15 `orchard` plays the module and `--mute` opens no audio
+device at all, so `orchard --seconds N` and `orchard --seconds N --mute` are the
+two halves of the measurement with nothing else differing between them. The
+fill-rate line reports voices alongside the tile figures for the same reason.
+On this dev box the two read 16.659 and 16.673 ms/frame at 318 tiles/frame,
+which is a difference of 0.08% and says nothing at all — a 44100 Hz mixer with
+16 voices on an idle desktop was never going to be the bottleneck. **Nor could
+that pair have shown anything either way: 16.66 ms is 60.0 fps to three digits,
+so both runs were sitting on a frame cap and reporting it rather than reporting
+a cost.** Uncapped and with the corrected meter the frame is around 1.1 ms, so
+the cap was absorbing more than 90% of the interval. Re-run it with `--fps 0`.
+The number
+that matters is the same pair on the Miyoo Mini, where 24 channels are mixed at
+22050 Hz on two Cortex-A7 cores that are also rasterising every pixel.
+
 **Generated audio is easy to get subtly wrong in ways that only show up on the
 device.** The dev box is 44100 Hz with 16 voices and a forgiving buffer; the
 Miyoo Mini is 22050 with 8 and 2048 samples. A cue that fires every frame while a
 button is held, or eight overlapping pickups, will sound fine here and starve
 there. Effects are one-shot and triggered on edges (`pressed()`, not `down()`),
 and the fill-rate run reports voice count alongside frame cost.
+
+**Paid on 2026-09-15, and the edge that needed the care was not the button
+one.** Three of the five cues come off `Rules`, which is already once-per-event.
+The two that do not — `jump` and `land` — had to be derived from
+`Player::on_ground()` and `velocity_y()`, which are *states* and not events;
+decision 17 argues the derivation and `tests/test_orchard.cc` pins it, including
+the case that 300 frames of standing still produce zero `land` cues. The
+fill-rate line now carries `voices N peak M dropped K`.
+
+**One caveat on `peak`, because it is easy to misread.** It is a lower bound
+derived from the voice index `Sound::play()` returns, and it is only meaningful
+from a run that keeps real time. A `--screenshot` run steps a fixed delta as
+fast as it can while the mixer drains at wall-clock rate, so its cues pile up:
+the same 1400-frame play reports peak 6 as a screenshot and peak 1 over
+`--seconds`. Quote the `--seconds` figure.
 
 **"Simple game" is the least reliable estimate in software.** The scope above is
 deliberately small and will still try to grow a title screen, a pause menu, a
@@ -1086,6 +1912,12 @@ overdraw *should* cost less than the fixture. It has not been measured and might
 not, particularly if a parallax layer sneaks in. `orchard --seconds` is the
 instrument; the number goes in results.md next to the others.
 
+*2026-10-16, citing [results.md § 2026-10-06](../2026-07-25-target-validation/results.md#2026-10-06--orchard-first-run-on-the-device):*
+measured once on the device, flushed and capped: 316 tiles/frame, tilemap
+2.274 ms of 16.762, no parallax layer. The comparison against the fixture that
+the claim is about has not been redone with the flushed meter, so the claim
+itself is still unsettled.
+
 **Still nothing has run on a device.** Unchanged from every snapshot before this
 one, and this one adds code on top of a fill-rate figure taken only on a dev box —
 1.162 ms at 640×480, times a guessed 10–20× for two Cortex-A7 cores, which
@@ -1093,6 +1925,11 @@ straddles the 60 fps budget. The mitigation is that this work does not *depend* 
 that answer: a wrong guess changes how much fits on screen, not whether the
 collision code is correct. But it is the reason not to build a second level before
 the first one runs on hardware.
+
+**Since 2026-10-06 the first one has run on hardware**, once: software
+renderer, capped, music on, 59.7 fps, the game's own work 4.1 ms a frame — see
+[Where this stands](#where-this-stands-2026-10-16). Uncapped, muted and the
+`Miyoo Mini` render driver are still unmeasured.
 
 ## Open questions
 
@@ -1106,14 +1943,14 @@ the first one runs on hardware.
   The consequence stands unchanged: with one frame of art doing the work, the
   flourish has to come from the sound cue and the HUD.
 
-### Five questions opened 2026-08-30, none of them answered
+### Five questions opened 2026-08-30, one of them since answered
 
 These came out of the pass that finished `game::Level` and `game::Action`. Each
 is a **decision nobody has made**, not a defect and not an oversight — they are
 here so the next session meets them as open rather than rediscovering them. None
-of them is what the art ingest is waiting on; that is still the frame-name
-question below. Number 2 is the one with a date on it — it blocks the level task
-specifically.
+of them was what the art ingest was waiting on; that was the frame-name question
+below, now answered as decision 15. Number 2 was the one with a date on it — it
+blocked the level task specifically, and the level task answered it.
 
 1. **What bound, if any, `game::Entity`'s coordinate conversion should carry, and
    whether exceeding it clamps or throws.** The `Entities::draw` rounding fix
@@ -1123,17 +1960,24 @@ specifically.
    whether it is floored first or not. Picking a coordinate bound is a design
    decision with a gameplay consequence, so the fix stopped at the rounding and
    said so.
-2. **Which side of the spawn-layer name moves.** `data/sunnyland.tmx` names its
-   object layer `objects`; `include/game/level.hpp` declares
-   `spawn_layer_name = "spawns"` and `game/level.cc` throws when no object layer
-   matches. So building a `Level` from the only `.tmx` in the tree throws *"no
-   object layer named spawns"* before it ever reaches the spawn bounds check —
-   **the two halves of that pipeline have never been connected end to end.**
-   Neither file is wrong on its own; each is internally consistent, and the
-   contract between them was simply never exercised. Either rename the layer in
-   the fixture and in `tools/make_tilemap.py` which generates it, or widen what
-   `Level` accepts. Deliberately unfixed in both directions, because picking is
-   the decision. **This one will bite the moment the level task starts.**
+2. ~~**Which side of the spawn-layer name moves.**~~ **Answered 2026-09-08:
+   neither.** The question assumed one map and two consumers. There are now two
+   maps: `data/sunnyland.tmx` is a `gfx::TileMap` fill-rate fixture that no
+   `Level` consumes, and `data/orchard.tmx` is a level and meets `Level`'s
+   contract as written — a `collision` tile layer and a `spawns` object layer,
+   both spelled as `include/game/level.hpp` declares them. Nothing was renamed
+   and `Level` was not widened.
+
+   The end-to-end gap this question was really about **is closed, by running it
+   rather than by arguing it**: `test_tmx` loads `data/orchard.tmx` through
+   `loaders::load_tmx`, builds a `game::Level` from the result, and checks the
+   spawn table against the collision layer the same file carries. That contract
+   had never been exercised on a file before, in either direction.
+
+   One case pins the negative as well — the fixture still throws `LevelError`,
+   deliberately. Asking for a `Level` from a stress fixture is a category error,
+   not a missing feature, and the case is there so renaming either layer has to
+   be a decision rather than a diff.
 3. **Which of D29's two candidate fixes to take for the Tiled tile-object
    origin.** An object with a `gid` is anchored bottom-left, and
    `loaders::load_tmx` reads `y` without inspecting `gid`, so a tile object's `y`
@@ -1180,44 +2024,31 @@ discussion.
    change of shape and not an answer. The reservation of the name `Action` is
    what keeps it answerable later.
 
-### One open question, found 2026-08-14 while checking the first task
+### The question found 2026-08-14, answered 2026-09-01
 
-**Still open as of 2026-08-22, and it is now the only thing blocking progress.**
-The layer is done; the art ingest, the level, `orchard`, the cue wiring and the
-bundle entries all sit behind this one answer.
+- ~~**How the `critters` atlas namespaces its frame names.**~~ **Answered
+  2026-09-01: prefix in the copy, hyphen-separated — [decision
+  15](#15-frame-names-are-namespaced-by-prefixing-in-the-copy).** This was the
+  only thing blocking progress; the art ingest, the level, `orchard`, the cue
+  wiring and the bundle entries all sat behind it, and none of them does now.
 
-One correction to the three options below, from re-reading them against decision
-1: the objection to one-atlas-per-actor is *texture binds the Miyoo Mini may not
-want to pay*, and decision 1 forty lines earlier records that binds were measured
-**not** to be what is billed for, against 3.5 ns per pixel. That reason does not
-survive this document's own finding. The real cost of per-actor atlases is five
-files to keep in sync, not binds. Similarly, the risk attributed to teaching
-`pack_atlas.py` a namespace argument is overstated if the argument is optional
-and defaults to off — `data/foxy.*` would then regenerate through an unchanged
-code path by construction.
+  The problem, for the record it was raised on: `pack_atlas.py` takes one source
+  directory and derives animation names from the directory names under it, so
+  packing frog, opossum, eagle and the pickups together produces bare `idle.000`
+  and `jump.000` — and the frog and the opossum both have an `idle`. Decision 1
+  spends its length on why a frame name is expensive to change after the fact,
+  and then this case fell outside it.
 
-Which leaves prefix-in-the-copy as the cheapest: the copy step is *already*
-renaming (`enemy-death` → `puff`, `attack` → `swoop`) and renumbering to
-`{index:03d}`, so a prefix is the same edit in the same place at no extra cost.
-
-**How the `critters` atlas namespaces its frame names.** `pack_atlas.py` takes one
-source directory and derives animation names from the directory names under it, so
-packing frog, opossum, eagle and the pickups together produces bare `idle.000` and
-`jump.000` — and the frog and the opossum both have an `idle`. Decision 1 above
-spends its length on why a frame name is expensive to change after the fact, and
-then this case falls outside it.
-
-Three ways out, none of them decided:
-
-- **Prefix in the copy** — `frog-idle/`, `opossum-idle/` as directory names. No tool
-  change; the sidecar carries the prefix forever.
-- **One atlas per actor** — `frog.png`, `opossum.png`, `eagle.png`, `pickups.png`.
-  Matches `foxy.png`'s precedent and costs texture binds the Miyoo Mini may not
-  want to pay.
-- **Teach `pack_atlas.py` a namespace argument.** The cleanest names, and the only
-  option that changes a tool `data/foxy.*` is already generated by — the
-  regeneration-produces-identical-bytes property in `data/PROVENANCE.md` is what
-  that would put at risk.
+  Two of the three candidates weighed here were weighed against reasons that did
+  not hold, which is worth keeping because both errors were the same shape — a
+  cost asserted rather than looked up. One atlas per actor was charged with
+  *texture binds the Miyoo Mini may not want to pay*, when decision 1 forty lines
+  earlier records that binds were measured **not** to be what is billed for,
+  against 3.5 ns per pixel; its real cost is five files to keep in sync. And
+  teaching `pack_atlas.py` a namespace argument was charged with risking the
+  regeneration-produces-identical-bytes property of `data/foxy.*`, which an
+  optional argument defaulting to off would not touch. Decision 15 rejects both
+  on their actual costs instead.
 
 Everything else above is decided; what is unverified is listed under Risks and is a
 measurement rather than a choice.

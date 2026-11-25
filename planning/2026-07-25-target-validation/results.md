@@ -79,7 +79,7 @@ path that D25 forced. `exited 0`.
 | Does the bundle run on non-Onion firmware? | **Yes**, unmodified, from the stock Apps menu |
 | Is `libGLESv2.so` needed at load? | **No** — 16 libraries resolved, it is not one |
 | Does the GL-free bundle draw? | Yes. 863 frames, 59.7 fps, vsync-bound |
-| Are the three base libraries present on stock? | Yes — `libstdc++.so.6`, `libz.so.1`, `libgcc_s.so.1` all resolved, the last two out of `/customer/lib` |
+| Are the three base libraries present on stock? | Yes — `libstdc++.so.6`, `libz.so.1`, `libgcc_s.so.1` all resolved: `libz.so.1` out of `/customer/lib`, the other two out of `/lib` [corrected 2026-10-16: previously said "the last two out of `/customer/lib`", which the trace above contradicts] |
 | `HOME` on stock | `/` — unusable, and a *different* wrong value from Onion's `/mnt/SDCARD/RetroArch/` |
 | Is `libpadsp.so` an Onion thing? | **No.** Stock preloads it too, from `miyoo354/lib/` |
 | Audio | Fails. Same MI_AO contention as Onion, and stock ships no remedy |
@@ -795,7 +795,27 @@ SDL_RENDER_DRIVER=software
 [I] renderer context 640x480 via software (software)
 [I] coppers: software 320x240 layer, 640x480 window, 2612 frames, 59.7 fps,
              plot 0.668 blit 6.551 present 9.487 ms, scroller cpu 402 us
+[I] layer: 640x480
+[I] layer: 320x240
+[I] layer: 640x480
+[I] layer: 320x240
+[I] layer: 640x480
+[I] layer: 320x240
+[I] layer: 640x480
+[I] layer: 320x240
+[I] layer: 640x480
+[I] layer: 320x240
+[I] layer: 640x480
 ```
+
+**Those `layer:` lines are the only evidence any Miyoo key binding has been
+exercised on hardware.** One is printed at start-up; the other eleven each
+follow a press. `Demo::set_layer_height` is reachable at runtime from
+`pressed(rig::Button::X)` alone, and this launch passed no `--layer-height`, so
+each of the eleven is an X press on the device — which makes `SDLK_LSHIFT` to
+`Button::X` the one binding of the seven in `from_key`'s Onion group that a
+device run has ever confirmed. Kept here rather than cited, because the run's
+own log is a `*.log` and therefore untracked.
 
 | | 2026-07-28, `return 0` | 2026-08-02 |
 |---|---|---|
@@ -1015,3 +1035,152 @@ sprites --tilemap --seconds 20 --fps 0                       # whatever the driv
 The last line of each run reports `tiles/frame`, `ms/frame`, `fps` and `us/tile`,
 and the log carries the same. Device runs are the user's; this file takes the
 numbers when they come back.
+
+## 2026-10-06 — `orchard`, first run on the device
+
+One run, Onion on a Miyoo Mini, the bundle built under GCC 8.3 in the container
+(`pkg/wreel-0.2.0-onion.tar.gz`, sha256 `70298e40…264ddbc6`), launched as shipped:
+`args=--software --verbose`, so SDL's software renderer over the `Mini` video
+driver, capped at the default frame rate, audio on. The level was played to the
+goal — 4383 frames, about 73 s. Source: `stdout.log` at the repository root.
+
+The date is the build's, not the run's. The tarball and the `orchard` inside it
+are stamped 2026-10-06 22:53 EDT; the device's `ls` prints UTC, so the same
+binary shows there as `Oct  7  2026`, and its size, 2,287,508 bytes, matches the
+tarball's (as does `libSDL2-2.0.so.0` at 1,480,704). The device clock reads 1970,
+so the log carries no run date, and none is recorded elsewhere.
+
+| | |
+|---|---|
+| Build | `orchard 0.2.0 [target miyoomini], compiler 8.3.0, SDL 2.32.10 compiled, 2.32.10 linked`; the loader resolved `App/Orchard/lib/libSDL2-2.0.so.0` |
+| Driver | `renderer context 640x480 via software (software)` |
+| Audio | `22050 Hz, 2 ch, 2048 sample buffer, 8 voices, driver Miyoo Mini`; peak 2 concurrent, 0 dropped |
+| Frame rate | 59.7 fps mean and recent, 16.762 ms/frame, longest frame 37.9 ms, 0 clamped |
+| Phases, ms/frame | step 0.045, clear 1.378, tilemap 2.274, entities 0.119, hud 0.299, **present 12.582** |
+| Tilemap | 316 tiles/frame (min 42, max 441), 7.21 µs/tile |
+| Exit | `stopped by the rules` (goal reached), `--- exited 0 ---` |
+
+### What it settles
+
+- **The game runs and is playable on the software driver at the panel's rate.**
+  Everything the game itself does — step through HUD — is **4.1 ms a frame**,
+  a quarter of the 60 fps budget.
+- **`SPACE` → A is confirmed on hardware**, the second binding of the seven in
+  `from_key`'s Onion group after `LSHIFT` → X on 2026-08-02. The `--verbose`
+  key lines show `[D] input: key Space (sym 0x20, scancode 44) -> a`
+  (`stdout.log` L70), and A reaches the game: 36 presses,
+  31 jump cues. The same lines show `Left`, `Right` and `Up`, but the arrows
+  already responded on 2026-07-28 ([MIYOO-MINI.md § 6.3](../../docs/MIYOO-MINI.md))
+  and are bound identically on the desktop, so they add nothing new.
+- **Sound effects play on the device.** Device audio itself is not new: the
+  mixer opened on `driver Miyoo Mini` on 2026-07-28 (entry above), and
+  `coppers` played music through it (root `coppers-stdout.log`, the `audio:` and
+  `music: playing` lines). What is new is `audio::Sound` — `Mix_PlayChannel` on
+  a loaded chunk — which `orchard`'s cues are the only program in the tree to
+  use, and which no earlier device log shows: 31 jump, 36 land,
+  17 pickup, 10 bump and 1 level-complete cue, peak 2 voices, 0 dropped. It has
+  run on the dev box (`test_audio`, dummy driver), not under qemu, where the
+  `miyoomini` SDL2 is built without the dummy audio driver and opens no device.
+  The log shows the path executed (cue counts, `orchard: music
+  emerald-droplets.xm`), not that it was heard. 2026-10-16: confirmed audible
+  by the user on the device (sound effects and module playback in orchard and
+  coppers); not logged. The user did not name the firmware; the matching logs
+  are both Onion runs.
+- **The HUD is not the frame here.** 0.299 ms of 16.762, with each phase
+  flushed before it is timed (`orchard/demo.cc`, the `flush()` calls in the
+  frame). It is not comparable with September's 1.332 ms desktop HUD figure,
+  which the [handoff](../2026-10-06-orchard-first-device-run/) shows to be the
+  batching artefact rather than a HUD cost; flushed, the desktop Debug figure is
+  0.021 ms. A HUD texture cache could
+  save at most the 0.299 ms, so it is not needed on this evidence.
+- **The counts reconcile.** 17 pickup cues less 10 bumps, each of which drops
+  the last pickup, is the 7 held at the goal: 6 cherries and 1 gem, 11 points.
+
+### What it does not settle
+
+- **What `present` costs.** 12.582 ms is the time inside `Context::present()`
+  on a capped run that landed at 59.7 fps. That is what a present blocking on
+  the panel's refresh would look like, and it is also what a 12 ms copy would
+  look like; this run cannot tell them apart. The `--fps 0` run can: a frame
+  rate well above 60 means the wait was pacing, one pinned near 60 with the
+  same `present` figure means the driver blocks or the copy is that slow.
+- **Start.** `Quit pressed x0` — the run ended at the goal, so the Quit binding
+  and the Menu key are both still unobserved.
+- **The `Miyoo Mini` render driver**, the mixer's cost (`--mute`; still
+  unisolated, since the 2026-10-16 confirmation measured nothing), and
+  L1/R1/Select/B/X/Y under this program.
+
+## 2026-10-16 — the current tree on desktop and under GCC 8.3
+
+The working tree as it stood, uncommitted layers included, with the 2026-10-09
+mirroring work (handoff group 7). That tree was committed the same day as
+`3af0cb9`..`9921511`, group 7 as `1b811fd`. Dev box, `WREEL_WERROR` on throughout. No
+device, and no preset other than these three.
+
+| Run | Result |
+|---|---|
+| `desktop-software`, `CCACHE_DISABLE=1 cmake --build --preset desktop-software --clean-first` | **full compile**: 658/658 steps, 501 of them compiles, 50.2 s wall, 8 m 32 s user. 0 lines matching `warning:` or `error:` |
+| `ctest --preset desktop-software` after it | **26/26** |
+| `desktop-debug`, configure + build | 77/77 steps from a build tree last configured 2026-09-15. ccache stats were zeroed first: 35 misses and 5 hits, so 35 TUs went through the compiler. 0 warnings, 0 errors |
+| `ctest --preset desktop-debug` | **26/26** |
+| `miyoomini` under GCC 8.3, `build/miyoomini-83`, `-DWREEL_TARGET_FIRMWARE=onion`, default target | **fails under `-Werror`**. Incremental, not clean-first; then `-k 0` for every failure. Two errors, nothing else |
+| `miyoomini` GCC 8.3 suite under `qemu-arm` | **24 ran, 20 passed**; `test_atlas` and `test_animation` excluded because they do not build |
+
+An earlier `desktop-software --clean-first` the same day took 3 s because ccache
+was the launcher and served most TUs from the cache. That is a valid zero-warning
+result (a hit replays a compile that already passed with the same flags), but not
+a full compile (no hit/miss counts were taken for it), and the ccache-disabled run above supersedes it.
+
+**The GCC 8.3 failure** is `-Wcast-align` (on in `cmake/ProjectOptions.cmake`),
+in two test files, both in lines the 2026-10-09 mirroring work added and neither
+staged:
+
+```
+tests/test_atlas.cc:489:60: error: cast from 'Uint8*' {aka 'unsigned char*'} to 'uint32_t*' {aka 'unsigned int*'} increases required alignment of target type [-Werror=cast-align]
+tests/test_animation.cc:493:70: error: cast from 'const Uint8*' {aka 'const unsigned char*'} to 'const uint32_t*' {aka 'const unsigned int*'} increases required alignment of target type [-Werror=cast-align]
+```
+
+Both address a pixel row as `reinterpret_cast<std::uint32_t*>(static_cast<Uint8*>(pixels) + pitch)`.
+Compiler: `arm-linux-gnueabihf-g++ (GNU Toolchain for the A-profile Architecture
+8.3-2019.03 (arm-rel-8.36)) 8.3.0`. The only other diagnostics are `-Wpsabi`
+notes ("parameter passing ... changed in GCC 7.1") from doctest and from library
+and demo TUs (`loaders/animations.cc`, `game/entities.cc`, `gfx/animation.cc`,
+`orchard/demo.cc`; `build.log` L229-297). They are notes, not warnings. Library and demo code
+compiled; `test_entities` and `test_orchard` relinked. Recorded as D34. Debian's
+armhf GCC 12 build was not run, so whether this is specific to GCC 8.3 is
+unverified.
+
+**Under `qemu-arm`** (`QEMU_LD_PREFIX` the toolchain sysroot,
+`ctest --test-dir build/miyoomini-83 -E '^test_(atlas|animation)$'`): 20 pass.
+The other four are the same four that failed in September:
+
+- `test_audio`: 6 of 9 cases fail at `REQUIRE( device.available() )`;
+  `test_playlist`: 4 of 6, with `current()` empty and `playing()` false. The
+  `miyoomini` SDL2 is built without the dummy audio driver, so no device opens
+  under emulation (the handoff's reading; the run output shows the symptom).
+- `test_renderer`: 3 of 8 cases fail. `test_renderer.cc:78`
+  `CHECK( Miyoo Mini == software )`, then `:79`
+  `CHECK_FALSE( context.accelerated() )`; `:102`, `Accelerated` did not throw;
+  `:117`, `CHECK( Miyoo Mini == software )` again. The grafted `Miyoo Mini`
+  render driver is picked and reports itself accelerated.
+- `test_entities`: SIGSEGV. Re-run alone with doctest's `-s`, it crashes in
+  *a negative world x floors to its pixel rather than truncating*
+  (`test_entities.cc:774`), 24 cases passed before it, and passes 31/31 with
+  `SDL_RENDER_DRIVER=software`. Detail in D33.
+
+Logs are in a scratch directory outside the repository; no new core landed at
+the root.
+
+### What it settles, and what it does not
+
+- **Desktop is clean.** Both desktop presets are warning-free and green on
+  the current tree. `desktop-software` was a full compile; `desktop-debug`
+  ran 35 TUs through the compiler (ccache misses) and took 5 from the cache.
+- **Group 7 does not build under GCC 8.3.** It needs fixing before it can go
+  into a bundle. Nothing was fixed in this pass.
+- **The GCC 8.3 build was incremental**, so for the TUs it did not recompile,
+  "warning-free under GCC 8.3" rests on whatever earlier build produced their
+  objects. A clean-first rebuild was not run.
+- **Not run:** `bundle-onion`, so `pkg/` is untouched. `test_atlas` and
+  `test_animation` under qemu. Debian's armhf cross build. Any analysis of
+  the cores. Any device.

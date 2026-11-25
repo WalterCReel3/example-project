@@ -149,9 +149,11 @@ Consequences, which are what shrink this snapshot:
   [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/).
 
 ## Open questions
-- Is `glm` worth taking as a dependency for matrix maths, versus extending
+- ~~Is `glm` worth taking as a dependency for matrix maths, versus extending
   `include/math/vector.hpp` (see defect D7)? `libglm-dev` is header-only and
-  already in the bootstrap script's `math` group.
+  already in the bootstrap script's `math` group.~~ **Answered 2026-07-26:** glm
+  `1.0.3` is pinned via FetchContent and `include/math/vector.hpp` is deleted —
+  see [gfx-renderer-and-gles2 § Decided: glm](../2026-07-26-gfx-renderer-and-gles2/README.md#decided-glm-and-mathvector3-is-retired).
 - Do the Mali handhelds want GLES 2.0 or 3.x? Mali-G31 supports GLES 3.2, but
   vendor blobs on older firmware sometimes only expose 2.0 reliably.
   `wreel-probe` on real hardware answers this — see
@@ -161,4 +163,6 @@ Consequences, which are what shrink this snapshot:
 
 - [docs/TARGETS.md § Graphics backends](../../docs/TARGETS.md)
 - `gfx/CMakeLists.txt` — the existing gate
-- `include/gfx/software/` — the pattern a `gles2` backend should mirror
+- `include/gfx/software/` — the pattern a `gles2` backend should mirror. That
+  path no longer exists: it was renamed to `include/gfx/renderer/`, and the GLES2
+  renderer lives in `include/gfx/gles2/`

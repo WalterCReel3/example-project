@@ -178,6 +178,11 @@ LD_TRACE_LOADED_OBJECTS=1 ./@WREEL_BUNDLE_BINARY@ 2>&1
 # resolved the assets, and overriding it would mask a wrong bundle layout.
 export HOME="$PWD"
 
+# A program that fails before it opens its own log — a loader error, a
+# mistyped argument — would otherwise leave the previous run's log in place to
+# be folded in below under this run's header.
+rm -f ".local/share/wreel/coppers/coppers.log" "@WREEL_BUNDLE_REPORT@"
+
 echo "--- running ---"
 echo "SDL_RENDER_DRIVER=${SDL_RENDER_DRIVER:-<unset, SDL picks>}"
 echo "args=@WREEL_BUNDLE_ARGS@"

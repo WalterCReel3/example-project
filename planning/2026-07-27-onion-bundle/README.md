@@ -22,6 +22,7 @@
 >   config, and a switch in `local.env` would have meant editing a file on the
 >   SD card to reach the diagnostics at the moment the device is misbehaving.
 >   Both are self-contained, including a copy of `libSDL2` each.
+
 **Serves:** [packaging-distribution](../2026-07-25-packaging-distribution/),
 [target-validation](../2026-07-25-target-validation/) steps 3 and 4,
 [coppers-cracktro](../2026-07-26-coppers-cracktro/) stage 4
@@ -442,7 +443,10 @@ Its EGL is **Mesa**, so satisfying that library means dragging in gbm, glapi, X1
 xcb and libdrm — on a device with no DRM node — and at that point you are using
 the whole parasyte tree, including its matched loader and libc. Which is what
 parasyte *is*: an alternate userland for binaries built against a newer glibc. Ours
-is built against the device's own 2.28, so it wants none of it.
+is built against the device's own 2.28, so it wants none of it. *(Corrected
+2026-10-16: 2.28 is the toolchain sysroot's glibc. The device's is only known to
+be at least that, because binaries with a `GLIBC_2.28` floor run on it; see the
+glibc question under Open questions.)*
 
 **steward-fu's prebuilt is self-contained, and that settles it.** Its stack needs
 only base system libraries:
@@ -497,7 +501,7 @@ through to the working directory; setting the override makes that instrumentatio
 report nothing useful. Leave it unset, and let the log line say `beside the
 executable`.
 
-### 6. The bundle ships the four assets `coppers` opens, not all of `data/`
+### 6. The bundle ships the five assets `coppers` opens, not all of `data/`
 
 `glyphs-16x16.png`, `Speedy.fon`, and the three `.mod` files. Not `teapot.obj`, not
 the test fixtures, not `FreebooterUpdated.ttf`.
@@ -657,11 +661,22 @@ container works, but it is a second container in the loop rather than one comman
 **Stage 2 — the device**
 
 - [x] Copy to the SD card; enable SSH in Tweaks — done 2026-07-28
-- [x] Confirm `ldd --version`, and that `libstdc++.so.6`, `libz.so.1` and
+- [~] Confirm `ldd --version`, and that `libstdc++.so.6`, `libz.so.1` and
       `libgcc_s.so.1` are present — done 2026-07-28, the run's own loader trace is
       the record. The clause about the vendored GL stack needing all three is moot
       now: that stack is gone, and since 2026-08-01 `lib/` holds only the SDL2 we
-      build
+      build. *(Corrected 2026-10-16: no `ldd --version` output is recorded in any
+      root `*.log` or doc. The loader traces that survive (`coppers-stdout.log`,
+      `coppers-software-stdout.log`, `diag-*.log`, `stdout.log`, all untracked)
+      resolve only `libc`, `libm`, `libdl`, `libpthread` and `ld-linux-armhf` from
+      `/lib`, plus the firmware's `libmi_*`/`libshmvar`. None names the three
+      libraries above. They are recorded present on **stock** firmware: the
+      2026-07-30 loader trace in
+      [results.md](../2026-07-25-target-validation/results.md#2026-07-30--the-bundle-loses-218-mb-of-gl-and-runs-on-two-firmwares)
+      resolves `libstdc++.so.6` and `libgcc_s.so.1` from `/lib` and `libz.so.1`
+      from `/customer/lib`. On Onion their presence is unshown: the 2026-07-28
+      trace in results.md is elided past `libmi_gfx.so`, and that run's own log is
+      not kept.)*
 - [ ] ~~**The static build first**~~ — **not run, and no longer the cheap first
       check.** The bundle went straight onto the device and answered the SDL2
       question directly. Kept because a headless
@@ -694,7 +709,10 @@ container works, but it is a second container in the loop rather than one comman
       symbols from `libGLESv2.so`, so the dependency is a link-time artefact and
       dropping it is a build step. Landed the same day — `bundle-onion` now
       drops it behind the symbol check that justifies it, and the staged bundle
-      is **8.8 MiB** where it was 30 MB. Still unrun on a device
+      is **8.8 MiB** where it was 30 MB. Ran on a device 2026-07-30, from the
+      stock firmware's Apps menu: 16 libraries resolved, `libGLESv2.so` not
+      among them ([results.md](../2026-07-25-target-validation/results.md),
+      2026-07-30)
 - [ ] ~~A Flip build of that library with `DEF_FB_W`/`DEF_FB_H` at 752×560~~
       **Revised 2026-07-31: not what is needed.** Those two `#define`s are
       defaults the driver overrides at startup from `fbset`, so the framebuffer
@@ -703,9 +721,12 @@ container works, but it is a second container in the loop rather than one comman
       touch — so no full-screen texture can be created there. See the correction
       to decision 4a above, and item 4 of
       [miyoo-sdl2-fork § 3](../2026-07-31-miyoo-sdl2-fork/)
-- [ ] Pin the runtime the way every other dependency is pinned — `docs/TARGETS.md`
+- [x] Pin the runtime the way every other dependency is pinned — `docs/TARGETS.md`
       records a version and a reason for each, and right now the bundle's SDL2 is
-      "whatever was in that directory"
+      "whatever was in that directory". **Done 2026-07-30** for the prebuilt
+      ([gles-free-runtime](../2026-07-29-gles-free-runtime/) stage 3), then
+      **superseded 2026-08-01**: the bundle's SDL2 is now the project's own
+      pinned 2.32.10 build ([miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/))
 
 **Stage 3 — write down what happened**
 
@@ -760,21 +781,36 @@ still applies.
 - **Does Onion's parasyte SDL2 exist on every install, or only some?** It is in the
   repository's `static/build/`, which suggests every install, but the device is the
   authority. If it is absent, the fallback becomes the default and decision 3
-  inverts.
+  inverts. **Moot since 2026-08-01:** the bundle carries its own SDL2 and does not
+  use `parasyte`. Unanswered, and no longer needs answering.
 - **Should the bundle carry its SDL2 unconditionally?** Self-contained is more
   robust and the file is 5 MB; using the firmware's copy is more likely to match the
   blobs underneath it. Deliberately deferred to what the first run does, because
-  either answer is currently a guess.
+  either answer is currently a guess. **Answered 2026-08-01: yes.** It carries the
+  project's own pinned 2.32.10 build
+  ([miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/)).
 - **What is the device's actual glibc?** The parasyte SDL2 needs at most
   `GLIBC_2.27`, which is a lower bound rather than the answer. `ldd --version` over
   SSH settles it, and it is worth recording in `docs/TARGETS.md` next to the
   never-ship-Debian-cross-GCC rule, which currently states the hazard without
-  stating the number.
+  stating the number. **Partly answered 2026-07-28:** binaries with a
+  `GLIBC_2.28` floor load on the device (stage 2 above), so it is at least 2.28.
+  The exact number is still not recorded, and `docs/TARGETS.md` § 2 still does not
+  state one. **Updated 2026-10-16:** [`docs/TARGETS.md` §
+  2](../../docs/TARGETS.md#2-the-glibc-forward-compatibility-trap) now records the
+  floor (at least 2.28, exact version not recorded). The binary that proves it is
+  the 2026-10-06 `orchard` (`GLIBC_2.28` in `.gnu.version_r`, loaded and exited 0
+  per root `stdout.log`). The 2026-07-28 binaries' glibc requirement was not
+  inspected, so the floor is proven from 10-06, not 07-28. The exact number still
+  needs `ldd --version` over SSH.
 - **Does `SDL_GetPrefPath` even succeed on this firmware?** It creates directories;
   a FAT32 SD card is fine, but the bundle may be mounted somewhere unexpected.
   `coppers` handles the empty return by not opening a log file, which would make the
   first run silent in the worst possible way — worth a fallback to `stdout.log`,
-  which is why `launch.sh` tees.
+  which is why `launch.sh` tees. **Answered: yes, with `HOME` overridden to the
+  bundle** (decision 4). The device run's `stdout.log` (kept at the repository
+  root as `coppers-stdout.log`, untracked) ends with the contents of
+  `.local/share/wreel/coppers/coppers.log`.
 
 ## References
 

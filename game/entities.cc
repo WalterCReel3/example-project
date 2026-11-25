@@ -25,6 +25,28 @@ int to_pixel(double world)
 
 } // namespace
 
+void Entity::align_box_to_sprite()
+{
+    const int frame_width = sprite.frame_width();
+    const int frame_height = sprite.frame_height();
+
+    if (frame_width <= 0 || frame_height <= 0) {
+        return;
+    }
+
+    // Vertically the art, horizontally the logical frame, and the asymmetry is
+    // the point: the bottom edge is a CONTACT POINT and the sides are not.
+    // Sitting the box on the art's lowest drawn row plants the feet; centring
+    // on the art's own bounding box would instead pin its horizontal centre,
+    // so an opossum extending a limb forward through its walk cycle — cols
+    // 1..29 on one cel and 1..36 on another — would have its body slide 3.5 px
+    // backwards to keep that centre still.
+    const gfx::renderer::Rect art = sprite.frame_art();
+
+    box.x = (frame_width - box.width) / 2.0;
+    box.y = (art.y + art.h) - box.height;
+}
+
 Entities::Id Entities::add(Entity entity)
 {
     ++_live;
@@ -155,7 +177,8 @@ int Entities::draw(gfx::renderer::Context& context, int camera_x,
         const Entity& entity = slots[index].entity;
 
         entity.sprite.draw(context, to_pixel(entity.x) - camera_x,
-                           to_pixel(entity.y) - camera_y, entity.scale);
+                           to_pixel(entity.y) - camera_y, entity.scale,
+                           entity.mirror);
         ++drawn;
     }
 

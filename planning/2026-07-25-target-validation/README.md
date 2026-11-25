@@ -21,6 +21,12 @@ verified documentation — the Miyoo toolchain's own `setup-env.sh`, upstream SD
 tags, Debian package metadata — but *documented* and *working* are different
 claims, and only `desktop-software` currently supports the second one.
 
+**Updated 2026-10-16:** that was the state on 2026-07-25. Hardware runs on a
+Miyoo Mini Plus are recorded in [results.md](results.md) from 2026-07-28
+(`coppers`) through 2026-10-06 (`orchard`). `steam` has never been configured;
+`rk3326` and `h700` have run only under qemu. All three are outside the current
+validation scope ([docs/TARGETS.md § Validation scope](../../docs/TARGETS.md#validation-scope-desktop-and-miyoomini)).
+
 This is the cheapest high-value work available. Every hour here removes guesses
 from the foundation the rest of the project sits on.
 
@@ -47,10 +53,10 @@ authoritative record — this list is kept for the reasoning, not the checklist.
 | Preset | Blocker | Risk if wrong |
 |---|---|---|
 | ~~`miyoomini` **device** toolchain~~ | ~~needs the toolchain container~~ | **DONE 2026-07-27.** GCC 8.3.0 builds the tree with zero errors and zero warnings after one fix (D21), 15/15 under qemu, `GLIBC_2.28` floor. None of the predicted C++17 library gaps materialised — see [results.md](results.md) |
-| `steam` | needs the sniper container | glibc targeting, static libstdc++ |
+| `steam` | needs the sniper container | glibc targeting, static libstdc++. **Out of the current validation scope** (desktop and `miyoomini`, [docs/TARGETS.md](../../docs/TARGETS.md#validation-scope-desktop-and-miyoomini)); never configured, still open |
 | ~~`docker/miyoomini.Dockerfile`~~ | ~~needs Docker + upstream base image~~ | **DONE 2026-07-27.** Both images build; the CMake/Ninja layering works and is needed exactly as predicted, since buster's CMake 3.13 cannot read the presets. One wrinkle worth knowing: run commands with `bash -c`, not `bash -lc` — a login shell re-reads `/etc/profile` and discards the image's `PATH`, so the layered CMake loses to buster's |
-| any real hardware | needs a device | display path, SDL video driver, gamepad enumeration |
-| Mali GLES2 on `rk3326` / `h700` | needs a device | **new since 2026-07-26.** Both now request an accelerated render driver and can build `gfx::gles2`. If a firmware's vendor blobs do not expose a working GLES2 context, `gfx::renderer` degrades to software and the game still runs — that is what `PreferAccelerated` is for — but `gfx::gles2` cannot, and would throw at context creation |
+| ~~any real hardware~~ | ~~needs a device~~ | **Miyoo Mini Plus: DONE 2026-07-28** (OnionOS; video driver `Mini`, input, audio, but nothing on the panel); display path first drew 2026-07-30 (stock firmware), and since — see [results.md](results.md). No Anbernic or TrimUI device has been run |
+| Mali GLES2 on `rk3326` / `h700` | needs a device | **Out of the current validation scope** (desktop and `miyoomini`, [docs/TARGETS.md](../../docs/TARGETS.md#validation-scope-desktop-and-miyoomini)); build-verified only, still open. **new since 2026-07-26.** Both now request an accelerated render driver and can build `gfx::gles2`. If a firmware's vendor blobs do not expose a working GLES2 context, `gfx::renderer` degrades to software and the game still runs — that is what `PreferAccelerated` is for — but `gfx::gles2` cannot, and would throw at context creation |
 
 Resolved since this was written:
 
@@ -73,8 +79,10 @@ cmake --preset desktop-debug && cmake --build --preset desktop-debug
 
 Predicted here as "the most likely thing to be broken". It was not: zero errors,
 `skratch` links, `wreel-probe` reports a real GL context. The only failure was in
-the new build glue, not the 2016 code — see
-[docs/DEVELOPMENT.md § The `gl_legacy` backend](../../docs/DEVELOPMENT.md#the-gl_legacy-backend).
+the new build glue, not the 2016 code. The DEVELOPMENT.md section that recorded
+it (§ The `gl_legacy` backend) was removed with the 2016 backend in 3e364ed
+(#5, 2026-07-26); the surviving record is
+[docs/DEVELOPMENT.md § Status](../../docs/DEVELOPMENT.md#status).
 
 The `-Wold-style-cast` prediction was also wrong, and measurably so: `gfx/obj.cc`
 and `gfx/utils.cc` produce **one** old-style-cast warning between them, not the
@@ -148,6 +156,10 @@ file manager. Its output answers questions that are currently assumptions:
   KMSDRM or the vendor `MI_GFX` path
 - whether the pinned upstream SDL2 works at all, or whether
   `WREEL_USE_SYSTEM_SDL2=ON` against the firmware's patched copy is required
+  — **answered 2026-07-28** (unmodified upstream has no driver for the panel;
+  the vendored `mmiyoo` copy works, [results.md](results.md)), and **superseded
+  2026-08-01**: the pinned SDL2 2.32.10 is now built with the SSD202D drivers
+  grafted in (`WREEL_MINI_SDL2`, [miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/))
 - real display mode and refresh rate
 - what the gamepad enumerates as, which `skratch/input.cc`'s hard-coded Xbox 360
   axis mapping certainly gets wrong
@@ -207,6 +219,11 @@ glibc symbol versioning, which `objdump -T | grep GLIBC_` can confirm directly.
   narrower and more practical: whether the firmware's `mmiyoo` SDL2 gets the display
   away from MainUI, and whether the audio server yields the mixer. See
   [onion-bundle](../2026-07-27-onion-bundle/).
+  **Superseded 2026-08-01:** `WREEL_USE_SYSTEM_SDL2` is no longer the route. The
+  pinned SDL2 is built with the SSD202D drivers compiled in (`WREEL_MINI_SDL2`,
+  default ON in `cmake/toolchains/miyoomini.cmake`), which ran on the device
+  that day — [miyoo-sdl2-fork § 8](../2026-07-31-miyoo-sdl2-fork/) and
+  [results.md](results.md). "Unmodified upstream is not viable" still holds.
 - ~~**What is the software driver's fill rate at 320×240 on two Cortex-A7 cores?**~~
   **Method built and measured on the dev box, 2026-07-27** — see
   [results.md](results.md). Still open on hardware, but the question was posed
@@ -216,6 +233,14 @@ glibc symbol versioning, which `objdump -T | grep GLIBC_` can confirm directly.
   saves. It is a 2.8× win on an accelerated driver. So the answer inverts between
   the two drivers this project ships on, and `coppers --seconds` is how it gets
   taken on a device.
+  **Device numbers since** (Miyoo Mini Plus, [results.md](results.md)): `coppers`
+  on the `Miyoo Mini` driver 2026-08-01, 640×480 layer, plot 2.920 / blit 4.425 /
+  present 9.348 ms at 59.7 fps; `coppers` on the software driver 2026-08-02,
+  summary line reporting a 320×240 layer, plot 0.668 / blit 6.551 / present 9.487 ms at 59.7 fps; `orchard` on the
+  software driver 2026-10-06, clear 1.378 and tilemap 2.274 ms/frame (7.21 µs a
+  tile), 59.7 fps. Fill rate was not the constraint. The dev-box
+  internal-resolution comparison has not been repeated as a controlled
+  measurement on the device.
 - Should CI be added now? A GitHub Actions matrix over `desktop-software`,
   `desktop-debug` and the two aarch64 compile-checks would catch regressions
   cheaply. The container-based targets are harder and can come later.

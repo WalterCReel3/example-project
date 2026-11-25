@@ -93,7 +93,7 @@ names change. A fresh read of the actual source, header, or upstream docs is wor
 more than a confident recollection.
 
 - Read the header before calling the API. The `TTF_Font` forward declaration in
-  `include/gfx/software/context.hpp` was wrong because it was written from memory
+  `include/gfx/renderer/context.hpp` was wrong because it was written from memory
   of an older SDL_ttf; SDL_ttf 2.24 uses a different struct tag.
 - Verify package names against `apt-cache policy`, not from memory.
 - Verify upstream versions against the actual tags, not from memory.
@@ -167,8 +167,9 @@ come from the device SDK containers.
 
 ### 3. Miyoo Mini has no GPU
 
-The SSD202D has no 3D block at all — no GL, no GLES, no EGL. `gfx::renderer` with
-its software driver is the only option there, which makes it the baseline everywhere
+The SSD202D has no 3D block at all — no GL, no GLES, no EGL. `gfx::renderer` is
+the only option there (SDL's `Miyoo Mini` driver by default, `software` when
+forced; `orchard` ships forced), which makes it the baseline everywhere
 rather than a fallback, and `WREEL_ENABLE_GLES2` is rejected outright for this
 target. 128 MB RAM total, shared with the OS.
 
@@ -218,8 +219,8 @@ Standard good hygiene, stated because it's cheaper than re-deriving it:
   `std::print` nor fmt is an escape hatch; see
   [docs/TARGETS.md § 1a](docs/TARGETS.md).
 - **Wrap third-party types at the module boundary.** JSON access goes behind a
-  `util::json` facade; the same applies to any future MIDI or audio dependency.
-  Vendor types don't belong in module signatures.
+  `util::json` facade (not written yet); the same applies to any future MIDI or
+  audio dependency. Vendor types don't belong in module signatures.
 
 ### Style
 
@@ -292,7 +293,8 @@ file you are in. `SCREAMING_SNAKE` appears only for the class-scope constants in
 ```sh
 # The Miyoo Mini configuration, natively: WREEL_TARGET_HAS_GPU=OFF, so SDL is
 # built without GL and gfx::renderer gets its software driver. Same code path as
-# the device, no cross-compiler needed.
+# the device with `software` forced (not its default `Miyoo Mini` driver), no
+# cross-compiler needed.
 cmake --preset desktop-software
 cmake --build --preset desktop-software
 ctest --preset desktop-software
@@ -310,8 +312,11 @@ First configure of any preset fetches and builds eight pinned dependencies —
 a couple of minutes. Later configures are ~2 seconds. `ccache` is used
 automatically when present.
 
-`WREEL_WERROR` is **ON**. The tree is at zero warnings on all five configured
-presets, so a new warning fails the build rather than scrolling past.
+`WREEL_WERROR` is **ON**. The tree was at zero warnings on all five presets
+configured on 2026-07-27. Against the current tree, `desktop-software` and
+`desktop-debug` are clean under `-Werror` (2026-10-16); the GCC 8.3 `miyoomini`
+build the same day fails on two test-file casts (D34). A new warning
+fails the build rather than scrolling past.
 
 Host setup: `./scripts/bootstrap-debian.sh --dry-run` then without the flag.
 Debian 12 or derivative assumed.
@@ -341,5 +346,5 @@ header), and `skratch` calling fixed-function GL directly (it renders through
 backend).
 
 Tests exist for the tokenizers specifically so this code can be changed safely:
-`tests/test_string.cc`, 21 cases pinning current behaviour including the
+`tests/test_string.cc`, 22 cases pinning current behaviour including the
 surprising parts. Run them before and after any change to `string.hpp`.

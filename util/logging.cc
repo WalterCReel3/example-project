@@ -69,6 +69,10 @@ bool log_open_file(const char* path)
     if (!opened) {
         return false;
     }
+    // Line-buffered: a run's whole log is smaller than one stdio buffer, so a
+    // process that is killed or crashes would otherwise leave an empty file,
+    // and on a handheld the file is the only thing that comes back.
+    std::setvbuf(opened, nullptr, _IOLBF, 0);
     output_file = opened;
     return true;
 }

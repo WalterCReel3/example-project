@@ -10,6 +10,14 @@
 // sunnyland.tsx, CSV layer data and an object layer, which is the shape Tiled
 // writes by default.
 //
+// data/orchard.tmx is the other map, and it is here rather than in test_level
+// because it is the one case that needs both halves: the loader has to parse it
+// and game::Level has to accept what came out. That contract had never been
+// exercised on a file — test_level builds its layers in-test, deliberately, so
+// that the level rules stay runnable under qemu without a fixture — and until
+// this ran, nothing in the tree proved a .tmx could produce a Level at all.
+// This is why test_tmx links wreel::game.
+//
 // Contexts here ask for Driver::Software explicitly. These cases are about
 // atlas, animation and tilemap logic, not about driver selection — that is
 // test_renderer's job — and leaving the choice open is not harmless: the
@@ -21,6 +29,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <game/collide.hpp>
+#include <game/level.hpp>
 #include <gfx/system.hpp>
 #include <gfx/tilemap.hpp>
 #include <loaders/image.hpp>
@@ -172,6 +182,184 @@ TEST_CASE("the object layer survives the trip")
     CHECK(spawn.name == "spawn");
     CHECK(spawn.type == "point");
     CHECK(spawn.x == doctest::Approx(64.0));
+}
+
+//============================================================================
+// The orchard level, end to end
+//============================================================================
+
+namespace
+{
+
+// The whole map, and the level built from it. Every case below wants both.
+loaders::TmxMap orchard_map()
+{
+    return loaders::load_tmx("data/orchard.tmx");
+}
+
+game::Level orchard_level(const loaders::TmxMap& map)
+{
+    return game::Level(map.layers, map.object_layers, map.width, map.height,
+                       map.tile_width, map.tile_height, "data/orchard.tmx");
+}
+
+} // namespace
+
+TEST_CASE("data/orchard.tmx is the shape decision 4 asks for")
+{
+    const loaders::TmxMap map = orchard_map();
+
+    CHECK(map.width == 96);
+    CHECK(map.height == 40);
+    CHECK(map.tile_width == 16);
+    CHECK(map.tile_height == 16);
+
+    // The same tileset as the fixture, resolved through the same external .tsx.
+    CHECK(map.tileset.name == "sunnyland");
+    CHECK(map.tileset.image == "tileset.png");
+
+    REQUIRE(map.layers.size() == 3);
+    CHECK(map.layers[0].name == "ground");
+    CHECK(map.layers[1].name == "canopy");
+    CHECK(map.layers[2].name == "collision");
+
+    // Two visible layers plus the invisible collision layer, not three visible.
+    // gfx::TileMap::draw_layer returns early on !visible, which is what makes
+    // decision 2's authored-solidity layer cost no fill rate.
+    CHECK(map.layers[0].visible);
+    CHECK(map.layers[1].visible);
+    CHECK_FALSE(map.layers[2].visible);
+
+    // NO BACKDROP. The fixture covers every cell on purpose so that the
+    // fill-rate meter moves; here the sky is Context::clear() and the two
+    // visible layers together hold less than a third of one layer's cells.
+    // That is decision 4's overdraw lever, and it is the difference between the
+    // two maps rather than a property of this one.
+    int filled = 0;
+    for (const gfx::TileLayer& layer : map.layers) {
+        if (!layer.visible) {
+            continue;
+        }
+        for (int tile : layer.tiles) {
+            if (tile != gfx::empty_tile) {
+                ++filled;
+            }
+        }
+    }
+    CHECK(filled * 3 < map.width * map.height);
+}
+
+TEST_CASE("game::Level accepts it, which no map in this tree did before")
+{
+    const loaders::TmxMap map = orchard_map();
+    const game::Level level = orchard_level(map);
+
+    CHECK(level.width() == 96);
+    CHECK(level.height() == 40);
+    CHECK(level.pixel_width() == 1536);
+    CHECK(level.pixel_height() == 640);
+
+    // Larger than the Miyoo's 640x480 panel on BOTH axes, so game::Camera has
+    // 896 px of horizontal travel and 160 of vertical to clamp. A map exactly
+    // 30 rows tall never scrolls vertically and its clamp is never exercised.
+    CHECK(level.pixel_width() > 640);
+    CHECK(level.pixel_height() > 480);
+
+    // The collision layer was found, is map-sized, and carries a cell per
+    // square. Level would have thrown for any of those; this pins which layer
+    // it resolved.
+    const game::TileGrid grid = level.collision();
+    CHECK(grid.layer.name == "collision");
+    CHECK(grid.tile_width == 16);
+    CHECK(grid.tile_height == 16);
+    CHECK(grid.layer.tiles.size() == 96u * 40u);
+
+    // Solid under the ground surface and open above it, at the far end of the
+    // map where a short collision layer would have stopped.
+    CHECK(game::solid_at(grid, 95, 39));
+    CHECK_FALSE(game::solid_at(grid, 95, 0));
+}
+
+TEST_CASE("the spawn table carries the demo's vocabulary and nothing else")
+{
+    const loaders::TmxMap map = orchard_map();
+    const game::Level level = orchard_level(map);
+
+    REQUIRE_FALSE(level.spawns().empty());
+
+    int players = 0;
+    int animals = 0;
+    int pickups = 0;
+    int goals = 0;
+    for (const gfx::MapObject& spawn : level.spawns()) {
+        if (spawn.type == "player") {
+            ++players;
+        } else if (spawn.type == "frog" || spawn.type == "opossum" ||
+                   spawn.type == "eagle") {
+            ++animals;
+        } else if (spawn.type == "cherry" || spawn.type == "gem") {
+            ++pickups;
+        } else if (spawn.type == "goal") {
+            ++goals;
+        } else {
+            FAIL("unexpected spawn type \"" << spawn.type << "\"");
+        }
+
+        // Every object carries a rectangle rather than being a Tiled point, so
+        // the box game::Level bounds-checked is the box the spawn idiom in
+        // entities.hpp will give the entity. A point object is legal and would
+        // be checked as a single pixel instead.
+        CHECK(spawn.width > 0.0);
+        CHECK(spawn.height > 0.0);
+    }
+
+    CHECK(players == 1);
+    CHECK(animals == 3); // avoidance, not combat: one of each
+    CHECK(goals == 1);
+    CHECK(pickups > 8); // enough that crossing the level is the point
+}
+
+TEST_CASE("every spawn stands on the collision layer it was authored against")
+{
+    const loaders::TmxMap map = orchard_map();
+    const game::Level level = orchard_level(map);
+    const game::TileGrid grid = level.collision();
+
+    for (const gfx::MapObject& spawn : level.spawns()) {
+        CAPTURE(spawn.type);
+        CAPTURE(spawn.x);
+        CAPTURE(spawn.y);
+
+        const game::Aabb box{spawn.x, spawn.y, spawn.width, spawn.height};
+        CHECK_FALSE(game::overlaps_solid(grid, box));
+
+        if (spawn.type == "eagle") {
+            continue; // the one that ignores terrain
+        }
+
+        // A one-pixel strip along the bottom edge. This is what catches a
+        // platform drawn a row away from the thing standing on it: Level's
+        // bounds check passes either way, and in play it reads as a pickup
+        // hanging in the air or an animal buried to the knees.
+        const game::Aabb underfoot{spawn.x, spawn.y + spawn.height, spawn.width,
+                                   1.0};
+        CHECK(game::overlaps_solid(grid, underfoot));
+    }
+}
+
+TEST_CASE("the fixture is still not a level, and that is the answer")
+{
+    // data/sunnyland.tmx names its object layer "objects" and has no
+    // "collision" layer, so game::Level refuses it. Neither file moves: the
+    // fixture is a gfx::TileMap stress case with no Level consumer, orchard.tmx
+    // is a level and meets the contract. Asking for a Level from the fixture is
+    // a category error rather than a missing feature, and this is here so that
+    // renaming one of them has to be a decision instead of a diff.
+    const loaders::TmxMap map = loaders::load_tmx("data/sunnyland.tmx");
+    CHECK_THROWS_AS(game::Level(map.layers, map.object_layers, map.width,
+                                map.height, map.tile_width, map.tile_height,
+                                "data/sunnyland.tmx"),
+                    game::LevelError);
 }
 
 //============================================================================

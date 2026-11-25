@@ -654,6 +654,10 @@ sources it. **That script expects `$miyoodir`** (`/mnt/SDCARD/miyoo`, set in
 Onion's `runtime.sh`); without it, one branch kills `wpa_supplicant` and
 `udhcpc` and cannot restart them, taking the network down. With that handled,
 audio works: the mixer opens at the handheld profile and tracker music plays.
+2026-10-16: confirmed audible by the user on the device (sound effects and
+module playback in orchard and coppers); not logged. The user did not name the
+firmware; the logs of those two programs (root `stdout.log`,
+`coppers-stdout.log`) are both Onion runs, so stock is not covered by it.
 
 **`libpadsp.so` is preloaded by both firmwares**, not only Onion. Stock sets it
 too, out of its own versioned directory:
@@ -724,11 +728,34 @@ ignore every face button, because arrows and Escape coincide and nothing else
 does.
 
 The table is sourced from Onion, but the mechanism is not Onion's: the driver
-reads the kernel's input device directly, and the same binary took input
-correctly on stock firmware (2026-07-30) with the same bindings compiled in.
-That is consistent with the keymap belonging to the kernel input driver both
-firmwares share, and it is one run — enough to stop treating the bindings as
-Onion-specific, not enough to have verified every key on stock.
+reads the kernel's input device directly, and the same binary — with the whole
+table compiled in — ran on stock firmware on 2026-07-30 and exited cleanly. That
+is consistent with the keymap belonging to the kernel input driver both firmwares
+share, and it is the reason not to treat the bindings as Onion-specific. It is
+not a per-key result on stock, and nothing here is: what was kept of that run
+records that the demo ran and exited, not which controls were pressed.
+
+**How much of the table has been exercised on hardware is much narrower than the
+table**, and what has been was on OnionOS:
+
+| Binding | State |
+|---|---|
+| arrows, `ESCAPE` | responded 2026-07-28, on a binary carrying only the letter-key group. Both are bound identically for a desktop keyboard, so they establish that the driver delivers keysyms — not that this table is right. `orchard`'s run logged Left, Right and Up again; Down was not pressed |
+| `LSHIFT` → X | **exercised 2026-08-02.** `coppers` toggles its layer height on X and on nothing else, and that session's log carries eleven `layer:` lines after the one at start-up |
+| `SPACE` → A | **exercised in `orchard`'s first device run** ([results.md](../planning/2026-07-25-target-validation/results.md) § 2026-10-06; the binary on the card is dated Oct 7 UTC and the device clock is unset). The root `stdout.log` carries 36 `input: key Space (sym 0x20, scancode 44) -> a` lines, `Jump pressed x36` and `cue jump x31` |
+| `LCTRL` → B | not recorded. `coppers` logs the scroller B selects, and no device run has produced one of those lines |
+| `LALT` → Y | not recorded. `coppers`' Y toggles the HUD and writes nothing, so only the per-key log below would show it |
+| `e` → L1, `t` → R1, `RCTRL` → Select | not recorded. Nothing in the tree reads `rig::Button::L`, `R` or `Select`, so only the per-key log would show them |
+| `RETURN` → Start | not recorded. It is the desktop binding as well, and `ESCAPE` ends a demo too, so `exited 0` does not say which was pressed. `orchard`'s run pressed neither: `Quit pressed x0`, ended by the rules at the goal |
+
+So two device-specific bindings have been seen to work, both on OnionOS, and the
+rest of the table is read from Onion's header. On this device that table is the
+whole input path — the keyboard *is* the pad — so a wrong row means an
+uncontrollable device rather than a degraded one. Closing it needs the device and
+no code: `rig::Pad` logs every keydown at debug level with its keysym, scancode
+and the `rig::Button` it mapped to (or `unmapped`), and the Onion bundle starts
+`orchard` with `--verbose`. Press each control once in `orchard` on each firmware
+and keep `stdout.log`; that covers the rows with no reader as well.
 
 ### 6.4 Other observations
 
@@ -801,6 +828,20 @@ Consequences carried into the codebase:
   `AnimatedSprite` and `TileMap` are source-rect blits by definition; on this
   target they must composite into a layer.
 
+> **Narrowed by § 4.4 (2026-08-02) and by `orchard`.** The model above is the
+> `Miyoo Mini` render driver's, and that driver's gaps are unchanged. It is no
+> longer the only route: under `SDL_RENDER_DRIVER=software` the window surface
+> reaches the panel, and `orchard` ships on that driver — the Onion bundle
+> starts it with `--software`, because its sky is a `Context::clear()` the
+> `Miyoo Mini` driver ignores. It draws its tilemap and entities with
+> `Context::draw()` source-rect blits and no `Layer`. Its first device run held
+> 59.7 fps at 640×480: 16.762 ms/frame, of which `clear` 1.378, `tilemap`
+> 2.274, `entities` 0.119, `hud` 0.299 and `present` 12.582 ms (root
+> `stdout.log`; recorded in
+> [results.md](../planning/2026-07-25-target-validation/results.md)). The run
+> was capped at 60 fps, so `present` is not a measure of what the software
+> path's copy-and-flip costs; that needs an uncapped run.
+
 ### Alternatives, and why not
 
 | Path | Gets you | Costs |
@@ -823,8 +864,9 @@ win: it would restore capability the engine has already routed around.
 
 Vendor SDL2 ports:
 
-- [steward-fu/sdl2](https://github.com/steward-fu/sdl2) — the port this project
-  vendors. LGPL-2.1, SDL 2.0.20.
+- [steward-fu/sdl2](https://github.com/steward-fu/sdl2) — the port whose driver
+  sources this project grafts onto SDL 2.32.10 (§3). LGPL-2.1; its own base is
+  SDL 2.0.20.
   [`SDL_video_mini.c`](https://github.com/steward-fu/sdl2/blob/master/sdl2/src/video/mini/SDL_video_mini.c) ·
   [`SDL_render_mini.c`](https://github.com/steward-fu/sdl2/blob/master/sdl2/src/render/mini/SDL_render_mini.c) ·
   [`SDL_fb_mini.c`](https://github.com/steward-fu/sdl2/blob/master/sdl2/src/video/mini/SDL_fb_mini.c) ·

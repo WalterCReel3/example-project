@@ -23,6 +23,7 @@
 > EGL, GLESv2 **and** json-c, a library whose headers match its binary, a live
 > upstream, and the ability to fix the driver at all. See
 > [miyoo-sdl2-fork](../2026-07-31-miyoo-sdl2-fork/).
+
 **Written:** 2026-07-29
 **Blocked by:** nothing
 **Serves:** [onion-bundle](../2026-07-27-onion-bundle/), and any future handheld

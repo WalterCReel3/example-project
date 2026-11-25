@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Animations atlas="critters.xml">
+    <Animation name="cherry" fps="10" loop="repeat" frames="7" />
+    <Animation name="eagle-swoop" fps="10" loop="repeat" frames="4" />
+    <Animation name="frog-idle" fps="6" loop="repeat" frames="4" />
+    <Animation name="frog-jump" fps="8" loop="once" frames="2" />
+    <Animation name="gem" fps="10" loop="repeat" frames="5" />
+    <Animation name="opossum-walk" fps="8" loop="repeat" frames="6" />
+    <Animation name="puff" fps="12" loop="once" frames="6" />
+    <Animation name="sparkle" fps="12" loop="once" frames="4" />
+</Animations>
