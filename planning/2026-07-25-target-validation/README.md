@@ -4,15 +4,16 @@
 **Written:** 2026-07-25
 **Blocks:** [packaging-distribution](../2026-07-25-packaging-distribution/)
 
-> **Steps 1 and 2 below are already done.** This document was written before the
-> validation pass recorded in
+> **Steps 1 to 4 below are already done** (3 on 2026-07-27, 4 on 2026-07-28; see
+> [results.md](results.md)). This document was written before the validation
+> pass recorded in
 > [docs/DEVELOPMENT.md § Status](../../docs/DEVELOPMENT.md#status), and its
 > "what is not verified" table is stale. Re-checked 2026-07-25: `libglew-dev`,
 > `libglu1-mesa-dev`, `aarch64-linux-gnu-g++` and `arm-linux-gnueabihf-g++` are
 > all installed, and the `desktop-debug`, `rk3326`, `h700` and `miyoomini` build
 > directories are configured. `desktop-debug` builds and links with **zero
 > errors** and 4/4 tests. What remains is genuinely container- and
-> hardware-dependent: steps 3, 4 and 5.
+> hardware-dependent: step 5, and the Mali handhelds.
 
 ## Motivation
 
@@ -106,7 +107,7 @@ Also useful for the C++17 work: `char` is **unsigned** on both
 `aarch64-linux-gnu-g++` and `arm-linux-gnueabihf-g++`, and signed on the host.
 That divergence is defect D10.
 
-### 3. The Miyoo Mini container — **the real test**
+### 3. The Miyoo Mini container — **done**
 
 ```sh
 git clone https://github.com/shauninman/union-miyoomini-toolchain.git
@@ -147,7 +148,7 @@ later:
 - **`if constexpr`** in `util/number.hpp`'s floating-point path and `-Os` codegen
   across all of it
 
-### 4. On-device
+### 4. On-device — **done**
 
 Copy `wreel-probe` to a Miyoo Mini and run it over SSH or from the firmware's
 file manager. Its output answers questions that are currently assumptions:

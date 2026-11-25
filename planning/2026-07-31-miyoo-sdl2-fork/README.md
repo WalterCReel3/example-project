@@ -3,16 +3,16 @@
 **Status:** `in-progress` — stage 0 passed 2026-08-01; stage 1 items 1, 21, 20,
 2, 3, 10 and 11 landed and verified on hardware, 2026-08-02 and 2026-08-08
 **Written:** 2026-07-31
-**Blocked by:** nothing — but stage 0 is a gate, and everything after it is
-conditional on stage 0 succeeding
+**Blocked by:** nothing — stage 0, the gate everything after it was conditional
+on, passed 2026-08-01
 **Serves:** [software-2d-sprites-tiling](../2026-07-25-software-2d-sprites-tiling/),
 [packaging-distribution](../2026-07-25-packaging-distribution/), the Mini Flip,
 and defects D22, D24, D25, D26, D27
 **Decision:** taken 2026-07-31 and **revised the same day** — the drivers rebased
 onto the already-pinned SDL 2.32.10 (option **E**), tier 1 plus a reproducible
 build. Tier 2 is no longer decided here, because the engine-side alternative
-serves five targets where a driver patch serves one. Still gated on stage 0.
-See §5
+serves five targets where a driver patch serves one. Stage 0, the gate, passed
+2026-08-01. See §5
 
 > **Why a same-day revision.** The first decision was taken on a reading of the
 > port's *sources*. It was not taken on a reading of the *build*, of the SDK in
@@ -653,7 +653,7 @@ settles it:
 ```
 
 If the panel shows the content upright, the rotation is compensation and patch
-item 6 must *compose* with it. If inverted, it is a bug and item 6 removes it.
+item 14 must *compose* with it. If inverted, it is a bug and item 14 removes it.
 Getting this backwards would turn a working full-screen path into a broken one,
 which is the single most expensive mistake available in this snapshot.
 
