@@ -56,8 +56,10 @@ qemu_*.core
 Thumbs.db
 
 # Python tooling in tools/ runs from a local virtualenv, rebuilt from
-# tools/requirements.txt rather than committed.
-/tools/.venv/
+# tools/requirements.txt rather than committed. No trailing slash: a worktree
+# made by scripts/new-worktree.sh carries it as a symlink, which a directory-only
+# pattern does not match.
+/tools/.venv
 __pycache__/
 
 # The Sunny Land pack as purchased: 5.9M of PSDs, .ase sources, preview GIFs and

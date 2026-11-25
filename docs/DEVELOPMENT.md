@@ -426,6 +426,137 @@ Check the target's glibc before shipping — see
 
 ---
 
+## Worktrees
+
+Several branches can be built at once, each in its own `git worktree`. A fresh
+worktree has no `build/`, so its first configure would clone eight dependencies
+from GitHub; the offline cache removes that, and `scripts/new-worktree.sh` makes
+a worktree and proves it works.
+
+### The offline dependency cache
+
+A directory of read-only shallow git mirrors, one per upstream, each holding
+only the tag `cmake/Dependencies.cmake` pins (about 65 MB for all of them,
+including FreeType, libxmp and FreeType's own `dlg` submodule). It is shared by
+every worktree and every preset.
+
+```sh
+# Once, with network. Reads the pins from cmake/Dependencies.cmake.
+scripts/fetch-deps-cache.sh                  # -> ~/.cache/wreel-deps
+scripts/fetch-deps-cache.sh --cache /srv/wreel-deps
+
+# Opt in. Either spelling; unset, configure behaves exactly as before.
+export WREEL_DEP_CACHE=/srv/wreel-deps
+cmake --preset desktop-software              # or -DWREEL_DEP_CACHE=...
+```
+
+**Refreshing after a pin changes.** Edit the `WREEL_PIN_*` line, then re-run the
+same `fetch-deps-cache.sh` command with network. It fetches only what is
+missing and leaves the rest. Until it has been re-run, configure stops with the
+command to run, rather than failing inside a git checkout of a tag the cache
+never fetched: the script writes `PINS` last, and configure compares it with the
+pins it is about to use. Old tags stay in the mirrors; delete the directory to
+reclaim them. A dependency *added* to `Dependencies.cmake` needs the same
+refresh, because the script takes its repositories from the `FetchContent_Declare`
+blocks.
+
+**Why mirrors, and not `FETCHCONTENT_SOURCE_DIR_<NAME>`.** Configure rewrites
+`https://github.com/` to `file://$WREEL_DEP_CACHE/github.com/`, so FetchContent
+still clones, checks out the tag and runs `PATCH_COMMAND`. A source-dir override
+skips `PATCH_COMMAND`, and for `miyoomini` that is SDL2's graft:
+`_wreel_sync_mini_drivers` would — rightly — refuse the ungrafted tree, and the
+only way to satisfy it from a cache is a second, pre-grafted SDL2 that goes stale
+whenever `platform/miyoomini/sdl2/` changes and that the guard cannot tell from a
+real one. It could not be read-only either, since the tree is built in place.
+With mirrors the cache holds one pristine SDL2, each build tree clones and grafts
+its own, and the guard still means what it says. Because the whole of
+`https://github.com/` is rewritten, a repository missing from the cache fails
+loudly instead of reaching for the network. `FETCHCONTENT_FULLY_DISCONNECTED` was
+not an option: it needs the trees to exist already, which is what is being
+provided.
+
+The cost is that every build tree still clones its dependencies (seconds, from
+local disk) rather than sharing a checkout.
+
+### `scripts/new-worktree.sh`
+
+```sh
+scripts/new-worktree.sh ../example-project-fix fix/something
+scripts/new-worktree.sh --sunny --base feature/orchard-demo ../wt-x chore/x
+scripts/new-worktree.sh --no-verify ../wt-y chore/y     # no cache needed
+```
+
+It runs `git worktree add` (creating the branch from `--base`, default `HEAD`,
+if it does not exist), then brings across what git does not:
+
+| File | Handling |
+|---|---|
+| `local.env` | copied, never overwriting |
+| `.claude/settings.local.json` | copied |
+| `tools/.venv` | symlinked to the main checkout's by default. A venv cannot be *moved*, but a symlink works: the interpreter and site-packages are found through the path it is invoked by, and the scripts' shebangs name the main checkout's copy, which exists. `--venv create` builds a fresh one and needs PyPI |
+| `data/Sunny-land-files/` | only with `--sunny` |
+
+and finishes with an offline `cmake --preset desktop-software`, build and
+`ctest`, so a broken tree is found now and not by the next session. The files
+are taken *from* the main worktree (or `--from DIR`) and never written to it; the
+only change outside the new directory is git's worktree metadata. `.gitignore`
+lists `/tools/.venv` without a trailing slash so that the symlink is ignored too.
+
+### The containers
+
+`docker run -v "$PWD":/src` mounts only the worktree. In a linked worktree `.git`
+is a *file* naming `<main>/.git/worktrees/<name>`, which is not in the container,
+so **git does not work inside it** — commit, branch and `git worktree` from the
+host. CMake itself does not need the repository, but FetchContent does need
+`git` to clone, and the cache is not in the container either. Mount it read-only
+and pass the variable:
+
+```sh
+docker run --rm -it -v "$PWD":/src -v "$WREEL_DEP_CACHE":/cache:ro \
+    -e WREEL_DEP_CACHE=/cache -w /src wreel-miyoomini bash
+```
+
+That invocation has not been run (no Docker where it was written). If git
+objects to the cache's ownership inside the container, that is `safe.directory`.
+
+### ccache
+
+Worktrees at different paths share ccache hits only with both of these set,
+because a path is part of the hash:
+
+```sh
+export CCACHE_BASEDIR="$(git rev-parse --show-toplevel)"   # per worktree
+export CCACHE_NOHASHDIR=1
+```
+
+`CCACHE_BASEDIR` rewrites absolute paths under the worktree to relative ones.
+`CCACHE_NOHASHDIR` is needed on top of it for the Debug presets: with `-g` the
+compiler embeds the working directory, which ccache hashes by default. Measured
+with a two-directory test, ccache 4.7.5, `-g`: 0 of 2 hits with `BASEDIR` alone,
+1 of 2 with `NOHASHDIR` too. The price of `NOHASHDIR` is that a cached object's
+debug info names the directory of whichever worktree compiled it first.
+`new-worktree.sh` sets both for its own build.
+
+### Sandboxed sessions
+
+A session sandboxed to its own worktree cannot write outside it, which breaks
+three things here:
+
+- **ccache.** `~/.cache/ccache` is read-only, and ccache *fails the compile*
+  rather than falling back. `export CCACHE_DISABLE=1` (the script does this when
+  it finds the directory unwritable), or point `CCACHE_DIR` into the worktree.
+- **`/tmp`.** `test_renderer`, `test_atlas` and `test_animation` write
+  `/tmp/wreel-test-*.bmp` by hard-coded path and fail on a read-only `/tmp`; the
+  other 23 suites pass. Not fixed here, and not a defect in the build.
+- **The cache and the main checkout** are readable but not writable, which is
+  all the build asks of them. Populating or refreshing the cache needs network
+  and write access, so it is an operator step.
+- **`build/`.** A sandbox may mask `build/` in its own worktree. A worktree made
+  under it (`.worktrees/<name>/`, kept out of git with `.worktrees/` in
+  `$(git rev-parse --git-path info/exclude)`) has a `build/` of its own.
+
+---
+
 ## Code style
 
 [.clang-format](../.clang-format) and [.editorconfig](../.editorconfig) codify
@@ -541,6 +672,7 @@ Later runs, each recorded in its Status row above:
 | `miyoomini` GCC 8.3 suite under qemu-arm | September: 22/26 (relayed; no log in the tree). 2026-10-16: **20 of 24 runnable**, same four failures; `test_atlas` and `test_animation` excluded because they don't build. See the doctest suite row and D33 |
 | `miyoomini` under GCC 8.3, current tree, default target | 2026-10-16, incremental, in `build/miyoomini-83`: **fails under `-Werror`**, two `-Wcast-align` errors in test code (D34) |
 | `desktop-software` full compile → `ctest` | 2026-10-16: `CCACHE_DISABLE=1`, `--clean-first`, 658/658 steps, zero warnings, **26/26** |
+| Offline worktree, `desktop-software` configure → build → `ctest` | 2026-11-25, in a sandboxed session, with `WREEL_DEP_CACHE` pointing at a cache populated from local clones (not from github.com). Configure cloned from the cache; 658/658 steps, no compiler warnings under `WREEL_WERROR`; **23/26** tests. `test_renderer`, `test_atlas` and `test_animation` fail only because they write a hardcoded `/tmp/wreel-test-*.bmp` and the sandbox's `/tmp` is read-only. Not run as `new-worktree.sh`'s own verify step: the worktree was made with `--no-verify` from `37bd1bb` and the uncommitted files copied in, so the script's configure/build/ctest path itself is unrun |
 | `desktop-debug` build → `ctest` | 2026-10-16: 35 TUs recompiled (ccache misses), zero warnings, **26/26** |
 
 Two things this pass found and fixed, both of which had been asserted as working

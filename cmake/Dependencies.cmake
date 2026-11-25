@@ -25,6 +25,92 @@ set(WREEL_PIN_DOCTEST     "v2.5.3")
 # pointing FETCHCONTENT_SOURCE_DIR_<UPPERCASE_NAME> at a common checkout, or by
 # setting FETCHCONTENT_BASE_DIR for a single-arch workflow.
 
+# ---------------------------------------------------------------------------
+# Offline cache (opt-in)
+# ---------------------------------------------------------------------------
+#
+# WREEL_DEP_CACHE names a directory filled by scripts/fetch-deps-cache.sh: a
+# read-only shallow git mirror of each upstream, holding the pinned tag. Set it
+# as a cache variable or in the environment; unset, nothing here does anything.
+#
+# It works by redirecting git, not by redirecting FetchContent. Every clone
+# below is rewritten from https://github.com/<path> to the mirror at
+# <cache>/github.com/<path>, so FetchContent still clones, checks out the tag,
+# initialises submodules and runs PATCH_COMMAND exactly as it does online.
+#
+# The alternatives were worse for SDL2 in particular:
+#
+#   FETCHCONTENT_SOURCE_DIR_<NAME>  skips the download *and* PATCH_COMMAND. On
+#       miyoomini that means graft.cmake never runs, and
+#       _wreel_sync_mini_drivers below correctly refuses the ungrafted tree. A
+#       cache would need a second, pre-grafted SDL2 to feed it — a copy of the
+#       graft's output that goes stale whenever platform/miyoomini/sdl2/ changes,
+#       and that the guard could no longer tell from a genuinely patched tree.
+#       It also cannot be read-only, since the tree is built in place.
+#   FETCHCONTENT_FULLY_DISCONNECTED does not populate; it needs the trees to
+#       exist already, which is the thing being provided.
+#
+# With the mirror, SDL2 is cloned pristine from the cache into the build tree
+# and grafted there, so the cache holds one SDL2, never a patched one.
+#
+# Rewriting the whole of https://github.com/ rather than a list of repositories
+# means a dependency added to this file without refreshing the cache fails on a
+# missing mirror instead of quietly reaching for the network.
+set(WREEL_DEP_CACHE "" CACHE PATH
+    "Offline dependency cache from scripts/fetch-deps-cache.sh. Empty: use the network")
+if(NOT WREEL_DEP_CACHE AND NOT "$ENV{WREEL_DEP_CACHE}" STREQUAL "")
+    set(WREEL_DEP_CACHE "$ENV{WREEL_DEP_CACHE}")
+endif()
+
+if(WREEL_DEP_CACHE)
+    get_filename_component(WREEL_DEP_CACHE "${WREEL_DEP_CACHE}" ABSOLUTE)
+
+    # The cache is stamped with the pins it was populated for, so a pin bumped
+    # here is refused with the remedy rather than failing inside a git checkout
+    # of a tag the mirror never fetched.
+    get_cmake_property(_wreel_vars VARIABLES)
+    list(FILTER _wreel_vars INCLUDE REGEX "^WREEL_PIN_")
+    set(_wreel_pins "")
+    foreach(_var IN LISTS _wreel_vars)
+        list(APPEND _wreel_pins "${_var}=${${_var}}")
+    endforeach()
+    list(SORT _wreel_pins)
+
+    set(_wreel_stamped "")
+    if(EXISTS "${WREEL_DEP_CACHE}/PINS")
+        file(STRINGS "${WREEL_DEP_CACHE}/PINS" _wreel_stamped)
+        list(SORT _wreel_stamped)
+    endif()
+
+    if(NOT _wreel_pins STREQUAL _wreel_stamped)
+        message(FATAL_ERROR
+            "WREEL_DEP_CACHE='${WREEL_DEP_CACHE}' is missing, incomplete, or was "
+            "populated for different pins than cmake/Dependencies.cmake names. "
+            "Refresh it, with network:\n"
+            "    scripts/fetch-deps-cache.sh --cache ${WREEL_DEP_CACHE}")
+    endif()
+
+    # Appended to, not assigned, so a GIT_CONFIG_* the caller already set
+    # survives. FetchContent's subbuild inherits this process's environment.
+    if(DEFINED ENV{GIT_CONFIG_COUNT})
+        set(_wreel_n "$ENV{GIT_CONFIG_COUNT}")
+    else()
+        set(_wreel_n 0)
+    endif()
+    set(ENV{GIT_CONFIG_KEY_${_wreel_n}}
+        "url.file://${WREEL_DEP_CACHE}/github.com/.insteadOf")
+    set(ENV{GIT_CONFIG_VALUE_${_wreel_n}} "https://github.com/")
+    math(EXPR _wreel_n "${_wreel_n} + 1")
+    # git >= 2.38.1 refuses the file transport for a submodule clone, which is
+    # how SDL2_ttf gets FreeType and SDL2_mixer gets libxmp from the mirror.
+    set(ENV{GIT_CONFIG_KEY_${_wreel_n}} "protocol.file.allow")
+    set(ENV{GIT_CONFIG_VALUE_${_wreel_n}} "always")
+    math(EXPR _wreel_n "${_wreel_n} + 1")
+    set(ENV{GIT_CONFIG_COUNT} "${_wreel_n}")
+
+    message(STATUS "Dependencies: cloning from the offline cache ${WREEL_DEP_CACHE}")
+endif()
+
 # CMake 4.0 removed compatibility with cmake_minimum_required(VERSION < 3.5), and
 # some vendored third-party trees still declare one — SDL2_ttf's bundled FreeType
 # asks for 2.8. Without this, configuring under CMake 4.x fails inside a
