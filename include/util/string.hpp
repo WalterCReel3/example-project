@@ -1,5 +1,4 @@
-#ifndef __UTIL_STR_HPP__
-#define __UTIL_STR_HPP__
+#pragma once
 
 #include <wchar.h>
 #include <stdlib.h> // strtol(3)
@@ -21,7 +20,6 @@
 //============================================================================
 namespace util
 {
-using namespace std;
 
 // Character classification comes from util/ascii.hpp, not <ctype.h> — see the
 // rationale in that header.
@@ -31,13 +29,13 @@ struct whitespace_tokenizer {
     InputIterator operator()(InputIterator first, InputIterator last,
                              Container &result)
     {
-        using namespace std;
-        first = find_if(first, last, std::not_fn(ascii_is_whitespace));
+        first = std::find_if(first, last, std::not_fn(ascii_is_whitespace));
         if (first == last) {
             return last;
         }
-        InputIterator stop = find_if(first + 1, last, ascii_is_whitespace);
-        copy(first, stop, back_inserter(result));
+        InputIterator stop =
+            std::find_if(first + 1, last, ascii_is_whitespace);
+        std::copy(first, stop, std::back_inserter(result));
         return stop;
     }
     void reset() {}
@@ -107,32 +105,32 @@ struct quoted_whitespace_tokenizer {
     InputIterator operator()(InputIterator first, InputIterator last,
                              Container &result)
     {
-        using namespace std;
-        typedef typename iterator_traits<InputIterator>::value_type value_t;
+        typedef typename std::iterator_traits<InputIterator>::value_type
+            value_t;
         static const value_t single_quote = '\'';
         static const value_t double_quote = '"';
         static const value_t escape_marker = '\\';
 
-        first = find_if(first, last, std::not_fn(ascii_is_whitespace));
+        first = std::find_if(first, last, std::not_fn(ascii_is_whitespace));
         if (first == last) {
             return last;
         }
         InputIterator stop;
         if (*first == single_quote) {
             stop = find_escaped(first + 1, last, single_quote, escape_marker);
-            copy(first + 1, stop, back_inserter(result));
+            std::copy(first + 1, stop, std::back_inserter(result));
             if (stop != last) {
                 ++stop;
             }
         } else if (*first == double_quote) {
             stop = find_escaped(first + 1, last, double_quote, escape_marker);
-            copy(first + 1, stop, back_inserter(result));
+            std::copy(first + 1, stop, std::back_inserter(result));
             if (stop != last) {
                 ++stop;
             }
         } else {
-            stop = find_if(first + 1, last, token_break());
-            copy(first, stop, back_inserter(result));
+            stop = std::find_if(first + 1, last, token_break());
+            std::copy(first, stop, std::back_inserter(result));
         }
         return stop;
     }
@@ -255,7 +253,7 @@ split_value(InputIterator first, InputIterator last,
     typename std::iterator_traits<InputIterator>::value_type> value_string;
     while (first != last) {
         value_string line;
-        first = copy_until(first, last, back_inserter(line), value);
+        first = copy_until(first, last, std::back_inserter(line), value);
         *result++ = line;
         if (first == last) {
             break;
@@ -277,7 +275,7 @@ split_sequence(ForwardIterator1 first1, ForwardIterator1 last1,
     while (first1 != last1) {
         value_string line;
         ForwardIterator1 next = std::search(first1, last1, first2, last2);
-        std::copy(first1, next, back_inserter(line));
+        std::copy(first1, next, std::back_inserter(line));
         first1 = next;
         *result++ = line;
         if (first1 == last1) {
@@ -299,7 +297,7 @@ bool
 contains(const Container &container, const EqualityComparable &value)
 {
     typename Container::const_iterator last = container.end();
-    return last != find(container.begin(), last, value);
+    return last != std::find(container.begin(), last, value);
 }
 
 // template<typename AssocContainer, typename EqualityComparable>
@@ -348,7 +346,7 @@ protected:
     Container *container_;
 public:
     typedef Container          container_type;
-    typedef output_iterator_tag iterator_category;
+    typedef std::output_iterator_tag iterator_category;
     typedef void                value_type;
     typedef void                difference_type;
     typedef void                pointer;
@@ -363,13 +361,12 @@ public:
     wctomb_insert_iterator<Container>&
     operator=(const typename Container::value_type& value)
     {
-        using namespace std;
-        string::value_type conv_buf[MB_LEN_MAX];
+        std::string::value_type conv_buf[MB_LEN_MAX];
         const size_t n = ::wcrtomb(conv_buf, value, &ps_);
         if (n == static_cast<size_t>(-1)) {
-            throw runtime_error("Can't convert wide character");
+            throw std::runtime_error("Can't convert wide character");
         }
-        copy(conv_buf, conv_buf + n, back_inserter(*container_));
+        std::copy(conv_buf, conv_buf + n, std::back_inserter(*container_));
         return *this;
     }
 
@@ -395,13 +392,16 @@ wctomb_inserter(Container &c)
     return wctomb_insert_iterator<Container>(c);
 }
 
+// Declaration only: there is no operator*, operator++ or operator==, so the
+// iterator typedefs below do not make this usable as an input iterator.
+// Anything that needs a multibyte-to-wide input iterator has to implement it.
 class mbtowc_iterator
 {
 protected:
-    string::iterator i_;
+    std::string::iterator i_;
 
 public:
-    typedef input_iterator_tag  iterator_category;
+    typedef std::input_iterator_tag  iterator_category;
     typedef std::wstring::value_type  value_type;
     typedef std::wstring::difference_type difference_type;
     typedef std::wstring::pointer     pointer;
@@ -414,70 +414,71 @@ inline
 std::string
 to_string(const std::wstring &s)
 {
-    using namespace std;
-    string buffer;
-    copy(s.begin(), s.end(), wctomb_inserter(buffer));
+    std::string buffer;
+    std::copy(s.begin(), s.end(), wctomb_inserter(buffer));
 
     return buffer;
 }
 
 template<typename CharT, typename Predicate>
-inline basic_string<CharT>
-strip(const basic_string<CharT> &input, Predicate pred)
+inline std::basic_string<CharT>
+strip(const std::basic_string<CharT> &input, Predicate pred)
 {
-    typedef typename basic_string<CharT>::const_reverse_iterator
+    typedef typename std::basic_string<CharT>::const_reverse_iterator
     reverse_iterator;
     if (input.empty()) {
-        return basic_string<CharT>();
+        return std::basic_string<CharT>();
     }
-    typename basic_string<CharT>::const_iterator p1
-        = find_if(input.begin(), input.end(), std::not_fn(pred));
-    typename basic_string<CharT>::const_iterator p2
-        = (find_if(input.rbegin(), reverse_iterator(p1), std::not_fn(pred)))
+    typename std::basic_string<CharT>::const_iterator p1
+        = std::find_if(input.begin(), input.end(), std::not_fn(pred));
+    typename std::basic_string<CharT>::const_iterator p2
+        = (std::find_if(input.rbegin(), reverse_iterator(p1),
+                        std::not_fn(pred)))
               .base();
 
-    return basic_string<CharT>(p1, p2);
+    return std::basic_string<CharT>(p1, p2);
 }
 
 template<typename RandomAccessIterator, typename Predicate>
-inline basic_string<
-typename iterator_traits<RandomAccessIterator>::value_type>
+inline std::basic_string<
+typename std::iterator_traits<RandomAccessIterator>::value_type>
 strip(RandomAccessIterator first, RandomAccessIterator last, Predicate pred)
 {
-    typedef typename iterator_traits<RandomAccessIterator>::value_type char_t;
-    typedef reverse_iterator<RandomAccessIterator> riterator;
+    typedef typename std::iterator_traits<RandomAccessIterator>::value_type
+        char_t;
+    typedef std::reverse_iterator<RandomAccessIterator> riterator;
     if (first == last) {
-        return basic_string<char_t>();
+        return std::basic_string<char_t>();
     }
-    RandomAccessIterator p1 = find_if(first, last, std::not_fn(pred));
+    RandomAccessIterator p1 = std::find_if(first, last, std::not_fn(pred));
     RandomAccessIterator p2
-        = (find_if(riterator(last), riterator(p1), std::not_fn(pred))).base();
+        = (std::find_if(riterator(last), riterator(p1), std::not_fn(pred)))
+              .base();
 
-    return basic_string<char_t>(p1, p2);
+    return std::basic_string<char_t>(p1, p2);
 }
 
 inline
 std::wstring
 to_wstring(const std::string &s)
 {
-    using namespace std;
     // calculate the exact size
-    const string::value_type *base = s.c_str();
+    const std::string::value_type *base = s.c_str();
     mbstate_t ps;
     ::memset(&ps, 0, sizeof ps);
     // mbsrtowcs(3) reports failure as (size_t)-1, so this must be tested before
     // the terminator slot is added.
     const size_t required = ::mbsrtowcs(0, &base, 0, &ps);
     if (required == static_cast<size_t>(-1)) {
-        throw runtime_error("Invalid multi-byte sequence");
+        throw std::runtime_error("Invalid multi-byte sequence");
     }
     // allocate the string buffer for that size, plus the terminator
     const size_t n = required + 1;
-    vector<wstring::value_type> buffer(n);
+    std::vector<std::wstring::value_type> buffer(n);
     // convert to multi-byte
     ::mbsrtowcs(&(*buffer.begin()), &base, n, &ps);
 
-    return wstring(buffer.begin(), buffer.end() - 1);
+    return std::wstring(buffer.begin(), buffer.end() - 1);
 }
 
 struct wstring_to_string {
@@ -496,11 +497,11 @@ reset(Container &c)
 }
 
 inline
-long int long_of_string(const string &s)
+long int long_of_string(const std::string &s)
 {
     long int result = 0;
     if (!util::from_string(s, result)) {
-        throw domain_error("Invalid integer representation");
+        throw std::domain_error("Invalid integer representation");
     }
     return result;
 }
@@ -665,7 +666,4 @@ public:
 };
 
 } // namespace util
-
-
-#endif
 // vim: set sts=2 sw=2 expandtab:

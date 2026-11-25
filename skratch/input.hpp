@@ -1,5 +1,4 @@
-#ifndef __WREEL_INPUTS_H__
-#define __WREEL_INPUTS_H__
+#pragma once
 
 #include <algorithm>
 #include <vector>
@@ -95,4 +94,3 @@ private:
 };
 
 // vim: set sts=2 sw=2 expandtab:
-#endif

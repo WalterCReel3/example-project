@@ -1,5 +1,4 @@
-#ifndef __UTIL_DELETER_HPP
-#define __UTIL_DELETER_HPP
+#pragma once
 namespace util
 {
 
@@ -12,4 +11,3 @@ void deleter(T* const ptr)
 } // namespace util
 
 // vim: set sts=2 sw=2 expandtab:
-#endif

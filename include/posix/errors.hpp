@@ -1,5 +1,4 @@
-#ifndef __POSIX_ERRORS_HPP__
-#define __POSIX_ERRORS_HPP__
+#pragma once
 
 #include <exception>
 #include <errno.h>
@@ -91,5 +90,3 @@ wrap(int result)
 } // namespace posix
 
 // vim: set sts=2 sw=2 expandtab:
-
-#endif

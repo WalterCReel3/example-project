@@ -1,5 +1,4 @@
-#ifndef __UTIL_FILEIMPL_HPP__
-#define __UTIL_FILEIMPL_HPP__
+#pragma once
 
 #include <Windows.h>
 #include <sys/types.h>
@@ -24,5 +23,3 @@ private:
 };
 
 }
-
-#endif
